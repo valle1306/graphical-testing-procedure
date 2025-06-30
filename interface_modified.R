@@ -2,7 +2,11 @@ library(shiny)
 library(visNetwork)
 
 ui <- fluidPage(
+<<<<<<< HEAD
   titlePanel("Interactive Graphical Testing Editor (Start from Scratch)"),
+=======
+  titlePanel("Interactive Graphical Testing Editor (visNetwork)"),
+>>>>>>> d64e534144b9dba90b7a9a04d3d04fc3d097544c
   visNetworkOutput("graph"),
   verbatimTextOutput("debug")
 )
@@ -10,6 +14,7 @@ ui <- fluidPage(
 server <- function(input, output, session) {
   graph_data <- reactiveValues(
     nodes = data.frame(
+<<<<<<< HEAD
       id = character(),
       label = character(),
       alpha = numeric(),
@@ -25,10 +30,26 @@ server <- function(input, output, session) {
       weight = numeric(),
       title = character(),
       label = character(),
+=======
+      id = 1:5,
+      label = c('H1: UPCR IgA', 'H2: eGFR GN', 'H3: eGFR GN 10wk',
+                'H4: eGFR IgA', 'H5: 2nd Endpoints'),
+      alpha = c(0.01, 0.04, 0, 0, 0),
+      title = paste("Alpha:", c(0.01, 0.04, 0, 0, 0)),
+      stringsAsFactors = FALSE
+    ),
+    edges = data.frame(
+      id = 1:5,
+      from = c(1, 2, 4, 4, 5),
+      to   = c(4, 4, 2, 5, 2),
+      weight = c(1, 1, 0.5, 0.5, 0.5),
+      title = paste("Weight:", c(1, 1, 0.5, 0.5, 0.5)),
+>>>>>>> d64e534144b9dba90b7a9a04d3d04fc3d097544c
       stringsAsFactors = FALSE
     ),
     node_names = character(),
     node_alpha = numeric(),
+<<<<<<< HEAD
     edge_matrix = matrix(0, 0, 0)
   )
   
@@ -40,11 +61,23 @@ server <- function(input, output, session) {
     edge_mat <- matrix(0, k, k)
     rownames(edge_mat) <- ids
     colnames(edge_mat) <- ids
+=======
+    edge_matrix = NULL
+  )
+  
+  update_edge_matrix <- function() {
+    k <- nrow(graph_data$nodes)
+    node_ids <- graph_data$nodes$id
+    edge_mat <- matrix(0, k, k)
+    rownames(edge_mat) <- node_ids
+    colnames(edge_mat) <- node_ids
+>>>>>>> d64e534144b9dba90b7a9a04d3d04fc3d097544c
     
     for (i in seq_len(nrow(graph_data$edges))) {
       from <- graph_data$edges$from[i]
       to <- graph_data$edges$to[i]
       weight <- graph_data$edges$weight[i]
+<<<<<<< HEAD
       if (from %in% rownames(edge_mat) && to %in% colnames(edge_mat)) {
         edge_mat[from, to] <- weight
       }
@@ -53,15 +86,29 @@ server <- function(input, output, session) {
   }
   
   observeEvent(graph_changed(), {
+=======
+      edge_mat[as.character(from), as.character(to)] <- weight
+    }
+    
+    graph_data$edge_matrix <- edge_mat
+  }
+  
+  observe({
+>>>>>>> d64e534144b9dba90b7a9a04d3d04fc3d097544c
     graph_data$node_names <- graph_data$nodes$label
     graph_data$node_alpha <- graph_data$nodes$alpha
     update_edge_matrix()
   })
+<<<<<<< HEAD
 
+=======
+  
+>>>>>>> d64e534144b9dba90b7a9a04d3d04fc3d097544c
   output$graph <- renderVisNetwork({
     visNetwork(graph_data$nodes, graph_data$edges) %>%
       visEdges(arrows = "to") %>%
       visOptions(
+<<<<<<< HEAD
         manipulation = list(
           enabled = TRUE,
           initiallyActive = TRUE,
@@ -86,6 +133,9 @@ server <- function(input, output, session) {
             callback(data);
           }"
         ),
+=======
+        manipulation = TRUE,
+>>>>>>> d64e534144b9dba90b7a9a04d3d04fc3d097544c
         highlightNearest = FALSE,
         nodesIdSelection = FALSE
       ) %>%
@@ -101,6 +151,7 @@ server <- function(input, output, session) {
       )
   })
   
+<<<<<<< HEAD
   observeEvent(input$add_node, {
     new_id <- input$add_node$id
     new_label <- input$add_node$label
@@ -137,12 +188,18 @@ server <- function(input, output, session) {
     graph_changed(graph_changed() + 1)
   })
 
+=======
+>>>>>>> d64e534144b9dba90b7a9a04d3d04fc3d097544c
   observeEvent(input$node_dblclick, {
     node_id <- input$node_dblclick
     node <- graph_data$nodes[graph_data$nodes$id == node_id, ]
     
     showModal(modalDialog(
+<<<<<<< HEAD
       title = paste("Edit Node Alpha", node$label),
+=======
+      title = paste("Edit Node Alpha", node_id),
+>>>>>>> d64e534144b9dba90b7a9a04d3d04fc3d097544c
       numericInput("edit_alpha", "Alpha (0-1):", value = node$alpha, min = 0, max = 1, step = 0.01),
       footer = tagList(
         modalButton("Cancel"),
@@ -150,7 +207,11 @@ server <- function(input, output, session) {
       )
     ))
   })
+<<<<<<< HEAD
 
+=======
+  
+>>>>>>> d64e534144b9dba90b7a9a04d3d04fc3d097544c
   observeEvent(input$save_edit_node, {
     req(input$node_dblclick)
     node_id <- input$node_dblclick
@@ -159,10 +220,16 @@ server <- function(input, output, session) {
     graph_data$nodes[graph_data$nodes$id == node_id, "alpha"] <- new_alpha
     graph_data$nodes[graph_data$nodes$id == node_id, "title"] <- paste("Alpha:", new_alpha)
     
+<<<<<<< HEAD
     graph_changed(graph_changed() + 1)
     removeModal()
   })
 
+=======
+    removeModal()
+  })
+  
+>>>>>>> d64e534144b9dba90b7a9a04d3d04fc3d097544c
   observeEvent(input$edge_dblclick, {
     edge_id <- input$edge_dblclick
     edge <- graph_data$edges[graph_data$edges$id == edge_id, ]
@@ -176,12 +243,17 @@ server <- function(input, output, session) {
       )
     ))
   })
+<<<<<<< HEAD
 
+=======
+  
+>>>>>>> d64e534144b9dba90b7a9a04d3d04fc3d097544c
   observeEvent(input$save_edit_edge, {
     req(input$edge_dblclick)
     edge_id <- input$edge_dblclick
     new_weight <- input$edit_weight
     
+<<<<<<< HEAD
     if (edge_id %in% graph_data$edges$id) {
       graph_data$edges[graph_data$edges$id == edge_id, "weight"] <- new_weight
       graph_data$edges[graph_data$edges$id == edge_id, "title"] <- paste("Weight:", new_weight)
@@ -208,6 +280,15 @@ server <- function(input, output, session) {
     graph_changed(graph_changed() + 1)
   })
 
+=======
+    graph_data$edges[graph_data$edges$id == edge_id, "weight"] <- new_weight
+    graph_data$edges[graph_data$edges$id == edge_id, "title"] <- paste("Weight:", new_weight)
+    
+    update_edge_matrix()
+    removeModal()
+  })
+  
+>>>>>>> d64e534144b9dba90b7a9a04d3d04fc3d097544c
   output$debug <- renderPrint({
     list(
       node_names = graph_data$node_names,
@@ -218,6 +299,9 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+<<<<<<< HEAD
 
 
 
+=======
+>>>>>>> d64e534144b9dba90b7a9a04d3d04fc3d097544c
