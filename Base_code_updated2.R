@@ -1,227 +1,244 @@
 library(shiny)
 library(visNetwork)
+library(DT)
 library(jsonlite)
 
 ui <- fluidPage(
   titlePanel("Interactive Graphical Testing Editor (Start from Scratch)"),
+  
+  # Centered buttons
   fluidRow(
-    column(10,
-           actionButton("add_node", label = "Add Node", icon = icon("plus-circle")),
-           actionButton("add_edge_mode", label = "Add Edge", icon = icon("pen")),
-           actionButton("edit_node_mode", label = "Edit Node", icon = icon("edit")),
-           actionButton("delete_selected", label = "Delete selected", icon = icon("times-circle"))
-    ),
-    column(2, align = "right",
-           downloadButton("download_json", "Export")
+    column(12, align = "center",
+           actionButton("add_node", "Add Node", class = "btn btn-primary"),
+           actionButton("add_edge", "Add Edge", class = "btn btn-success"),
+           actionButton("edit_node", "Edit Node", class = "btn btn-warning"),
+           actionButton("edit_edge", "Edit Edge", class = "btn btn-info"),
+           actionButton("delete_node", "Delete Node", class = "btn btn-danger"),
+           actionButton("delete_edge", "Delete Edge", class = "btn btn-danger")
     )
   ),
-  visNetworkOutput("graph", height = "600px"),
-  verbatimTextOutput("debug")
+  br(),
+  
+  fluidRow(
+    column(3,
+           wellPanel(
+             tags$div(style = "min-height: 650px;",
+                      fileInput("upload", "Upload JSON Graph File"),
+                      downloadButton("export", "Export"),
+                      tags$hr(),
+                      h5(tags$b("Node Table"), style = "color:blue"),
+                      dataTableOutput("node_table"),
+                      tags$hr(),
+                      h5(tags$b("Edge Table"), style = "color:darkgreen"),
+                      dataTableOutput("edge_table")
+             )
+           )
+    ),
+    column(9,
+           visNetworkOutput("graph", height = "600px")
+    )
+  )
 )
 
 server <- function(input, output, session) {
-  graph_data <- reactiveValues(
-    nodes = data.frame(
-      id = numeric(0),
-      label = character(0),
-      alpha = numeric(0),
-      title = character(0),
-      stringsAsFactors = FALSE
-    ),
-    edges = data.frame(
-      id = numeric(0),
-      from = numeric(0),
-      to = numeric(0),
-      label = character(0),
-      weight = numeric(0),
-      title = character(0),
-      stringsAsFactors = FALSE
-    ),
-    node_counter = 0,
-    edge_counter = 0
+  rv <- reactiveValues(
+    nodes = data.frame(id = numeric(0), label = character(0), alpha = numeric(0), stringsAsFactors = FALSE),
+    edges = data.frame(id = numeric(0), from = numeric(0), to = numeric(0), weight = numeric(0), label = character(0), smooth = I(list()), stringsAsFactors = FALSE),
+    node_id = 1,
+    edge_id = 1
   )
   
-  # Render the graph
-  output$graph <- renderVisNetwork({
-    visNetwork(graph_data$nodes, graph_data$edges) %>%
-      visNodes(shape = "ellipse", font = list(valign = "middle", color = "black"))  %>%
-      visEdges(arrows = "to") %>%
-      visOptions(manipulation = FALSE) %>%
-      visEvents(
-        doubleClick = "function(properties) {
-          if (properties.nodes.length > 0) {
-            Shiny.setInputValue('node_dblclick', properties.nodes[0], {priority: 'event'});
-          } else if (properties.edges.length > 0) {
-            Shiny.setInputValue('edge_dblclick', properties.edges[0], {priority: 'event'});
-          }
-        }"
-      )
-  })
-  
-  # Add Node
-  # Show modal when Add Node is clicked
   observeEvent(input$add_node, {
     showModal(modalDialog(
       title = "Add Node",
-      textInput("node_label_input", "Node Name:", value = ""),
-      numericInput("alpha_input", "Alpha:", min = 0, value = 0, step = 0.1),
+      textInput("node_label", "Label (e.g., H1: abc)", ""),
+      numericInput("node_alpha", "Alpha", value = 0.05, step = 0.01),
+      easyClose = FALSE,
       footer = tagList(
         modalButton("Cancel"),
-        actionButton("confirm_add_node", "Add Node")
+        actionButton("confirm_add_node", "Add")
       )
     ))
   })
   
-  # Confirm and add the node
   observeEvent(input$confirm_add_node, {
-    graph_data$node_counter <- graph_data$node_counter + 1
-    new_id <- graph_data$node_counter
-    new_label <- ifelse(nzchar(input$node_label_input), input$node_label_input, paste0("H", new_id))
-    
-    graph_data$nodes <- rbind(
-      graph_data$nodes,
-      data.frame(
-        id = new_id,
-        label = new_label,
-        alpha = input$alpha_input,
-        title = paste0("α =",input$alpha_input),
-        stringsAsFactors = FALSE
-      )
+    new_node <- data.frame(
+      id = rv$node_id,
+      label = input$node_label,
+      alpha = input$node_alpha,
+      title = paste0("α = ", format(input$node_alpha, nsmall = 2))
     )
+    rv$nodes <- rbind(rv$nodes, new_node)
+    rv$node_id <- rv$node_id + 1
     removeModal()
   })
   
-  
-  # Add Edge Mode
-  observeEvent(input$add_edge_mode, {
+  observeEvent(input$add_edge, {
     showModal(modalDialog(
       title = "Add Edge",
-      numericInput("from_id", "From Node ID:", min = 1, value = 1),
-      numericInput("to_id", "To Node ID:", min = 1, value = 1),
-      numericInput("edge_weight", "Weight (0-1):", value = 0, min = 0, max = 1, step = 0.1),
+      numericInput("edge_from", "From Node ID", value = 1),
+      numericInput("edge_to", "To Node ID", value = 2),
+      numericInput("edge_weight", "Weight", value = 0.05, step = 0.01),
+      easyClose = FALSE,
       footer = tagList(
         modalButton("Cancel"),
-        actionButton("confirm_add_edge", "Add Edge")
+        actionButton("confirm_add_edge", "Add")
       )
     ))
   })
   
   observeEvent(input$confirm_add_edge, {
-    graph_data$edge_counter <- graph_data$edge_counter + 1
-    edge_id <- graph_data$edge_counter
-    
-    graph_data$edges <- rbind(
-      graph_data$edges,
-      data.frame(
-        id = edge_id,
-        from = input$from_id,
-        to = input$to_id,
-        label = as.character(input$edge_weight),
-        weight = input$edge_weight,
-        title = paste("Weight:", input$edge_weight),
-        stringsAsFactors = FALSE
-      )
-    )
-    removeModal()
-  })
-  
-  # Edit Node Alpha on Double Click
-  observeEvent(input$node_dblclick, {
-    node_id <- input$node_dblclick
-    node_row <- graph_data$nodes[graph_data$nodes$id == node_id, ]
-    
-    showModal(modalDialog(
-      title = paste("Edit Node", node_id),
-      numericInput("new_alpha", "Alpha:", value = node_row$alpha, step = 0.1),
-      footer = tagList(
-        modalButton("Cancel"),
-        actionButton("save_node_edit", "Save")
-      )
-    ))
-  })
-  
-  observeEvent(input$save_node_edit, {
-    node_id <- input$node_dblclick
-    new_alpha <- input$new_alpha
-    graph_data$nodes[graph_data$nodes$id == node_id, "alpha"] <- new_alpha
-    graph_data$nodes[graph_data$nodes$id == node_id, "title"] <- paste("α =", new_alpha)
-    removeModal()
-  })
-  
-  # Edit Edge Weight on Double Click
-  observeEvent(input$edge_dblclick, {
-    edge_id <- input$edge_dblclick
-    edge_row <- graph_data$edges[graph_data$edges$id == edge_id, ]
-    
-    showModal(modalDialog(
-      title = paste("Edit Edge", edge_id),
-      numericInput("new_weight", "Weight (0-1):", value = edge_row$weight, min = 0, max = 1, step = 0.1),
-      footer = tagList(
-        modalButton("Cancel"),
-        actionButton("save_edge_edit", "Save")
-      )
-    ))
-  })
-  
-  observeEvent(input$save_edge_edit, {
-    edge_id <- input$edge_dblclick
-    new_weight <- input$new_weight
-    
-    if (edge_id %in% graph_data$edges$id) {
-      graph_data$edges[graph_data$edges$id == edge_id, "weight"] <- new_weight
-      graph_data$edges[graph_data$edges$id == edge_id, "label"] <- as.character(new_weight)
-      graph_data$edges[graph_data$edges$id == edge_id, "title"] <- paste("Weight:", new_weight)
+    existing_reverse <- with(rv$edges, which(from == input$edge_to & to == input$edge_from))
+    curvature_type <- if (length(existing_reverse) > 0) {
+      list(enabled = TRUE, type = "curvedCW")
     } else {
-      showNotification("Edge ID not found. Could not update weight.", type = "error")
+      list(enabled = FALSE)
+    }
+    
+    new_edge <- data.frame(
+      id = rv$edge_id,
+      from = input$edge_from,
+      to = input$edge_to,
+      weight = input$edge_weight,
+      label = as.character(input$edge_weight),
+      smooth = I(list(curvature_type))
+    )
+    rv$edges <- rbind(rv$edges, new_edge)
+    rv$edge_id <- rv$edge_id + 1
+    removeModal()
+  })
+  
+  observeEvent(input$edit_edge, {
+    selected_edge <- input$graph_selectedEdges
+    if (!is.null(selected_edge)) {
+      edge_id <- as.numeric(selected_edge[1])
+      edge_row <- rv$edges[rv$edges$id == edge_id, ]
+      if (nrow(edge_row) == 1) {
+        showModal(modalDialog(
+          title = "Edit Edge Weight",
+          numericInput("edit_edge_weight", "New Weight", value = edge_row$weight, step = 0.01),
+          easyClose = FALSE,
+          footer = tagList(
+            modalButton("Cancel"),
+            actionButton("confirm_edit_edge", "Update")
+          )
+        ))
+        session$userData$editing_edge_id <- edge_id
+      }
+    }
+  })
+  
+  observeEvent(input$confirm_edit_edge, {
+    edge_id <- session$userData$editing_edge_id
+    idx <- which(rv$edges$id == edge_id)
+    if (length(idx) == 1) {
+      rv$edges$weight[idx] <- input$edit_edge_weight
+      rv$edges$label[idx] <- as.character(input$edit_edge_weight)
     }
     removeModal()
   })
-
-  # Delete Selected Node/Edge
-  observeEvent(input$delete_selected, {
-    visNetworkProxy("graph") %>%
-      visGetSelectedNodes() %>%
-      visGetSelectedEdges()
+  
+  observeEvent(input$edit_node, {
+    showModal(modalDialog(
+      title = "Edit Node Alpha",
+      numericInput("edit_node_id", "Node ID", value = 1),
+      numericInput("edit_alpha", "New Alpha", value = 0.05, step = 0.01),
+      easyClose = FALSE,
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("confirm_edit_node", "Update")
+      )
+    ))
   })
   
-  observeEvent(input$graph_selectedNodes, {
-    selected_nodes <- input$graph_selectedNodes
-    if (length(selected_nodes) > 0) {
-      graph_data$nodes <- subset(graph_data$nodes, !(id %in% selected_nodes))
-      graph_data$edges <- subset(graph_data$edges, !(from %in% selected_nodes | to %in% selected_nodes))
+  observeEvent(input$confirm_edit_node, {
+    node_idx <- which(rv$nodes$id == input$edit_node_id)
+    if (length(node_idx) == 1) {
+      rv$nodes$alpha[node_idx] <- input$edit_alpha
+      rv$nodes$title[node_idx] <- paste0("α = ", format(input$edit_alpha, nsmall = 2))
     }
-  }, ignoreInit = TRUE)
+    removeModal()
+  })
   
+  observeEvent(input$delete_node, {
+    selected_node <- input$graph_selected
+    if (!is.null(selected_node)) {
+      rv$nodes <- rv$nodes[rv$nodes$id != selected_node, ]
+      rv$edges <- rv$edges[!(rv$edges$from == selected_node | rv$edges$to == selected_node), ]
+    }
+  })
   
-  observeEvent(input$graph_selectedEdges, {
+  observeEvent(input$delete_edge, {
     selected_edges <- input$graph_selectedEdges
-    if (length(selected_edges) > 0) {
-      graph_data$edges <- subset(graph_data$edges, !(id %in% selected_edges))
+    if (!is.null(selected_edges)) {
+      edge_ids <- as.numeric(selected_edges)
+      rv$edges <- rv$edges[!rv$edges$id %in% edge_ids, ]
     }
-  }, ignoreInit = TRUE)
- 
-  # Export as JSON file
-   output$download_json <- downloadHandler(
+  })
+  
+  output$graph <- renderVisNetwork({
+    visNetwork(rv$nodes, rv$edges) %>%
+      visNodes(
+        shape = "ellipse",
+        color = list(background = "lightblue", border = "blue"),
+        font = list(size = 20),
+        shadow = TRUE
+      ) %>%
+      visEdges(
+        arrows = list(to = list(enabled = TRUE, scaleFactor = 0.6)),
+        smooth = TRUE,
+        font = list(align = "middle", size = 16),
+        color = list(color = "blue")
+      ) %>%
+      visOptions(
+        highlightNearest = TRUE,
+        nodesIdSelection = list(enabled = TRUE, useLabels = TRUE),
+        manipulation = FALSE
+      ) %>%
+      visPhysics(
+        solver = "repulsion",
+        repulsion = list(
+          nodeDistance = 200,
+          centralGravity = 0.1,
+          springLength = 200,
+          springConstant = 0.02,
+          damping = 0.09
+        ),
+        stabilization = list(enabled = TRUE, iterations = 200)
+      ) %>%
+      visInteraction(
+        dragNodes = TRUE,
+        dragView = TRUE,
+        hover = TRUE
+      )
+  })
+  
+  output$node_table <- renderDataTable({
+    rv$nodes[, c("id", "label", "alpha")]
+  }, options = list(dom = 't', paging = FALSE), rownames = FALSE)
+  
+  output$edge_table <- renderDataTable({
+    rv$edges[, c("id", "from", "to", "weight")]
+  }, options = list(dom = 't', paging = FALSE), rownames = FALSE)
+  
+  observeEvent(input$upload, {
+    req(input$upload)
+    json_data <- fromJSON(input$upload$datapath)
+    rv$nodes <- json_data$nodes
+    rv$edges <- json_data$edges
+    rv$node_id <- ifelse(nrow(rv$nodes) == 0, 1, max(rv$nodes$id) + 1)
+    rv$edge_id <- ifelse(nrow(rv$edges) == 0, 1, max(rv$edges$id) + 1)
+  })
+  
+  output$export <- downloadHandler(
     filename = function() {
-      paste0("graph_data_", Sys.Date(), ".json")
+      paste0("graph-", Sys.Date(), ".json")
     },
     content = function(file) {
-      export_list <- list(
-        nodes = graph_data$nodes,
-        edges = graph_data$edges
-      )
-      write_json(export_list, file, pretty = TRUE, auto_unbox = TRUE)
+      write_json(list(nodes = rv$nodes, edges = rv$edges), file, pretty = TRUE, auto_unbox = TRUE)
     }
   )
-  
-  # Optional debug output
-  output$debug <- renderPrint({
-    list(
-      nodes = graph_data$nodes,
-      edges = graph_data$edges
-    )
-  })
-} 
+}
 
 shinyApp(ui, server)
 
