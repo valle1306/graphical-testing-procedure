@@ -44,6 +44,8 @@ server <- function(input, output, session) {
     edges = data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), smooth = I(list()), stringsAsFactors = FALSE)
   )
   
+  graph_update_trigger <- reactiveVal(1)
+  
   # add node 
   observeEvent(input$add_node, {
     showModal(modalDialog(
@@ -221,7 +223,10 @@ server <- function(input, output, session) {
   })
   
   # render graph
+  
   output$graph <- renderVisNetwork({
+    req(graph_update_trigger())
+    
     gnodes <- rv$nodes
     # visNetwork 'id' must be unique; use 'label' for id here since label has to be unique (required for selection, editing, etc)
     gnodes$id <- gnodes$label
@@ -288,23 +293,62 @@ server <- function(input, output, session) {
   observeEvent(input$upload, {
     req(input$upload)
     json_data <- fromJSON(input$upload$datapath)
-    rv$nodes <- json_data$nodes
-    rv$edges <- json_data$edges
+    
+    # Fix nodes
+    if (!is.null(json_data$nodes) && is.data.frame(json_data$nodes)) {
+      nodes <- json_data$nodes
+      if (!"title" %in% colnames(nodes)) {
+        nodes$title <- paste0("α = ", format(nodes$alpha, nsmall = 2))
+      }
+      rv$nodes <- nodes
+    } else {
+      rv$nodes <- data.frame(label = character(0), alpha = numeric(0), title = character(0), stringsAsFactors = FALSE)
+    }
+    
+    # Fix edges
+    if (!is.null(json_data$edges) && is.data.frame(json_data$edges)) {
+      edges <- json_data$edges
+      if (!"label" %in% colnames(edges)) {
+        edges$label <- as.character(edges$weight)
+      }
+      if (!"smooth" %in% colnames(edges)) {
+        edges$smooth <- replicate(nrow(edges), list(list(enabled = FALSE)), simplify = FALSE)
+      }
+      rv$edges <- edges
+    } else {
+      rv$edges <- data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), smooth = I(list()), stringsAsFactors = FALSE)
+    }
+    
+    graph_update_trigger(graph_update_trigger() + 1)
   })
+  
   
   output$export <- downloadHandler(
     filename = function() {
       paste0("graph-", Sys.Date(), ".json")
     },
     content = function(file) {
-      write_json(list(nodes = rv$nodes, edges = rv$edges), file, pretty = TRUE, auto_unbox = TRUE)
+      export_nodes <- rv$nodes
+      export_edges <- rv$edges
+      
+      if ("smooth" %in% colnames(export_edges)) {
+        export_edges$smooth <- lapply(export_edges$smooth, function(x) {
+          if (is.null(x) || length(x) == 0) list(enabled = FALSE) else x
+        })
+      }
+      
+      write_json(
+        list(nodes = export_nodes, edges = export_edges),
+        path = file,
+        pretty = TRUE,
+        auto_unbox = TRUE
+      )
     }
   )
+  
 }
 
 shinyApp(ui, server)
-
-
 
 
 
