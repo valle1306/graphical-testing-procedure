@@ -4,7 +4,7 @@ library(DT)
 library(jsonlite)
 
 ui <- fluidPage(
-  titlePanel("Interactive Graphical Testing Editor (Start from Scratch)"),
+  titlePanel("Interactive Graphical Testing Editor (Phase 1)"),
   
   # Centered buttons
   fluidRow(
