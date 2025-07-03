@@ -37,6 +37,12 @@ This Shiny app provides an interactive UI for visually defining a multiple testi
   - Save the current node-edge structure as a `.json` file  
   - Reload previous work by uploading a `.json` graph
 
+
+### Interface Preview
+
+![Step 1 Graph Editor UI](images/step1_interface_screenshot.png)
+
+
 ---
 
 ### How to Launch the App
