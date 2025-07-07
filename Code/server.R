@@ -2,6 +2,8 @@ library(shiny)
 library(visNetwork)
 library(DT)
 library(jsonlite)
+library(TrialSimulator)
+
 
 server <- function(input, output, session) {
   rv <- reactiveValues(
@@ -10,6 +12,65 @@ server <- function(input, output, session) {
   )
   
   graph_update_trigger <- reactiveVal(1)
+  
+  # === Phase 2: Hook into GraphicalTesting logic ===
+  
+  get_transition_matrix <- function(nodes, edges) {
+    n <- nrow(nodes)
+    mat <- matrix(0, n, n)
+    rownames(mat) <- colnames(mat) <- nodes$label
+    for (i in seq_len(nrow(edges))) {
+      from <- edges$from[i]
+      to <- edges$to[i]
+      weight <- edges$weight[i]
+      mat[from, to] <- weight
+    }
+    return(mat)
+  }
+  
+  rv$gt_object <- NULL  # To store GraphicalTesting object
+  
+  observeEvent(input$run_gt, {
+    req(nrow(rv$nodes) > 0)
+    
+    hs <- rv$nodes$alpha
+    transition <- get_transition_matrix(rv$nodes, rv$edges)
+    
+    # Check: sum of alpha must be ≤ 1
+    if (sum(hs) > 1) {
+      showModal(modalDialog(
+        title = "Invalid Alpha",
+        paste("Total alpha must be ≤ 1. Current sum is", round(sum(hs), 4)),
+        easyClose = TRUE
+      ))
+      return()
+    }
+    
+    # Check: transition matrix must match hs length
+    if (nrow(transition) != length(hs)) {
+      showModal(modalDialog(
+        title = "Mismatch",
+        paste("Transition matrix is", nrow(transition), "x", ncol(transition),
+              "but alpha vector is length", length(hs)),
+        easyClose = TRUE
+      ))
+      return()
+    }
+    
+    # Create GraphicalTesting object
+    rv$gt_object <- GraphicalTesting$new(
+      alpha = hs,
+      transition = transition
+    )
+    
+    showModal(modalDialog(
+      title = "Graphical Test Created!",
+      paste("Created with", length(hs), "hypotheses. Sum alpha =", round(sum(hs), 4)),
+      easyClose = TRUE
+    ))
+  })
+  
+  
   
   # add node 
   observeEvent(input$add_node, {
@@ -262,9 +323,9 @@ server <- function(input, output, session) {
     # Fix nodes
     if (!is.null(json_data$nodes) && is.data.frame(json_data$nodes)) {
       nodes <- json_data$nodes
-      if (!"title" %in% colnames(nodes)) {
-        nodes$title <- paste0("α = ", format(nodes$alpha, nsmall = 2))
-      }
+      # Always regenerate title from alpha regardless
+      nodes$title <- paste0("α = ", format(nodes$alpha, nsmall = 2))
+      
       rv$nodes <- nodes
     } else {
       rv$nodes <- data.frame(label = character(0), alpha = numeric(0), title = character(0), stringsAsFactors = FALSE)

@@ -2,9 +2,10 @@ library(shiny)
 library(visNetwork)
 library(DT)
 library(jsonlite)
+library(TrialSimulator)
 
 ui <- fluidPage(
-  titlePanel("Interactive Graphical Testing Editor (Phase 1)"),
+  titlePanel("Interactive Graphical Testing Editor (Start from Scratch)"),
   
   # Centered buttons
   fluidRow(
@@ -23,6 +24,7 @@ ui <- fluidPage(
              tags$div(style = "min-height: 650px;",
                       fileInput("upload", "Upload JSON Graph File"),
                       downloadButton("export", "Export"),
+                      actionButton("run_gt", "Run Graphical Test", class = "btn btn-warning"),
                       tags$hr(),
                       h5(tags$b("Node Table"), style = "color:blue"),
                       dataTableOutput("node_table"),
@@ -37,4 +39,5 @@ ui <- fluidPage(
     )
   )
 )
+
 
