@@ -1,19 +1,14 @@
-library(shiny)
-library(visNetwork)
-library(DT)
-library(jsonlite)
-library(TrialSimulator)
-
-
 server <- function(input, output, session) {
   rv <- reactiveValues(
     nodes = data.frame(label = character(0), alpha = numeric(0), stringsAsFactors = FALSE),
-    edges = data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), smooth = I(list()), stringsAsFactors = FALSE)
+    edges = data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), smooth = I(list()), stringsAsFactors = FALSE),
+    gt_object = NULL,
+    gt_log = "",
+    gt_summary = data.frame() 
   )
   
   graph_update_trigger <- reactiveVal(1)
-  
-  # === Phase 2: Hook into GraphicalTesting logic ===
+
   
   get_transition_matrix <- function(nodes, edges) {
     n <- nrow(nodes)
@@ -28,50 +23,45 @@ server <- function(input, output, session) {
     return(mat)
   }
   
-  rv$gt_object <- NULL  # To store GraphicalTesting object
-  
   observeEvent(input$run_gt, {
     req(nrow(rv$nodes) > 0)
     
-    hs <- rv$nodes$alpha
+    alpha <- rv$nodes$alpha
+    hs <- rv$nodes$label
+    asf <- rep("asOF", length(hs))  # Dummy ASF initialization
+    max_info <- rep(100, length(hs))  # Default: max_info = 100 for all nodes
     transition <- get_transition_matrix(rv$nodes, rv$edges)
+   
     
-    # Check: sum of alpha must be ≤ 1
-    if (sum(hs) > 1) {
-      showModal(modalDialog(
-        title = "Invalid Alpha",
-        paste("Total alpha must be ≤ 1. Current sum is", round(sum(hs), 4)),
-        easyClose = TRUE
-      ))
-      return()
-    }
     
-    # Check: transition matrix must match hs length
-    if (nrow(transition) != length(hs)) {
-      showModal(modalDialog(
-        title = "Mismatch",
-        paste("Transition matrix is", nrow(transition), "x", ncol(transition),
-              "but alpha vector is length", length(hs)),
-        easyClose = TRUE
-      ))
-      return()
-    }
-    
-    # Create GraphicalTesting object
-    rv$gt_object <- GraphicalTesting$new(
-      alpha = hs,
-      transition = transition
-    )
-    
-    showModal(modalDialog(
-      title = "Graphical Test Created!",
-      paste("Created with", length(hs), "hypotheses. Sum alpha =", round(sum(hs), 4)),
-      easyClose = TRUE
-    ))
+    # Run Graphical Testing and extract elements
+    tryCatch({
+      rv$gt_object <- GraphicalTesting$new(
+        alpha = alpha,
+        transition = transition,
+        asf = asf,
+        max_info = max_info,
+        hs = hs
+      )
+      
+      # Log and display
+      rv$gt_log <- paste("Graphical Testing object created successfully!")
+      
+      # Create summary DataFrame
+      rv$gt_summary <- data.frame(
+        Alpha = rv$gt_object$alpha,
+        Label = rv$gt_object$hs,
+        MaxInfo = rv$gt_object$max_info,
+        ASF = rv$gt_object$asf,
+        row.names = NULL
+      )
+      
+    }, error = function(e) {
+      rv$gt_log <- paste("Error during Graphical Testing setup:", e$message)
+    })
   })
   
-  
-  
+ 
   # add node 
   observeEvent(input$add_node, {
     showModal(modalDialog(
