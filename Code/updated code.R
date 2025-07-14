@@ -72,7 +72,7 @@ server <- function(input, output, session) {
     showModal(modalDialog(
       title = "Add Node",
       textInput("node_label", "Label (e.g., H1: abc)", ""),
-      numericInput("node_alpha", "Alpha", value = 0.05, min = 0, max = 1, step = 0.01),
+      numericInput("node_alpha", "Alpha", value = "", min = 0, max = 1, step = 0.01),
       easyClose = FALSE,
       footer = tagList(modalButton("Cancel"), actionButton("confirm_add_node", "Add"))
     ))
