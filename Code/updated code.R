@@ -35,6 +35,10 @@ ui <- fluidPage(
                       h5(tags$b("Test Results"), style = "color:purple"),
                       dataTableOutput("gt_result_table"),
                       verbatimTextOutput("gt_log")
+                      # Optional: UI printout below.
+                      # tags$hr(),
+                      # h5(tags$b("GT Object (Console Print)"), style = "color:orange"),
+                      # verbatimTextOutput("gt_object_print")
              )
            )
     ),
@@ -260,6 +264,7 @@ server <- function(input, output, session) {
       )
       rv$gt_log <- "GraphicalTesting object created successfully!"
       rv$gt_summary <- rv$gt_object$get_current_testing_results()
+      print(rv$gt_object)   # <--- PRINTS TO CONSOLE
     }, error = function(e) {
       rv$gt_log <- paste("Error during GraphicalTesting setup:", e$message)
       rv$gt_object <- NULL
@@ -274,6 +279,7 @@ server <- function(input, output, session) {
       rv$gt_object$reject_a_hypothesis(input$graph_selected)
       rv$gt_log <- paste("Rejected:", input$graph_selected)
       rv$gt_summary <- rv$gt_object$get_current_testing_results()
+      print(rv$gt_object)   # <--- PRINTS TO CONSOLE
     }, error = function(e) {
       rv$gt_log <- paste("Reject error:", e$message)
     })
@@ -287,6 +293,13 @@ server <- function(input, output, session) {
   output$gt_log <- renderPrint({
     rv$gt_log
   })
+  
+  # Optionally, show structure in UI too:
+  # output$gt_object_print <- renderPrint({
+  #   req(rv$gt_object)
+  #   print(rv$gt_object)
+  #   # Or: str(rv$gt_object) for more details
+  # })
 }
 
 shinyApp(ui, server)
