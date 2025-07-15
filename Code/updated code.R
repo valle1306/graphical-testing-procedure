@@ -31,10 +31,11 @@ ui <- fluidPage(
                       tags$hr(),
                       h5(tags$b("Edge Table"), style = "color:darkgreen"),
                       dataTableOutput("edge_table"),
+                      
                       tags$hr(),
                       h5(tags$b("Test Results"), style = "color:purple"),
                       dataTableOutput("gt_result_table"),
-                      verbatimTextOutput("gt_log")
+                      verbatimTextOutput("gt_log"),
                       # Optional: UI printout below.
                       # tags$hr(),
                       # h5(tags$b("GT Object (Console Print)"), style = "color:orange"),
@@ -43,7 +44,9 @@ ui <- fluidPage(
            )
     ),
     column(9,
-           visNetworkOutput("graph", height = "600px")
+           selectInput("graph_selected", "Select hypothesis to reject", choices = NULL),
+           uiOutput("main_graph_ui")  # Dynamically choose visNetwork or base R plot
+           
     )
   )
 )
@@ -56,6 +59,15 @@ server <- function(input, output, session) {
     gt_log = "",
     gt_summary = data.frame() 
   )
+  
+  output$main_graph_ui <- renderUI({
+    if (is.null(rv$gt_object)) {
+      visNetworkOutput("graph", height = "600px")
+    } else {
+      plotOutput("gt_plot", height = "600px")
+    }
+  })
+  
   
   # Helper: build transition matrix
   get_transition_matrix <- function(nodes, edges) {
@@ -78,7 +90,8 @@ server <- function(input, output, session) {
       textInput("node_label", "Label (e.g., H1: abc)", ""),
       numericInput("node_alpha", "Alpha", value = "", min = 0, max = 1, step = 0.01),
       easyClose = FALSE,
-      footer = tagList(modalButton("Cancel"), actionButton("confirm_add_node", "Add"))
+      footer = tagList(modalButton("Cancel"), actionButton("confirm_add_node", "Add")),
+      
     ))
   })
   
@@ -92,6 +105,8 @@ server <- function(input, output, session) {
                            title=paste0("α = ", format(input$node_alpha, nsmall = 2)),
                            stringsAsFactors=FALSE)
     rv$nodes <- rbind(rv$nodes, new_node)
+    
+    updateSelectInput(session, "graph_selected", choices = rv$nodes$label)
     removeModal()
   })
   
@@ -209,7 +224,7 @@ server <- function(input, output, session) {
       ) %>%
       visOptions(
         highlightNearest = TRUE,
-        nodesIdSelection = list(enabled = TRUE, useLabels = TRUE),
+        #nodesIdSelection = list(enabled = TRUE, useLabels = TRUE),
         manipulation = FALSE
       ) %>%
       visPhysics(
@@ -254,17 +269,28 @@ server <- function(input, output, session) {
     max_info <- rep(100, length(hs))
     transition <- get_transition_matrix(rv$nodes, rv$edges)
     tryCatch({
-      rv$gt_object <- GraphicalTesting$new(
-        alpha = alpha,
-        transition = transition,
-        alpha_spending = asf,
-        planned_max_info = max_info,
-        hypotheses = hs,
-        silent = FALSE
-      )
-      rv$gt_log <- "GraphicalTesting object created successfully!"
+      output_capture <- NULL
+      message_capture <- NULL
+      tmp_capture <- capture.output({
+        rv$gt_object <- GraphicalTesting$new(
+          alpha = alpha,
+          transition = transition,
+          alpha_spending = asf,
+          planned_max_info = max_info,
+          hypotheses = hs,
+          silent = FALSE
+        )
+      }, type = "output")
+      msg_capture <- capture.output({
+        invisible(NULL)
+      }, type = "message")
+      rv$gt_log <- paste(c(tmp_capture, msg_capture), collapse = "\n")
+      
       rv$gt_summary <- rv$gt_object$get_current_testing_results()
-      print(rv$gt_object)   # <--- PRINTS TO CONSOLE
+      output$gt_plot <- renderPlot({
+        print(rv$gt_object)
+      })
+      
     }, error = function(e) {
       rv$gt_log <- paste("Error during GraphicalTesting setup:", e$message)
       rv$gt_object <- NULL
@@ -272,14 +298,23 @@ server <- function(input, output, session) {
     })
   })
   
+  
   # Button: Reject selected
   observeEvent(input$reject_gt, {
     req(rv$gt_object, input$graph_selected)
     tryCatch({
-      rv$gt_object$reject_a_hypothesis(input$graph_selected)
-      rv$gt_log <- paste("Rejected:", input$graph_selected)
+      output_capture <- capture.output({
+        rv$gt_object$reject_a_hypothesis(input$graph_selected)
+      })
+      rv$gt_log <- paste(output_capture, collapse = "\n")
+      
+      
       rv$gt_summary <- rv$gt_object$get_current_testing_results()
-      print(rv$gt_object)   # <--- PRINTS TO CONSOLE
+      #print(rv$gt_object)   # <--- PRINTS TO CONSOLE
+      output$gt_plot <- renderPlot({
+        print(rv$gt_object)
+      })
+      
     }, error = function(e) {
       rv$gt_log <- paste("Reject error:", e$message)
     })
@@ -298,7 +333,7 @@ server <- function(input, output, session) {
   # output$gt_object_print <- renderPrint({
   #   req(rv$gt_object)
   #   print(rv$gt_object)
-  #   # Or: str(rv$gt_object) for more details
+  #   # Or: str(rv$gt_object) for more detailsdata:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAkCAYAAAD7PHgWAAACQ0lEQVR4Xu1XwVHDMBBMC7RAC7RAC3zyQBYPWqCFtEALnsT58EsLtEALaQG0Op10vsgZSXbCxzvjCbEU6W73biU2mxUrVtwP26/tAx79/l+AQLqhe3kbut4euh/3+Zsec7aD+XbjH3ZvH/Vvbw57NO8IYhzU1ae/S6DYBMzwxmDOHsyn3b8+Ywys4tMczZNn72BOMlAkptdcDNhUsmaHbldSbz54UQJISM+ZDbDCwXnW3KZ6zjV4Zl1gMjk9pxm0ODGAzxLWpgDZOUg0mB5vglwUMuvxWnBdIlk9Vg2wFaVdSBZZLkhej1eB7CSfLXetfq+RsxdWJbduFaIcgr2LrnS2o6VPTSG63n3nhEiZBcpGL0Ly4B1Oim6HJ5ZA8Djllb33w/BdWkx81+qNMkvOnK1CZu3Z4s0QdGBXdymroddqrm0yZgqQ3yGQXN0ESeOpkfNJrueohmefWNZzi5DkFAH6IMxZzgNyp4yewwHpAJtPFikxdyJ3n7QHutEgOHMOrPfMTJQTdemlT8nxvFlWI/zK15M+VeLfkF7YSZKPrl0xUdEQU7VahVjIQgZqCjSDOeGZYoDsyN10KMBe1qUsnxIvnQTJF5jIGG4rROInPVYN4WHzF9vIpPPdXg0skquhFozO9oUS9mBJSOq2rMdeuWzJeIyMWJyrJbg4vxuTvIqL06LgZh1+E2/ScxQohjii0qYuCH8pcDVKlwNcJJL/+YSUV94UdDKMr1NTT/j/uN2M5wASYvPAas/mHRm9F2MrVtwQf8/Ey8kjoAwPAAAAAElFTkSuQmCC
   # })
 }
 
