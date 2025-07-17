@@ -4,10 +4,9 @@ library(DT)
 library(jsonlite)
 library(dplyr)
 library(TrialSimulator) 
-# UI
+
 ui <- fluidPage(
   titlePanel("Interactive Graphical Testing Editor (Start from Scratch)"),
-  # Centered buttons
   fluidRow(
     column(12, align = "center",
            actionButton("add_node", "Add Node", class = "btn btn-primary"),
@@ -30,34 +29,32 @@ ui <- fluidPage(
                       dataTableOutput("node_table"),
                       tags$hr(),
                       h5(tags$b("Edge Table"), style = "color:darkgreen"),
-                      dataTableOutput("edge_table"),
-                      
-                      tags$hr(),
-                      h5(tags$b("Test Results"), style = "color:purple"),
-                      dataTableOutput("gt_result_table"),
-                      verbatimTextOutput("gt_log"),
-                      # Optional: UI printout below.
-                      # tags$hr(),
-                      # h5(tags$b("GT Object (Console Print)"), style = "color:orange"),
-                      # verbatimTextOutput("gt_object_print")
+                      dataTableOutput("edge_table")
+                      # ---- REMOVED TEST RESULTS SECTION FROM HERE! ----
              )
            )
     ),
     column(9,
            selectInput("graph_selected", "Select hypothesis to reject", choices = NULL),
-           uiOutput("main_graph_ui")  # Dynamically choose visNetwork or base R plot
-           
+           uiOutput("main_graph_ui")
+    )
+  ),
+  fluidRow(
+    column(12,
+           tags$hr(),
+           h4(tags$b("Test Results"), style = "color:purple"),
+           verbatimTextOutput("gt_log"),
+           dataTableOutput("gt_result_table")
     )
   )
 )
-
 server <- function(input, output, session) {
   rv <- reactiveValues(
     nodes = data.frame(label = character(0), alpha = numeric(0), stringsAsFactors = FALSE),
     edges = data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), smooth = I(list()), stringsAsFactors = FALSE),
     gt_object = NULL,
     gt_log = "",
-    gt_summary = data.frame() 
+    gt_summary = data.frame()
   )
   
   output$main_graph_ui <- renderUI({
@@ -68,8 +65,7 @@ server <- function(input, output, session) {
     }
   })
   
-  
-  # Helper: build transition matrix
+  # Helper function
   get_transition_matrix <- function(nodes, edges) {
     n <- nrow(nodes)
     mat <- matrix(0, n, n)
@@ -83,18 +79,16 @@ server <- function(input, output, session) {
     return(mat)
   }
   
-  # Add node
+  # Node/Edge UI
   observeEvent(input$add_node, {
     showModal(modalDialog(
       title = "Add Node",
       textInput("node_label", "Label (e.g., H1: abc)", ""),
       numericInput("node_alpha", "Alpha", value = "", min = 0, max = 1, step = 0.01),
       easyClose = FALSE,
-      footer = tagList(modalButton("Cancel"), actionButton("confirm_add_node", "Add")),
-      
+      footer = tagList(modalButton("Cancel"), actionButton("confirm_add_node", "Add"))
     ))
   })
-  
   observeEvent(input$confirm_add_node, {
     req(input$node_label)
     if(input$node_label %in% rv$nodes$label) {
@@ -105,12 +99,9 @@ server <- function(input, output, session) {
                            title=paste0("α = ", format(input$node_alpha, nsmall = 2)),
                            stringsAsFactors=FALSE)
     rv$nodes <- rbind(rv$nodes, new_node)
-    
     updateSelectInput(session, "graph_selected", choices = rv$nodes$label)
     removeModal()
   })
-  
-  # Add edge
   observeEvent(input$add_edge, {
     if(nrow(rv$nodes) < 2) {
       showModal(modalDialog("You need at least two nodes to create an edge.", easyClose=TRUE))
@@ -144,18 +135,15 @@ server <- function(input, output, session) {
     rv$edges <- rbind(rv$edges, new_edge)
     removeModal()
   })
-  
-  # Delete node
   observeEvent(input$delete_node, {
     selected_node <- input$graph_selected
     if (!is.null(selected_node)) {
       sel_label <- selected_node
       rv$nodes <- rv$nodes[rv$nodes$label != sel_label, ]
       rv$edges <- rv$edges[!(rv$edges$from == sel_label | rv$edges$to == sel_label), ]
+      updateSelectInput(session, "graph_selected", choices = rv$nodes$label)
     }
   })
-  
-  # Delete edge
   observeEvent(input$delete_edge, {
     selected_edges <- input$graph_selectedEdges
     if (!is.null(selected_edges)) {
@@ -170,7 +158,7 @@ server <- function(input, output, session) {
     }
   })
   
-  # File import & export
+  # File import/export
   observeEvent(input$upload, {
     req(input$upload)
     json_data <- fromJSON(input$upload$datapath)
@@ -178,6 +166,7 @@ server <- function(input, output, session) {
       nodes <- json_data$nodes
       nodes$title <- paste0("α = ", format(nodes$alpha, nsmall = 2))
       rv$nodes <- nodes
+      updateSelectInput(session, "graph_selected", choices = rv$nodes$label)
     } else {
       rv$nodes <- data.frame(label = character(0), alpha = numeric(0), title = character(0), stringsAsFactors = FALSE)
     }
@@ -205,7 +194,7 @@ server <- function(input, output, session) {
     }
   )
   
-  # Graph rendering
+  # Graph
   output$graph <- renderVisNetwork({
     gnodes <- rv$nodes; gnodes$id <- gnodes$label
     gedges <- rv$edges
@@ -224,7 +213,6 @@ server <- function(input, output, session) {
       ) %>%
       visOptions(
         highlightNearest = TRUE,
-        #nodesIdSelection = list(enabled = TRUE, useLabels = TRUE),
         manipulation = FALSE
       ) %>%
       visPhysics(
@@ -250,7 +238,6 @@ server <- function(input, output, session) {
       )
   })
   
-  # Render tables
   output$node_table <- renderDataTable({
     rv$nodes[, c("label", "alpha")]
   }, options = list(dom = 't', paging = FALSE), rownames = FALSE)
@@ -258,9 +245,7 @@ server <- function(input, output, session) {
     rv$edges[, c("from", "to", "weight")]
   }, options = list(dom = 't', paging = FALSE), rownames = FALSE)
   
-  # ============ GraphicalTesting Integration ===========
-  
-  # Button: Create GT object
+  # ---- GraphicalTesting integration: ONLY SHOW message()s ----
   observeEvent(input$run_gt, {
     req(nrow(rv$nodes) > 0)
     alpha <- as.numeric(rv$nodes$alpha)
@@ -269,72 +254,54 @@ server <- function(input, output, session) {
     max_info <- rep(100, length(hs))
     transition <- get_transition_matrix(rv$nodes, rv$edges)
     tryCatch({
-      output_capture <- NULL
-      message_capture <- NULL
-      tmp_capture <- capture.output({
-        rv$gt_object <- GraphicalTesting$new(
-          alpha = alpha,
-          transition = transition,
-          alpha_spending = asf,
-          planned_max_info = max_info,
-          hypotheses = hs,
-          silent = FALSE
-        )
-      }, type = "output")
-      msg_capture <- capture.output({
-        invisible(NULL)
-      }, type = "message")
-      rv$gt_log <- paste(c(tmp_capture, msg_capture), collapse = "\n")
-      
+      rv$gt_object <- NULL
+      log_lines <- NULL
+      log_message <- function(m) { log_lines <<- c(log_lines, conditionMessage(m)); invokeRestart("muffleMessage") }
+      withCallingHandlers(
+        {
+          rv$gt_object <- GraphicalTesting$new(
+            alpha = alpha,
+            transition = transition,
+            alpha_spending = asf,
+            planned_max_info = max_info,
+            hypotheses = hs,
+            silent = FALSE
+          )
+        }, 
+        message = log_message
+      )
+      rv$gt_log <- paste(log_lines, collapse = "\n")
       rv$gt_summary <- rv$gt_object$get_current_testing_results()
-      output$gt_plot <- renderPlot({
-        print(rv$gt_object)
-      })
-      
+      output$gt_plot <- renderPlot({ print(rv$gt_object) })
     }, error = function(e) {
       rv$gt_log <- paste("Error during GraphicalTesting setup:", e$message)
       rv$gt_object <- NULL
       rv$gt_summary <- NULL
     })
   })
-  
-  
-  # Button: Reject selected
   observeEvent(input$reject_gt, {
     req(rv$gt_object, input$graph_selected)
     tryCatch({
-      output_capture <- capture.output({
-        rv$gt_object$reject_a_hypothesis(input$graph_selected)
-      })
-      rv$gt_log <- paste(output_capture, collapse = "\n")
-      
-      
+      log_lines <- NULL
+      log_message <- function(m) { log_lines <<- c(log_lines, conditionMessage(m)); invokeRestart("muffleMessage") }
+      withCallingHandlers(
+        rv$gt_object$reject_a_hypothesis(input$graph_selected),
+        message=log_message
+      )
+      rv$gt_log <- paste(log_lines, collapse = "\n")
       rv$gt_summary <- rv$gt_object$get_current_testing_results()
-      #print(rv$gt_object)   # <--- PRINTS TO CONSOLE
-      output$gt_plot <- renderPlot({
-        print(rv$gt_object)
-      })
-      
+      output$gt_plot <- renderPlot({ print(rv$gt_object) })
     }, error = function(e) {
       rv$gt_log <- paste("Reject error:", e$message)
     })
   })
-  
   output$gt_result_table <- renderDataTable({
     req(rv$gt_summary)
     rv$gt_summary
   })
-  
-  output$gt_log <- renderPrint({
+  output$gt_log <- renderText({
     rv$gt_log
   })
-  
-  # Optionally, show structure in UI too:
-  # output$gt_object_print <- renderPrint({
-  #   req(rv$gt_object)
-  #   print(rv$gt_object)
-  #   # Or: str(rv$gt_object) for more detailsdata:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACgAAAAkCAYAAAD7PHgWAAACQ0lEQVR4Xu1XwVHDMBBMC7RAC7RAC3zyQBYPWqCFtEALnsT58EsLtEALaQG0Op10vsgZSXbCxzvjCbEU6W73biU2mxUrVtwP26/tAx79/l+AQLqhe3kbut4euh/3+Zsec7aD+XbjH3ZvH/Vvbw57NO8IYhzU1ae/S6DYBMzwxmDOHsyn3b8+Ywys4tMczZNn72BOMlAkptdcDNhUsmaHbldSbz54UQJISM+ZDbDCwXnW3KZ6zjV4Zl1gMjk9pxm0ODGAzxLWpgDZOUg0mB5vglwUMuvxWnBdIlk9Vg2wFaVdSBZZLkhej1eB7CSfLXetfq+RsxdWJbduFaIcgr2LrnS2o6VPTSG63n3nhEiZBcpGL0Ly4B1Oim6HJ5ZA8Djllb33w/BdWkx81+qNMkvOnK1CZu3Z4s0QdGBXdymroddqrm0yZgqQ3yGQXN0ESeOpkfNJrueohmefWNZzi5DkFAH6IMxZzgNyp4yewwHpAJtPFikxdyJ3n7QHutEgOHMOrPfMTJQTdemlT8nxvFlWI/zK15M+VeLfkF7YSZKPrl0xUdEQU7VahVjIQgZqCjSDOeGZYoDsyN10KMBe1qUsnxIvnQTJF5jIGG4rROInPVYN4WHzF9vIpPPdXg0skquhFozO9oUS9mBJSOq2rMdeuWzJeIyMWJyrJbg4vxuTvIqL06LgZh1+E2/ScxQohjii0qYuCH8pcDVKlwNcJJL/+YSUV94UdDKMr1NTT/j/uN2M5wASYvPAas/mHRm9F2MrVtwQf8/Ey8kjoAwPAAAAAElFTkSuQmCC
-  # })
 }
 
 shinyApp(ui, server)
