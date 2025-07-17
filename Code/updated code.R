@@ -30,7 +30,7 @@ ui <- fluidPage(
                       tags$hr(),
                       h5(tags$b("Edge Table"), style = "color:darkgreen"),
                       dataTableOutput("edge_table")
-                      # ---- REMOVED TEST RESULTS SECTION FROM HERE! ----
+                      
              )
            )
     ),
@@ -245,7 +245,7 @@ server <- function(input, output, session) {
     rv$edges[, c("from", "to", "weight")]
   }, options = list(dom = 't', paging = FALSE), rownames = FALSE)
   
-  # ---- GraphicalTesting integration: ONLY SHOW message()s ----
+  # ----------GraphicalTesting integration----------------
   observeEvent(input$run_gt, {
     req(nrow(rv$nodes) > 0)
     alpha <- as.numeric(rv$nodes$alpha)
