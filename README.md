@@ -8,7 +8,7 @@ An interactive R Shiny interface for the [`TrialSimulator`](https://github.com/z
 
 - [Project Overview](#project-overview)
 - [Step 1: Graphical Interface Setup](#step-1-graphical-interface-setup)
-- [Step 2: Statistical Testing Integration (Phase 2)](#step-2-statistical-testing-integration-phase-2)
+- [Step 2: Statistical Testing Integration](#step-2-statistical-testing-integration-phase-2)
 - [Example JSON File](#example-json-file)
 - [How to Launch the App](#how-to-launch-the-app)
 
