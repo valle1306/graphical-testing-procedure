@@ -72,6 +72,7 @@ To test the upload functionality, a sample `.json` file is included in the `code
 
 Use this to instantly load a pre-configured graph and explore the full testing workflow.
 
+![Step 2 Uploaded current graph via Browse function](images/step2_integrate_trialsimulator_package.png)
 ---
 
 ## 🚀 How to Launch the App
