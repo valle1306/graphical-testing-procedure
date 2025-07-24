@@ -81,12 +81,6 @@ Make sure the following packages are installed:
 ```r
 install.packages(c("shiny", "DT", "visNetwork", "jsonlite"))
 devtools::install_github("zhangh12/TrialSimulator")
-
-Then run the app locally using:
-
-
-
-```r
 shiny::runApp("path_to_app_directory")
 
 
