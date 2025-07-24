@@ -6,7 +6,7 @@ library(dplyr)
 library(TrialSimulator) 
 
 ui <- fluidPage(
-  titlePanel("Interactive Graphical Testing Editor (Start from Scratch)"),
+  titlePanel("Interactive Graphical Testing Editor"),
   fluidRow(
     column(12, align = "center",
            actionButton("add_node", "Add Node", class = "btn btn-primary"),
@@ -26,11 +26,10 @@ ui <- fluidPage(
                       downloadButton("export", "Export"),
                       tags$hr(),
                       h5(tags$b("Node Table"), style = "color:blue"),
-                      dataTableOutput("node_table"),
+                      DT::dataTableOutput("node_table"),
                       tags$hr(),
                       h5(tags$b("Edge Table"), style = "color:darkgreen"),
-                      dataTableOutput("edge_table")
-                      
+                      DT::dataTableOutput("edge_table")
              )
            )
     ),
@@ -47,14 +46,21 @@ ui <- fluidPage(
            dataTableOutput("gt_result_table")
     )
   )
+  
 )
+
 server <- function(input, output, session) {
   rv <- reactiveValues(
-    nodes = data.frame(label = character(0), alpha = numeric(0), stringsAsFactors = FALSE),
-    edges = data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), smooth = I(list()), stringsAsFactors = FALSE),
+    nodes = data.frame(label = character(0), alpha = numeric(0), title = character(0), id = character(0), stringsAsFactors = FALSE),
+    edges = data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), smooth = I(list()), id = character(0), stringsAsFactors = FALSE),
     gt_object = NULL,
     gt_log = "",
-    gt_summary = data.frame()
+    gt_summary = NULL,
+    alpha = numeric(0),
+    hypotheses = character(0),
+    alpha_spending = character(0),
+    planned_max_info = numeric(0),
+    transition = matrix(0, 0, 0)
   )
   
   output$main_graph_ui <- renderUI({
@@ -65,7 +71,7 @@ server <- function(input, output, session) {
     }
   })
   
-  # Helper function
+  # Helper for transition matrix
   get_transition_matrix <- function(nodes, edges) {
     n <- nrow(nodes)
     mat <- matrix(0, n, n)
@@ -79,7 +85,7 @@ server <- function(input, output, session) {
     return(mat)
   }
   
-  # Node/Edge UI
+  # --------- Node/Edge Editing -----------
   observeEvent(input$add_node, {
     showModal(modalDialog(
       title = "Add Node",
@@ -97,10 +103,17 @@ server <- function(input, output, session) {
     }
     new_node <- data.frame(label=input$node_label, alpha=input$node_alpha,
                            title=paste0("α = ", format(input$node_alpha, nsmall = 2)),
+                           id = input$node_label,
                            stringsAsFactors=FALSE)
     rv$nodes <- rbind(rv$nodes, new_node)
     updateSelectInput(session, "graph_selected", choices = rv$nodes$label)
     removeModal()
+    # Update five objects for GT
+    create_graphicaltesting_objects()
+    # On edit, clear previous GT object and results
+    rv$gt_object <- NULL
+    rv$gt_log <- ""
+    rv$gt_summary <- NULL
   })
   observeEvent(input$add_edge, {
     if(nrow(rv$nodes) < 2) {
@@ -130,10 +143,15 @@ server <- function(input, output, session) {
       weight = input$edge_weight,
       label = as.character(input$edge_weight),
       smooth = I(list(curvature_type)),
+      id = paste0(input$edge_from, "->", input$edge_to),
       stringsAsFactors = FALSE
     )
     rv$edges <- rbind(rv$edges, new_edge)
     removeModal()
+    create_graphicaltesting_objects()
+    rv$gt_object <- NULL
+    rv$gt_log <- ""
+    rv$gt_summary <- NULL
   })
   observeEvent(input$delete_node, {
     selected_node <- input$graph_selected
@@ -142,6 +160,10 @@ server <- function(input, output, session) {
       rv$nodes <- rv$nodes[rv$nodes$label != sel_label, ]
       rv$edges <- rv$edges[!(rv$edges$from == sel_label | rv$edges$to == sel_label), ]
       updateSelectInput(session, "graph_selected", choices = rv$nodes$label)
+      create_graphicaltesting_objects()
+      rv$gt_object <- NULL
+      rv$gt_log <- ""
+      rv$gt_summary <- NULL
     }
   })
   observeEvent(input$delete_edge, {
@@ -155,30 +177,75 @@ server <- function(input, output, session) {
           rv$edges <- rv$edges[!(rv$edges$from == from & rv$edges$to == to), ]
         }
       }
+      create_graphicaltesting_objects()
+      rv$gt_object <- NULL
+      rv$gt_log <- ""
+      rv$gt_summary <- NULL
     }
   })
   
-  # File import/export
+  # ----------- File import/export -----------
   observeEvent(input$upload, {
     req(input$upload)
     json_data <- fromJSON(input$upload$datapath)
+    # --- Nodes ---
     if (!is.null(json_data$nodes) && is.data.frame(json_data$nodes)) {
-      nodes <- json_data$nodes
-      nodes$title <- paste0("α = ", format(nodes$alpha, nsmall = 2))
-      rv$nodes <- nodes
+      raw_nodes <- json_data$nodes
+      cleaned_nodes <- data.frame(
+        label = as.character(raw_nodes$label),
+        alpha = as.numeric(raw_nodes$alpha),
+        title = paste0("α = ", format(raw_nodes$alpha, nsmall = 2)),
+        id = as.character(raw_nodes$label),
+        stringsAsFactors = FALSE
+      )
+      rv$nodes <- cleaned_nodes
       updateSelectInput(session, "graph_selected", choices = rv$nodes$label)
     } else {
-      rv$nodes <- data.frame(label = character(0), alpha = numeric(0), title = character(0), stringsAsFactors = FALSE)
+      rv$nodes <- data.frame(label = character(0), alpha = numeric(0), title = character(0), id = character(0), stringsAsFactors = FALSE)
     }
+    # --- Edges ---
     if (!is.null(json_data$edges) && is.data.frame(json_data$edges)) {
       edges <- json_data$edges
       if (!"label" %in% colnames(edges)) edges$label <- as.character(edges$weight)
       if (!"smooth" %in% colnames(edges)) edges$smooth <- replicate(nrow(edges), list(list(enabled = FALSE)), simplify = FALSE)
+      edges$id <- paste0(edges$from, "->", edges$to)
       rv$edges <- edges
     } else {
-      rv$edges <- data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), smooth = I(list()), stringsAsFactors = FALSE)
+      rv$edges <- data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), smooth = I(list()), id = character(0), stringsAsFactors = FALSE)
+    }
+    create_graphicaltesting_objects()
+    # --- NEW: Clear and re-create GT object for new graph
+    rv$gt_object <- NULL
+    rv$gt_log <- ""
+    rv$gt_summary <- NULL
+    if (length(rv$alpha) > 0) {
+      tryCatch({
+        log_lines <- NULL
+        log_message <- function(m) { log_lines <<- c(log_lines, conditionMessage(m)); invokeRestart("muffleMessage") }
+        withCallingHandlers(
+          {
+            rv$gt_object <- GraphicalTesting$new(
+              alpha = rv$alpha,
+              transition = rv$transition,
+              alpha_spending = rv$alpha_spending,
+              planned_max_info = rv$planned_max_info,
+              hypotheses = rv$hypotheses,
+              silent = FALSE
+            )
+          }, 
+          message = log_message
+        )
+        rv$gt_log <- paste(log_lines, collapse = "\n")
+        rv$gt_summary <- rv$gt_object$get_current_testing_results()
+        output$gt_plot <- renderPlot({ print(rv$gt_object) })
+      }, error = function(e) {
+        rv$gt_log <- paste("Error during GraphicalTesting setup:", e$message)
+        rv$gt_object <- NULL
+        rv$gt_summary <- NULL
+      })
     }
   })
+  
   output$export <- downloadHandler(
     filename = function() { paste0("graph-", Sys.Date(), ".json") },
     content = function(file) {
@@ -194,7 +261,29 @@ server <- function(input, output, session) {
     }
   )
   
-  # Graph
+  # --------- Helper for updating GT objects ---------
+  create_graphicaltesting_objects <- function() {
+    rv$alpha <- as.numeric(rv$nodes$alpha)
+    rv$hypotheses <- as.character(rv$nodes$label)
+    rv$alpha_spending <- rep("asOF", length(rv$alpha))
+    rv$planned_max_info <- rep(100, length(rv$alpha))
+    # Transition matrix
+    n <- nrow(rv$nodes)
+    mat <- matrix(0, n, n)
+    rownames(mat) <- colnames(mat) <- rv$nodes$label
+    if (nrow(rv$edges) > 0) {
+      for (i in seq_len(nrow(rv$edges))) {
+        from <- as.character(rv$edges$from[i])
+        to <- as.character(rv$edges$to[i])
+        w <- as.numeric(rv$edges$weight[i])
+        mat[from, to] <- w
+      }
+    }
+    rv$transition <- mat
+    invisible(NULL)
+  }
+  
+  # --------- Graph ---------
   output$graph <- renderVisNetwork({
     gnodes <- rv$nodes; gnodes$id <- gnodes$label
     gedges <- rv$edges
@@ -238,21 +327,24 @@ server <- function(input, output, session) {
       )
   })
   
-  output$node_table <- renderDataTable({
-    rv$nodes[, c("label", "alpha")]
-  }, options = list(dom = 't', paging = FALSE), rownames = FALSE)
+  output$node_table <- DT::renderDataTable({
+    req(nrow(rv$nodes) > 0)
+    cols <- intersect(c("label", "alpha"), colnames(rv$nodes))
+    if (length(cols) == 0) return(data.frame())  # Show nothing if missing expected cols
+    DT::datatable(
+      rv$nodes[, cols, drop = FALSE],
+      options = list(dom = 't', paging = FALSE),
+      rownames = FALSE
+    )
+  })
+  
   output$edge_table <- renderDataTable({
     rv$edges[, c("from", "to", "weight")]
   }, options = list(dom = 't', paging = FALSE), rownames = FALSE)
   
   # ----------GraphicalTesting integration----------------
   observeEvent(input$run_gt, {
-    req(nrow(rv$nodes) > 0)
-    alpha <- as.numeric(rv$nodes$alpha)
-    hs <- rv$nodes$label
-    asf <- rep("asOF", length(hs))
-    max_info <- rep(100, length(hs))
-    transition <- get_transition_matrix(rv$nodes, rv$edges)
+    req(length(rv$alpha) == length(rv$hypotheses), nrow(rv$transition) == length(rv$alpha))
     tryCatch({
       rv$gt_object <- NULL
       log_lines <- NULL
@@ -260,11 +352,11 @@ server <- function(input, output, session) {
       withCallingHandlers(
         {
           rv$gt_object <- GraphicalTesting$new(
-            alpha = alpha,
-            transition = transition,
-            alpha_spending = asf,
-            planned_max_info = max_info,
-            hypotheses = hs,
+            alpha = rv$alpha,
+            transition = rv$transition,
+            alpha_spending = rv$alpha_spending,
+            planned_max_info = rv$planned_max_info,
+            hypotheses = rv$hypotheses,
             silent = FALSE
           )
         }, 
