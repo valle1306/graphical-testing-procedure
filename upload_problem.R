@@ -5,107 +5,45 @@ library(jsonlite)
 library(dplyr)
 library(TrialSimulator) 
 
-ui <- navbarPage(
-  "My Application",
-  
-  tabPanel(
-    "Home",
-    fluidPage(
-      tags$head(
-        tags$style(HTML("
-        .feature-card {
-          border-radius: 12px;
-          padding: 20px;
-          margin-bottom: 20px;
-          background-color: #f8f9fa;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        .feature-title {
-          font-size: 20px;
-          font-weight: bold;
-          margin-bottom: 8px;
-          color: #007bff;
-        }
-        .feature-text {
-          font-size: 16px;
-          color: #444;
-        }
-      "))
-      ),
-      
-      # Title and Image
-      fluidRow(
-        column(12, align = "center",
-               tags$img(src = "graphical_testing_image.png", height = "180px"),
-               tags$h2("Graphical Approach for Multiple Testing Procedure"),
-               tags$p("An interactive tool for visualizing and designing multiple testing strategies in clinical trials.")
-        )
-      ),
-      br(),
-      
-      # New Introduction Section
-      fluidRow(
-        column(12,
-               tags$div(style = "padding: 20px;",
-                        tags$h4("🧬 Introduction"),
-                        tags$p("With the rise of innovative trial designs—such as adaptive and platform studies—clinical researchers and statisticians face growing complexity in managing multiple hypotheses while preserving statistical rigor. Traditional fixed-sequence procedures often fall short in these evolving contexts."),
-                        tags$p("Graphical Approach for Multiple Testing Procedure is a visual and interactive tool built to meet this challenge. Grounded in the graphical methodology pioneered by Bretz et al., it offers a transparent way to design, test, and dynamically redistribute alpha levels across networks of hypotheses."),
-                        tags$p("This app was developed in collaboration with methodologists, researchers, and developers committed to making advanced statistical design accessible, reproducible, and human-centered. While still evolving, it is built on the open-source TrialSimulator R package and maintained by a volunteer team.")
-               )
-        )
-      ),
-      
-      # Key Features Cards
-      fluidRow(
-        column(4,
-               div(class = "feature-card",
-                   div(class = "feature-title", "📊 Visualize Hypotheses"),
-                   div(class = "feature-text", "Draw, connect, and edit null hypotheses with intuitive graphs.")
-               )
-        ),
-        column(4,
-               div(class = "feature-card",
-                   div(class = "feature-title", "🧮 Allocate Alpha Dynamically"),
-                   div(class = "feature-text", "Create and run testing procedures using dynamic α-spending rules.")
-               )
-        ),
-        column(4,
-               div(class = "feature-card",
-                   div(class = "feature-title", "📁 Import & Export"),
-                   div(class = "feature-text", "Upload saved JSON graphs or export your design to share with collaborators.")
-               )
-        )
-      ),
-      
-      # References
-      fluidRow(
-        column(12,
-               tags$div(style = "padding: 20px;",
-                        tags$h4("📘 References"),
-                        tags$ul(
-                          tags$li(
-                            tags$span("Bretz F., Maurer W., Brannath W., Posch M. (2009). "),
-                            tags$i("A graphical approach to sequentially rejective multiple testing procedures."),
-                            " Stat Med 28(4): 586–604. ",
-                            tags$a(href = "https://doi.org/10.1002/sim.3495", "https://doi.org/10.1002/sim.3495")
-                          ),
-                          tags$li(
-                            tags$span("TrialSimulator R package: "),
-                            tags$a(href = "https://zhangh12.github.io/TrialSimulator/", 
-                                   "zhangh12.github.io/TrialSimulator/")
-                          )
-                        )
-               )
-        )
-      ),
-      
-      # Footer
-      fluidRow(
-        column(12, align = "center",
-               tags$hr(),
-               tags$p("Developed using the TrialSimulator package for modular and reproducible graphical testing design.")
-        )
-      )
+ui <- fluidPage(
+  titlePanel("Interactive Graphical Testing Editor (Start from Scratch)"),
+  fluidRow(
+    column(12, align = "center",
+           actionButton("add_node", "Add Node", class = "btn btn-primary"),
+           actionButton("add_edge", "Add Edge", class = "btn btn-success"),
+           actionButton("delete_node", "Delete Node", class = "btn btn-danger"),
+           actionButton("delete_edge", "Delete Edge", class = "btn btn-danger"),
+           actionButton("run_gt", "Create Test Object", class = "btn btn-warning"),
+           actionButton("reject_gt", "Reject Selected Hypothesis", class = "btn btn-warning")
+    )
+  ),
+  br(),
+  fluidRow(
+    column(3,
+           wellPanel(
+             tags$div(style = "min-height: 650px;",
+                      fileInput("upload", "Upload JSON Graph File"),
+                      downloadButton("export", "Export"),
+                      tags$hr(),
+                      h5(tags$b("Node Table"), style = "color:blue"),
+                      DT::dataTableOutput("node_table"),
+                      tags$hr(),
+                      h5(tags$b("Edge Table"), style = "color:darkgreen"),
+                      DT::dataTableOutput("edge_table")
+             )
+           )
+    ),
+    column(9,
+           selectInput("graph_selected", "Select hypothesis to reject", choices = NULL),
+           uiOutput("main_graph_ui")
+    )
+  ),
+  fluidRow(
+    column(12,
+           tags$hr(),
+           h4(tags$b("Test Results"), style = "color:purple"),
+           verbatimTextOutput("gt_log"),
+           dataTableOutput("gt_result_table")
     )
   )
   
@@ -400,12 +338,8 @@ server <- function(input, output, session) {
     )
   })
   
-  # --- Updated edge table to be blank (no header, no rows) if no edges exist
   output$edge_table <- renderDataTable({
-    if (nrow(rv$edges) == 0) return(data.frame())
-    cols <- intersect(c("from", "to", "weight"), colnames(rv$edges))
-    if (length(cols) == 0) return(data.frame())
-    rv$edges[, cols, drop = FALSE]
+    rv$edges[, c("from", "to", "weight")]
   }, options = list(dom = 't', paging = FALSE), rownames = FALSE)
   
   # ----------GraphicalTesting integration----------------
