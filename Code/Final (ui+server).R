@@ -3,11 +3,12 @@ library(visNetwork)
 library(DT)
 library(jsonlite)
 library(dplyr)
-library(TrialSimulator) 
+library(TrialSimulator)
 
 ui <- navbarPage(
   "My Application",
   
+  # ----------- HOME -----------
   tabPanel(
     "Home",
     fluidPage(
@@ -32,7 +33,6 @@ ui <- navbarPage(
         }
       "))
       ),
-      
       # Title and Image
       fluidRow(
         column(12, align = "center",
@@ -42,7 +42,6 @@ ui <- navbarPage(
         )
       ),
       br(),
-      
       # New Introduction Section
       fluidRow(
         column(12,
@@ -54,7 +53,6 @@ ui <- navbarPage(
                )
         )
       ),
-      
       # Key Features Cards
       fluidRow(
         column(4,
@@ -76,7 +74,6 @@ ui <- navbarPage(
                )
         )
       ),
-      
       # References
       fluidRow(
         column(12,
@@ -98,7 +95,6 @@ ui <- navbarPage(
                )
         )
       ),
-      
       # Footer
       fluidRow(
         column(12, align = "center",
@@ -107,14 +103,60 @@ ui <- navbarPage(
         )
       )
     )
-  )
+  ),
   
+  # ----------- GRAPHICAL TEST -----------
+  tabPanel(
+    "Graphical Test",
+    fluidPage(
+      titlePanel("Graphical Approach for Multiple Testing Procedure"),
+      fluidRow(
+        column(12, align = "center",
+               actionButton("add_node", "Add Node", class = "btn btn-primary"),
+               actionButton("add_edge", "Add Edge", class = "btn btn-success"),
+               actionButton("delete_node", "Delete Node", class = "btn btn-danger"),
+               actionButton("delete_edge", "Delete Edge", class = "btn btn-danger"),
+               actionButton("run_gt", "Create Test Object", class = "btn btn-warning"),
+               actionButton("reject_gt", "Reject Selected Hypothesis", class = "btn btn-warning")
+        )
+      ),
+      br(),
+      fluidRow(
+        column(3,
+               wellPanel(
+                 fileInput("upload", "Upload JSON Graph File"),
+                 downloadButton("export", "Export")
+               ),
+               wellPanel(
+                 h5(tags$b("Node Table"), style = "color:blue"),
+                 DT::dataTableOutput("node_table"),
+                 tags$hr(),
+                 h5(tags$b("Edge Table"), style = "color:darkgreen"),
+                 DT::dataTableOutput("edge_table")
+               )
+        ),
+        column(9,
+               selectInput("graph_selected", "Select hypothesis to reject", choices = NULL),
+               uiOutput("main_graph_ui")
+        )
+      ),
+      fluidRow(
+        column(12,
+               tags$hr(),
+               h4(tags$b("Test Results"), style = "color:purple"),
+               verbatimTextOutput("gt_log"),
+               dataTableOutput("gt_result_table")
+        )
+      )
+    )
+  )
 )
 
 server <- function(input, output, session) {
   rv <- reactiveValues(
     nodes = data.frame(label = character(0), alpha = numeric(0), title = character(0), id = character(0), stringsAsFactors = FALSE),
-    edges = data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), smooth = I(list()), id = character(0), stringsAsFactors = FALSE),
+    edges = data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), 
+                       smooth = I(list()), id = character(0), stringsAsFactors = FALSE),
     gt_object = NULL,
     gt_log = "",
     gt_summary = NULL,
@@ -170,9 +212,7 @@ server <- function(input, output, session) {
     rv$nodes <- rbind(rv$nodes, new_node)
     updateSelectInput(session, "graph_selected", choices = rv$nodes$label)
     removeModal()
-    # Update five objects for GT
     create_graphicaltesting_objects()
-    # On edit, clear previous GT object and results
     rv$gt_object <- NULL
     rv$gt_log <- ""
     rv$gt_summary <- NULL
@@ -273,10 +313,10 @@ server <- function(input, output, session) {
       edges$id <- paste0(edges$from, "->", edges$to)
       rv$edges <- edges
     } else {
-      rv$edges <- data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), smooth = I(list()), id = character(0), stringsAsFactors = FALSE)
+      rv$edges <- data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), 
+                             smooth = I(list()), id = character(0), stringsAsFactors = FALSE)
     }
     create_graphicaltesting_objects()
-    # --- NEW: Clear and re-create GT object for new graph
     rv$gt_object <- NULL
     rv$gt_log <- ""
     rv$gt_summary <- NULL
@@ -400,7 +440,6 @@ server <- function(input, output, session) {
     )
   })
   
-  # --- Updated edge table to be blank (no header, no rows) if no edges exist
   output$edge_table <- renderDataTable({
     if (nrow(rv$edges) == 0) return(data.frame())
     cols <- intersect(c("from", "to", "weight"), colnames(rv$edges))
