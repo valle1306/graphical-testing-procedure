@@ -8,7 +8,6 @@ library(TrialSimulator)
 ui <- navbarPage(
   "My Application",
   
-  # ----------- HOME (unchanged, omitted for brevity) -----------
   tabPanel(
     "Home",
     fluidPage(
