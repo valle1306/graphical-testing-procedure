@@ -8,7 +8,7 @@ library(TrialSimulator)
 ui <- navbarPage(
   "My Application",
   
-  # ----------- HOME -----------
+  # ----------- HOME (unchanged, omitted for brevity) -----------
   tabPanel(
     "Home",
     fluidPage(
@@ -33,7 +33,6 @@ ui <- navbarPage(
         }
       "))
       ),
-      # Title and Image
       fluidRow(
         column(12, align = "center",
                tags$img(src = "graphical_testing_image.png", height = "180px"),
@@ -42,7 +41,6 @@ ui <- navbarPage(
         )
       ),
       br(),
-      # New Introduction Section
       fluidRow(
         column(12,
                tags$div(style = "padding: 20px;",
@@ -53,7 +51,6 @@ ui <- navbarPage(
                )
         )
       ),
-      # Key Features Cards
       fluidRow(
         column(4,
                div(class = "feature-card",
@@ -74,7 +71,6 @@ ui <- navbarPage(
                )
         )
       ),
-      # References
       fluidRow(
         column(12,
                tags$div(style = "padding: 20px;",
@@ -95,7 +91,6 @@ ui <- navbarPage(
                )
         )
       ),
-      # Footer
       fluidRow(
         column(12, align = "center",
                tags$hr(),
@@ -164,7 +159,9 @@ server <- function(input, output, session) {
     hypotheses = character(0),
     alpha_spending = character(0),
     planned_max_info = numeric(0),
-    transition = matrix(0, 0, 0)
+    transition = matrix(0, 0, 0),
+    editing_node = NULL,
+    editing_edge = NULL
   )
   
   output$main_graph_ui <- renderUI({
@@ -175,7 +172,6 @@ server <- function(input, output, session) {
     }
   })
   
-  # Helper for transition matrix
   get_transition_matrix <- function(nodes, edges) {
     n <- nrow(nodes)
     mat <- matrix(0, n, n)
@@ -286,11 +282,101 @@ server <- function(input, output, session) {
     }
   })
   
+  # ----------- DOUBLE-CLICK EDIT----------
+  observeEvent(input$graph_doubleClick, {
+    params <- input$graph_doubleClick
+    node_id <- NULL
+    edge_id <- NULL
+    
+    if (!is.null(params$nodes) && length(params$nodes) > 0) {
+      node_id <- params$nodes[[1]]
+    } else if (!is.null(params$edges) && length(params$edges) > 0) {
+      edge_id <- params$edges[[1]]
+    }
+    
+    # Node edit
+    if (!is.null(node_id)) {
+      old_info <- rv$nodes[rv$nodes$id == node_id, ]
+      showModal(modalDialog(
+        title = paste("Edit Node:", node_id),
+        textInput("edit_node_label", "Label", value = old_info$label),
+        numericInput("edit_node_alpha", "Alpha", value = old_info$alpha, min = 0, max = 1, step = 0.01),
+        easyClose = FALSE,
+        footer = tagList(
+          modalButton("Cancel"),
+          actionButton("confirm_edit_node", "Save")
+        )
+      ))
+      rv$editing_node <- node_id
+    }
+    
+    # Edge edit
+    if (!is.null(edge_id)) {
+      ed <- rv$edges[rv$edges$id == edge_id, ]
+      showModal(modalDialog(
+        title = paste("Edit Edge:", ed$from, "→", ed$to),
+        numericInput("edit_edge_weight", "Weight", value = ed$weight, min = 0, max = 1, step = 0.01),
+        easyClose = FALSE,
+        footer = tagList(
+          modalButton("Cancel"),
+          actionButton("confirm_edit_edge", "Save")
+        )
+      ))
+      rv$editing_edge <- edge_id
+    }
+  })
+  observeEvent(input$confirm_edit_node, {
+    req(rv$editing_node)
+    idx <- which(rv$nodes$id == rv$editing_node)
+    new_label <- input$edit_node_label
+    new_alpha <- input$edit_node_alpha
+    # Check label uniqueness (except self)
+    if (new_label != rv$nodes$label[idx] && new_label %in% rv$nodes$label) {
+      showModal(modalDialog("Node label must be unique!"))
+      return()
+    }
+    # Update node
+    rv$nodes$label[idx] <- new_label
+    rv$nodes$alpha[idx] <- new_alpha
+    rv$nodes$title[idx] <- paste0("α = ", format(new_alpha, nsmall = 2))
+    rv$nodes$id[idx] <- new_label
+    # Update edges (from/to relabel)
+    if (any(rv$edges$from == rv$editing_node)) {
+      rv$edges$from[rv$edges$from == rv$editing_node] <- new_label
+    }
+    if (any(rv$edges$to == rv$editing_node)) {
+      rv$edges$to[rv$edges$to == rv$editing_node] <- new_label
+    }
+    # Update edge ids
+    if (nrow(rv$edges) > 0) {
+      rv$edges$id <- paste0(rv$edges$from, "->", rv$edges$to)
+    }
+    updateSelectInput(session, "graph_selected", choices = rv$nodes$label)
+    removeModal()
+    create_graphicaltesting_objects()
+    rv$gt_object <- NULL
+    rv$gt_log <- ""
+    rv$gt_summary <- NULL
+    rv$editing_node <- NULL
+  })
+  observeEvent(input$confirm_edit_edge, {
+    req(rv$editing_edge)
+    idx <- which(rv$edges$id == rv$editing_edge)
+    new_weight <- input$edit_edge_weight
+    rv$edges$weight[idx] <- new_weight
+    rv$edges$label[idx] <- as.character(new_weight)
+    removeModal()
+    create_graphicaltesting_objects()
+    rv$gt_object <- NULL
+    rv$gt_log <- ""
+    rv$gt_summary <- NULL
+    rv$editing_edge <- NULL
+  })
+  
   # ----------- File import/export -----------
   observeEvent(input$upload, {
     req(input$upload)
     json_data <- fromJSON(input$upload$datapath)
-    # --- Nodes ---
     if (!is.null(json_data$nodes) && is.data.frame(json_data$nodes)) {
       raw_nodes <- json_data$nodes
       cleaned_nodes <- data.frame(
@@ -369,7 +455,6 @@ server <- function(input, output, session) {
     rv$hypotheses <- as.character(rv$nodes$label)
     rv$alpha_spending <- rep("asOF", length(rv$alpha))
     rv$planned_max_info <- rep(100, length(rv$alpha))
-    # Transition matrix
     n <- nrow(rv$nodes)
     mat <- matrix(0, n, n)
     rownames(mat) <- colnames(mat) <- rv$nodes$label
@@ -432,7 +517,7 @@ server <- function(input, output, session) {
   output$node_table <- DT::renderDataTable({
     req(nrow(rv$nodes) > 0)
     cols <- intersect(c("label", "alpha"), colnames(rv$nodes))
-    if (length(cols) == 0) return(data.frame())  # Show nothing if missing expected cols
+    if (length(cols) == 0) return(data.frame())
     DT::datatable(
       rv$nodes[, cols, drop = FALSE],
       options = list(dom = 't', paging = FALSE),
