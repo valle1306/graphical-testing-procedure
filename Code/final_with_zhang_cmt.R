@@ -471,7 +471,7 @@ server <- function(input, output, session) {
       rv$edges <- data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), 
                              smooth = I(list()), id = character(0), stringsAsFactors = FALSE)
     }
-    create_graphicaltesting_objects()
+    #create_graphicaltesting_objects()
     # Force graph to re-render with consistent styling
     session$sendCustomMessage(type = "refreshGraph", message = list())
     rv$gt_object <- NULL
@@ -620,6 +620,69 @@ server <- function(input, output, session) {
     })
   })
   observeEvent(input$edit_mode, {
+    # If there's a GT object, update the reactive values to match its current state
+    if (!is.null(rv$gt_object)) {
+      tryCatch({
+        # Get current alpha values from the GT object
+        current_results <- rv$gt_object$get_current_testing_results()
+        
+        # Update node alpha values to reflect current state
+        for (i in seq_len(nrow(rv$nodes))) {
+          node_label <- rv$nodes$label[i]
+          if (node_label %in% current_results$Hypothesis) {
+            idx <- which(current_results$Hypothesis == node_label)
+            rv$nodes$alpha[i] <- current_results$Alpha[idx]
+            rv$nodes$title[i] <- paste0("α = ", format(current_results$Alpha[idx], nsmall = 2))
+          }
+        }
+        
+        # Update the reactive values to match current state
+        rv$alpha <- rv$nodes$alpha
+        
+        # Get updated transition matrix from GT object if available
+        if (!is.null(rv$gt_object$transition)) {
+          rv$transition <- rv$gt_object$transition
+          
+          # Update edges to reflect current transition matrix
+          rv$edges <- data.frame(
+            from = character(0), 
+            to = character(0), 
+            weight = numeric(0), 
+            label = character(0),
+            smooth = I(list()), 
+            id = character(0), 
+            stringsAsFactors = FALSE
+          )
+          
+          # Rebuild edges from current transition matrix
+          for (i in seq_len(nrow(rv$transition))) {
+            for (j in seq_len(ncol(rv$transition))) {
+              if (rv$transition[i, j] > 0) {
+                from_node <- rownames(rv$transition)[i]
+                to_node <- colnames(rv$transition)[j]
+                weight <- rv$transition[i, j]
+                
+                new_edge <- data.frame(
+                  from = from_node,
+                  to = to_node,
+                  weight = weight,
+                  label = as.character(weight),
+                  smooth = I(list(list(enabled = FALSE))),
+                  id = paste0(from_node, "->", to_node),
+                  stringsAsFactors = FALSE
+                )
+                rv$edges <- rbind(rv$edges, new_edge)
+              }
+            }
+          }
+        }
+      }, error = function(e) {
+        # If there's an error, just proceed with clearing the GT object
+        message("Error updating state from GT object: ", e$message)
+      })
+    }
+    
+    # Now clear the GT object and return to interactive mode
     rv$gt_object <- NULL
     rv$gt_log <- ""
     rv$gt_summary <- NULL
