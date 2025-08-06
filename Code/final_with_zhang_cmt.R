@@ -233,31 +233,7 @@ server <- function(input, output, session) {
       footer = tagList(modalButton("Cancel"), actionButton("confirm_add_edge", "Add"))
     ))
   })
-  observeEvent(input$reset_graph, {
-    showModal(modalDialog(
-      title = "Reset Graph",
-      "This will clear all nodes and edges. Are you sure?",
-      easyClose = FALSE,
-      footer = tagList(
-        modalButton("Cancel"),
-        actionButton("confirm_reset", "Reset", class = "btn btn-danger")
-      )
-    ))
-  })
-  
-  observeEvent(input$confirm_reset, {
-    rv$nodes <- data.frame(label = character(0), alpha = numeric(0), title = character(0), id = character(0), stringsAsFactors = FALSE)
-    rv$edges <- data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), 
-                           smooth = I(list()), id = character(0), stringsAsFactors = FALSE)
-    updateSelectInput(session, "graph_selected", choices = NULL)
-    rv$gt_object <- NULL
-    rv$gt_log <- ""
-    rv$gt_summary <- NULL
-    rv$alpha <- numeric(0)
-    rv$hypotheses <- character(0)
-    rv$transition <- matrix(0, 0, 0)
-    removeModal()
-  })
+
   observeEvent(input$confirm_add_edge, {
     if (is.null(input$edge_from) || is.null(input$edge_to)) return()
     existing_reverse <- with(rv$edges, which(from == input$edge_to & to == input$edge_from))
@@ -306,7 +282,7 @@ server <- function(input, output, session) {
     ))
   })
   
-  # Add this new observer right after the delete_node observer:
+
   observeEvent(input$confirm_delete_node, {
     selected_node <- input$graph_selected
     if (!is.null(selected_node) && selected_node != "") {
@@ -321,12 +297,39 @@ server <- function(input, output, session) {
     }
     removeModal()
   })
+  # Show confirmation modal before deleting edge(s)
   observeEvent(input$delete_edge, {
     selected_edges <- input$graph_selectedEdges
-    if (!is.null(selected_edges)) {
-      for (edge in selected_edges) {
+    if (!is.null(selected_edges) && length(selected_edges) > 0) {
+      # Format edge names for display
+      edge_names <- paste(selected_edges, collapse = ", ")
+      showModal(modalDialog(
+        title = "Confirm Delete Edge",
+        paste("Are you sure you want to delete the following edge(s):", edge_names, "?"),
+        easyClose = FALSE,
+        footer = tagList(
+          modalButton("Cancel"),
+          actionButton("confirm_delete_edge", "Delete", class = "btn btn-danger")
+        )
+      ))
+      session$userData$edges_to_delete <- selected_edges
+    } else {
+      showModal(modalDialog(
+        title = "No Edge Selected",
+        "Please select one or more edges first before deleting.",
+        easyClose = TRUE,
+        footer = modalButton("OK")
+      ))
+    }
+  })
+  
+  # Handle confirmed edge deletion
+  observeEvent(input$confirm_delete_edge, {
+    edges_to_delete <- session$userData$edges_to_delete
+    if (!is.null(edges_to_delete)) {
+      for (edge in edges_to_delete) {
         fromto <- strsplit(edge, "->")[[1]]
-        if(length(fromto)==2){
+        if (length(fromto) == 2) {
           from <- fromto[1]
           to <- fromto[2]
           rv$edges <- rv$edges[!(rv$edges$from == from & rv$edges$to == to), ]
@@ -336,8 +339,11 @@ server <- function(input, output, session) {
       rv$gt_object <- NULL
       rv$gt_log <- ""
       rv$gt_summary <- NULL
+      session$userData$edges_to_delete <- NULL  # clear after delete
     }
+    removeModal()
   })
+  
   
   # Double click to edit node & edge
   observeEvent(input$graph_doubleClick, {
@@ -445,7 +451,6 @@ server <- function(input, output, session) {
   observeEvent(input$upload, {
     req(input$upload)
     json_data <- fromJSON(input$upload$datapath)
-    # --- Nodes ---
     if (!is.null(json_data$nodes) && is.data.frame(json_data$nodes)) {
       raw_nodes <- json_data$nodes
       cleaned_nodes <- data.frame(
@@ -471,15 +476,36 @@ server <- function(input, output, session) {
       rv$edges <- data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), 
                              smooth = I(list()), id = character(0), stringsAsFactors = FALSE)
     }
-    #create_graphicaltesting_objects()
-    # Force graph to re-render with consistent styling
-    session$sendCustomMessage(type = "refreshGraph", message = list())
+    create_graphicaltesting_objects()
     rv$gt_object <- NULL
     rv$gt_log <- ""
     rv$gt_summary <- NULL
-    # Don't auto-create GraphicalTesting object on upload
-    # Let user explicitly create it with "Create Test Object" button
-    # This preserves the interactive graph editing capability
+    if (length(rv$alpha) > 0) {
+      tryCatch({
+        log_lines <- NULL
+        log_message <- function(m) { log_lines <<- c(log_lines, conditionMessage(m)); invokeRestart("muffleMessage") }
+        withCallingHandlers(
+          {
+            rv$gt_object <- GraphicalTesting$new(
+              alpha = rv$alpha,
+              transition = rv$transition,
+              alpha_spending = rv$alpha_spending,
+              planned_max_info = rv$planned_max_info,
+              hypotheses = rv$hypotheses,
+              silent = FALSE
+            )
+          }, 
+          message = log_message
+        )
+        rv$gt_log <- paste(log_lines, collapse = "\n")
+        rv$gt_summary <- rv$gt_object$get_current_testing_results()
+        output$gt_plot <- renderPlot({ print(rv$gt_object) })
+      }, error = function(e) {
+        rv$gt_log <- paste("Error during GraphicalTesting setup:", e$message)
+        rv$gt_object <- NULL
+        rv$gt_summary <- NULL
+      })
+    }
   })
   
   output$export <- downloadHandler(
@@ -496,6 +522,31 @@ server <- function(input, output, session) {
                  path = file, pretty = TRUE, auto_unbox = TRUE)
     }
   )
+  observeEvent(input$reset_graph, {
+    showModal(modalDialog(
+      title = "Reset Graph",
+      "This will clear all nodes and edges. Are you sure?",
+      easyClose = FALSE,
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("confirm_reset", "Reset", class = "btn btn-danger")
+      )
+    ))
+  })
+  
+  observeEvent(input$confirm_reset, {
+    rv$nodes <- data.frame(label = character(0), alpha = numeric(0), title = character(0), id = character(0), stringsAsFactors = FALSE)
+    rv$edges <- data.frame(from = character(0), to = character(0), weight = numeric(0), label = character(0), 
+                           smooth = I(list()), id = character(0), stringsAsFactors = FALSE)
+    updateSelectInput(session, "graph_selected", choices = NULL)
+    rv$gt_object <- NULL
+    rv$gt_log <- ""
+    rv$gt_summary <- NULL
+    rv$alpha <- numeric(0)
+    rv$hypotheses <- character(0)
+    rv$transition <- matrix(0, 0, 0)
+    removeModal()
+  })
   
   # --------- Helper for updating GT objects ---------
   create_graphicaltesting_objects <- function() {
