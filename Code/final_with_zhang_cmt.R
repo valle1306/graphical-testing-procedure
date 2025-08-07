@@ -236,12 +236,33 @@ server <- function(input, output, session) {
 
   observeEvent(input$confirm_add_edge, {
     if (is.null(input$edge_from) || is.null(input$edge_to)) return()
+    
+    # Prevent self-loop
+    if (input$edge_from == input$edge_to) {
+      showModal(modalDialog(
+        "Cannot create an edge from a node to itself.",
+        easyClose = TRUE
+      ))
+      return()
+    }
+    
+    # Prevent duplicate edge
+    exists_edge <- any(rv$edges$from == input$edge_from & rv$edges$to == input$edge_to)
+    if (exists_edge) {
+      showModal(modalDialog(
+        "This edge already exists!",
+        easyClose = TRUE
+      ))
+      return()
+    }
+    
     existing_reverse <- with(rv$edges, which(from == input$edge_to & to == input$edge_from))
     curvature_type <- if (length(existing_reverse) > 0) {
       list(enabled = TRUE, type = "curvedCW")
     } else {
       list(enabled = FALSE)
     }
+    
     new_edge <- data.frame(
       from = input$edge_from, 
       to = input$edge_to,    
@@ -258,6 +279,7 @@ server <- function(input, output, session) {
     rv$gt_log <- ""
     rv$gt_summary <- NULL
   })
+  
   observeEvent(input$delete_node, {
     selected_node <- input$graph_selected
     if (is.null(selected_node) || selected_node == "") {
