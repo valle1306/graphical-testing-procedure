@@ -257,24 +257,27 @@ server <- function(input, output, session) {
     default_h <- next_hypothesis(rv$nodes$hypothesis)
     default_a <- "0"
     
-    rv$nodes <- bind_rows(
-      rv$nodes,
-      tibble::tibble(
-        id = nid,
-        x  = rv$ctx$canvas[1], 
-        y = rv$ctx$canvas[2],
-        hypothesis = default_h,
-        alpha      = as.numeric(default_a)
-      )
+    # 1) 基础行（写入后端）
+    base_row <- tibble::tibble(
+      id = nid,
+      x  = rv$ctx$canvas[1],
+      y  = rv$ctx$canvas[2],
+      hypothesis = default_h,
+      alpha      = as.numeric(default_a)
     )
     
-    # Use visUpdateNodes with moveNode to maintain positions
-    nodes_data <- with_node_label(rv$nodes)
-    visNetworkProxy("graph") %>% 
-      visUpdateNodes(nodes_data) %>%
-      visMoveNode(id = nid, x = rv$ctx$canvas[1], y = rv$ctx$canvas[2])
+    # 2) 更新后端状态
+    rv$nodes <- dplyr::bind_rows(rv$nodes, base_row)
     
-    # Open node editor
+    # 3) 增量推送到前端（立刻显示）
+    new_node <- with_node_label(base_row) |> 
+      as.data.frame(stringsAsFactors = FALSE)
+    
+    session$onFlushed(function() {
+      visNetworkProxy("graph") %>% visUpdateNodes(new_node)
+    }, once = TRUE)
+    
+    # Open node editor immediately (as in original)
     rv$ctx$edit_node_id <- nid
     showModal(modalDialog(
       title = paste("Edit node", nid),
