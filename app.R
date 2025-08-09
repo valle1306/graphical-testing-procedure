@@ -31,6 +31,13 @@ ui <- fluidPage(
 server <- function(input, output, session) {
   
   # ---- Helpers ----
+  # Compose 2-line label: first line hypothesis, second line alpha (no scientific notation)
+  with_node_label <- function(df) {
+    df %>%
+      mutate(label = paste0(hypothesis, "\n",
+                            format(alpha, trim = TRUE, scientific = FALSE)))
+  }
+  
   # Get next available hypothesis name: H1, H2, ...
   next_hypothesis <- function(existing) {
     k <- 1L
@@ -64,7 +71,7 @@ server <- function(input, output, session) {
   # ---- Render network ----
   output$graph <- renderVisNetwork({
     # Map hypothesis to label for visualization; do not expose "label" as a first-class attribute
-    nodes_vis <- rv$nodes %>% mutate(label = hypothesis)
+    nodes_vis <- with_node_label(rv$nodes)
     visNetwork(nodes_vis, data.frame()) %>%
       visNodes(font = list(size = 16)) %>%
       visPhysics(enabled = FALSE) %>% # fixed positions
@@ -136,7 +143,7 @@ server <- function(input, output, session) {
         alpha      = as.numeric(default_a)
       )
     )
-    visNetworkProxy("graph") %>% visUpdateNodes(rv$nodes %>% mutate(label = hypothesis))
+    visNetworkProxy("graph") %>% visUpdateNodes(with_node_label(rv$nodes))
     
     # Open editor immediately with defaults
     rv$ctx$edit_node_id <- nid
@@ -158,7 +165,7 @@ server <- function(input, output, session) {
     nid <- rv$ctx$node
     if (!is.null(nid)) {
       rv$nodes <- dplyr::filter(rv$nodes, id != nid)
-      visNetworkProxy("graph") %>% visUpdateNodes(rv$nodes %>% mutate(label = hypothesis))
+      visNetworkProxy("graph") %>% visUpdateNodes(with_node_label(rv$nodes))
     }
   })
   
@@ -221,7 +228,7 @@ server <- function(input, output, session) {
         alpha      = ifelse(id == !!id, a_val, alpha)
       )
     removeModal()
-    visNetworkProxy("graph") %>% visUpdateNodes(rv$nodes %>% mutate(label = hypothesis))
+    visNetworkProxy("graph") %>% visUpdateNodes(with_node_label(rv$nodes))
   })
 }
 
