@@ -3,12 +3,13 @@ library(shiny)
 library(visNetwork)
 library(shinyjs)
 library(dplyr)
+library(DT)
 
 ui <- fluidPage(
   useShinyjs(),
   tags$head(tags$style(HTML("
     #ctx-menu {
-      position: absolute; z-index: 10000; display: none;
+      position: fixed; z-index: 10000; display: none;
       background: #fff; border: 1px solid #ddd; border-radius: 6px;
       box-shadow: 0 6px 18px rgba(0,0,0,.15); min-width: 180px;
     }
@@ -39,15 +40,29 @@ ui <- fluidPage(
               # --- Tab 2: Design (your existing graph UI moved here) ---
               tabPanel(
                 title = "Design",
-                # keep your existing graph canvas and context menu here
-                visNetworkOutput("graph", height = "640px"),
-                # context menu
-                tags$div(
-                  id = "ctx-menu",
-                  actionButton("ctx_add_node",   "Add node here",        class = "ctx-item"),
-                  actionButton("ctx_del_node",   "Delete this node",     class = "ctx-item"),
-                  actionButton("ctx_edge_start", "Start edge from here", class = "ctx-item"),
-                  actionButton("ctx_del_edge",   "Delete this edge",     class = "ctx-item")
+                fluidRow(
+                  # ----- Left column: data panel (read-only tables) -----
+                  column(
+                    width = 3,
+                    h4("Nodes"),
+                    DTOutput("nodes_table"),
+                    tags$hr(),
+                    h4("Edges"),
+                    DTOutput("edges_table")
+                  ),
+                  # ----- Right column: graph canvas -----
+                  column(
+                    width = 9,
+                    visNetworkOutput("graph", height = "640px"),
+                    # context menu must remain inside Design tab
+                    tags$div(
+                      id = "ctx-menu",
+                      actionButton("ctx_add_node",   "Add node here",        class = "ctx-item"),
+                      actionButton("ctx_del_node",   "Delete this node",     class = "ctx-item"),
+                      actionButton("ctx_edge_start", "Start edge from here", class = "ctx-item"),
+                      actionButton("ctx_del_edge",   "Delete this edge",     class = "ctx-item")
+                    )
+                  )
                 )
               )
   )
@@ -198,8 +213,8 @@ server <- function(input, output, session) {
             }, {priority: 'event'});
         
             var menu = document.getElementById('ctx-menu');
-            menu.style.left = params.event.pageX + 'px';
-            menu.style.top  = params.event.pageY + 'px';
+            menu.style.left = (params.event.clientX) + 'px';
+            menu.style.top  = (params.event.clientY) + 'px';
             menu.style.display = 'block';
         
             document.getElementById('ctx_add_node').style.display   = showBlank ? 'block' : 'none';
@@ -235,6 +250,62 @@ server <- function(input, output, session) {
   
   # Keep the visNetwork output active even when the tab is hidden
   outputOptions(output, "graph", suspendWhenHidden = FALSE)
+  
+  # ---- Read-only tables for Design page ----
+  
+  # Nodes table: hypothesis, alpha; no search/sort/selection/edit
+  output$nodes_table <- renderDT({
+    if (!nrow(rv$nodes)) {
+      return(datatable(
+        data.frame(hypothesis = character(), alpha = numeric()),
+        rownames = FALSE,
+        options = list(dom = 't', paging = FALSE, searching = FALSE, ordering = FALSE, info = FALSE)
+      ))
+    }
+    df <- rv$nodes |> dplyr::transmute(
+      hypothesis,
+      alpha = as.numeric(alpha)
+    )
+    # ensure no scientific notation in display
+    df$alpha <- vapply(df$alpha, function(x) format(x, trim = TRUE, scientific = FALSE), character(1))
+    datatable(
+      df,
+      rownames = FALSE,
+      options = list(dom = 't', paging = FALSE, searching = FALSE, ordering = FALSE, info = FALSE)
+    )
+  })
+  
+  # Edges table: from, to (as hypothesis), weight; search enabled, no sort/selection/edit
+  output$edges_table <- renderDT({
+    if (!nrow(rv$edges)) {
+      return(datatable(
+        data.frame(from = character(), to = character(), weight = numeric()),
+        rownames = FALSE,
+        options = list(dom = 'ft', paging = FALSE, searching = TRUE, ordering = FALSE, info = FALSE)
+      ))
+    }
+    # map node ids -> hypothesis (case-sensitive)
+    from_h <- rv$nodes$hypothesis[match(rv$edges$from, rv$nodes$id)]
+    to_h   <- rv$nodes$hypothesis[match(rv$edges$to,   rv$nodes$id)]
+    df <- data.frame(
+      from = from_h,
+      to   = to_h,
+      weight = rv$edges$weight,
+      stringsAsFactors = FALSE
+    )
+    df$weight <- vapply(df$weight, function(x) format(x, trim = TRUE, scientific = FALSE), character(1))
+    datatable(
+      df,
+      rownames = FALSE,
+      options = list(
+        dom = 'ft',           # only filtering (search) + table, no extras
+        paging = FALSE,
+        searching = TRUE,     # enable global search
+        ordering = FALSE,
+        info = FALSE
+      )
+    )
+  })
   
   # Update node position when dragged
   observeEvent(input$node_dragged, {
