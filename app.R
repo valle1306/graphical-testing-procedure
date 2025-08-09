@@ -39,12 +39,41 @@ server <- function(input, output, session) {
                             format(alpha, trim = TRUE, scientific = FALSE)))
   }
   
-  # Edge label = weight (no scientific notation)
+  # Edge label & shape:
+  # - Label is weight (no scientific notation)
+  # - For opposite directions between the same pair of nodes, draw opposite arcs
+  #   so A->B and B->A won't overlap. Add label background for readability.
+  # Replace your with_edge_label() with this version
   with_edge_label <- function(df) {
     if (nrow(df) == 0) return(df)
-    df %>%
-      mutate(label = format(weight, trim = TRUE, scientific = FALSE),
-             arrows = "to")
+    
+    # undirected pair key to detect reverse edges
+    key        <- paste(pmin(df$from, df$to), pmax(df$from, df$to), sep = "_")
+    dup_counts <- ave(key, key, FUN = length)
+    has_pair   <- dup_counts > 1  # TRUE when both directions exist
+    
+    # Per-edge smooth config:
+    # - If reverse exists, use the SAME type ('curvedCW') for BOTH directions.
+    #   Because the curve is defined relative to the arrow direction, they land
+    #   on opposite sides in screen coordinates -> no overlap.
+    # - If no reverse, keep straight line for cleaner look.
+    smooth_list <- vector("list", nrow(df))
+    for (i in seq_len(nrow(df))) {
+      if (has_pair[i]) {
+        smooth_list[[i]] <- list(enabled = TRUE, type = "curvedCW", roundness = 0.20)
+      } else {
+        smooth_list[[i]] <- list(enabled = FALSE)
+      }
+    }
+    
+    out <- df
+    out$label <- format(df$weight, trim = TRUE, scientific = FALSE)
+    out$arrows <- "to"
+    out$smooth <- smooth_list
+    out$hoverWidth     <- 3
+    out$selectionWidth <- 3
+    out$font <- lapply(seq_len(nrow(df)), function(i) list(background = "white"))
+    out
   }
   
   # Next available hypothesis name: H1, H2, ...
@@ -89,9 +118,15 @@ server <- function(input, output, session) {
     visNetwork(with_node_label(rv$nodes),
                with_edge_label(rv$edges)) %>%
       visNodes(font = list(size = 16)) %>%
-      visEdges(smooth = list(enabled = TRUE, type = "dynamic")) %>%
+      visEdges(
+        # Let per-edge 'smooth' from with_edge_label() take effect
+        font = list(background = "white"),   # default safety; per-edge also sets it
+        hoverWidth = 3,
+        selectionWidth = 3
+      ) %>%
       visPhysics(enabled = FALSE) %>%
       visOptions(highlightNearest = FALSE, nodesIdSelection = TRUE) %>%
+      visInteraction(selectConnectedEdges = FALSE, hoverConnectedEdges = FALSE) %>% 
       visEvents(
         # Right-click anywhere -> show menu; also notify server (for potential cancel)
         oncontext = "
