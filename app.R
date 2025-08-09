@@ -18,7 +18,7 @@ ui <- fluidPage(
     }
     #ctx-menu .ctx-item:hover { background: #f5f5f5; }
   "))),
-  titlePanel("Step 1: Context Menu + Double-Click (Nodes only)"),
+  titlePanel("Step 1: Nodes only (context menu + double-click)"),
   visNetworkOutput("graph", height = "600px"),
   # Context menu (buttons so Shiny can capture clicks)
   tags$div(
@@ -30,22 +30,42 @@ ui <- fluidPage(
 
 server <- function(input, output, session) {
   
-  # Reactive state: nodes + last context (node id / canvas position)
+  # ---- Helpers ----
+  # Get next available hypothesis name: H1, H2, ...
+  next_hypothesis <- function(existing) {
+    k <- 1L
+    while (paste0("H", k) %in% existing) k <- k + 1L
+    paste0("H", k)
+  }
+  
+  # Validate alpha string: must be plain decimal in [0,1], no scientific notation.
+  # Accepts: "0", "0.5", "1", "1.0", "0.00"... Rejects: ".5", "1.", "1e-3", "01", " 0.1 "
+  is_valid_alpha_str <- function(s) {
+    if (is.null(s) || !is.character(s) || length(s) != 1) return(FALSE)
+    # strict pattern: 0 or 0.xxx or 1 or 1.0...
+    if (!grepl("^(0(\\.\\d+)?|1(\\.0+)?)$", s)) return(FALSE)
+    v <- suppressWarnings(as.numeric(s))
+    is.finite(v) && v >= 0 && v <= 1
+  }
+  
+  # ---- State ----
   rv <- reactiveValues(
+    # Only store id, position, and the two attributes requested
     nodes = tibble::tibble(
       id    = 1:3,
-      label = c("Alpha", "Beta", "Gamma"),
       x     = c(-150, 0, 150),
       y     = c(-40, 40, -20),
-      hypothesis = c("H1", "H0", "Exploratory"),
-      alpha      = c(0.025, 0.025, 0.05)
+      hypothesis = c("H1", "H2", "H3"),
+      alpha      = c(0, 0, 0)
     ),
     ctx = list(node = NULL, canvas = c(0,0), edit_node_id = NULL)
   )
   
-  # Render network (no edges at this step)
+  # ---- Render network ----
   output$graph <- renderVisNetwork({
-    visNetwork(rv$nodes, data.frame()) %>%
+    # Map hypothesis to label for visualization; do not expose "label" as a first-class attribute
+    nodes_vis <- rv$nodes %>% mutate(label = hypothesis)
+    visNetwork(nodes_vis, data.frame()) %>%
       visNodes(font = list(size = 16)) %>%
       visPhysics(enabled = FALSE) %>% # fixed positions
       visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE) %>%
@@ -100,21 +120,36 @@ server <- function(input, output, session) {
     rv$ctx$canvas <- unlist(input$ctx_event$canvas)
   })
   
-  # Add node at right-click position
+  # Add node at right-click position -> immediately open editor with defaults
   observeEvent(input$ctx_add_node, {
     runjs("document.getElementById('ctx-menu').style.display='none';")
     nid <- ifelse(nrow(rv$nodes)==0, 1, max(rv$nodes$id)+1)
+    default_h <- next_hypothesis(rv$nodes$hypothesis)
+    default_a <- "0"  # keep as string for input prefill
+    
     rv$nodes <- bind_rows(
       rv$nodes,
       tibble::tibble(
         id = nid,
-        label = paste0("Node ", nid),
-        x = rv$ctx$canvas[1], y = rv$ctx$canvas[2],
-        hypothesis = "",
-        alpha = 0.05
+        x  = rv$ctx$canvas[1], y = rv$ctx$canvas[2],
+        hypothesis = default_h,
+        alpha      = as.numeric(default_a)
       )
     )
-    visNetworkProxy("graph") %>% visUpdateNodes(rv$nodes)
+    visNetworkProxy("graph") %>% visUpdateNodes(rv$nodes %>% mutate(label = hypothesis))
+    
+    # Open editor immediately with defaults
+    rv$ctx$edit_node_id <- nid
+    showModal(modalDialog(
+      title = paste("Edit node", nid),
+      textInput("edit_node_hypo",  "Hypothesis (unique, case-sensitive)", value = default_h, placeholder = "e.g., H4"),
+      textInput("edit_node_alpha", "Alpha (0–1, no scientific notation)", value = default_a, placeholder = "0 or 0.xxx or 1"),
+      easyClose = FALSE,
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("save_node_edit", "Save", class = "btn-primary")
+      )
+    ))
   })
   
   # Delete the right-clicked node
@@ -123,21 +158,20 @@ server <- function(input, output, session) {
     nid <- rv$ctx$node
     if (!is.null(nid)) {
       rv$nodes <- dplyr::filter(rv$nodes, id != nid)
-      visNetworkProxy("graph") %>% visUpdateNodes(rv$nodes)
+      visNetworkProxy("graph") %>% visUpdateNodes(rv$nodes %>% mutate(label = hypothesis))
     }
   })
   
-  # Open editor on double-click
+  # Double-click existing node -> open editor with current values
   observeEvent(input$dbl_node, {
     nid <- input$dbl_node
     nd <- rv$nodes %>% dplyr::filter(id == nid) %>% dplyr::slice(1)
     rv$ctx$edit_node_id <- nid
     showModal(modalDialog(
-      title = paste("Edit node", nd$id),
-      textInput("edit_node_label", "Label", value = nd$label),
-      textInput("edit_node_hypo",  "Hypothesis", value = nd$hypothesis, placeholder = "e.g., H1: treatment > control"),
-      numericInput("edit_node_alpha", "Alpha (0–1)", value = nd$alpha, min = 0, max = 1, step = 0.001),
-      easyClose = TRUE,
+      title = paste("Edit node", nid),
+      textInput("edit_node_hypo",  "Hypothesis (unique, case-sensitive)", value = nd$hypothesis, placeholder = "e.g., H1"),
+      textInput("edit_node_alpha", "Alpha (0–1, no scientific notation)", value = format(nd$alpha, trim = TRUE, scientific = FALSE)),
+      easyClose = FALSE,
       footer = tagList(
         modalButton("Cancel"),
         actionButton("save_node_edit", "Save", class = "btn-primary")
@@ -145,23 +179,40 @@ server <- function(input, output, session) {
     ))
   })
   
-  # Persist edits (label, hypothesis, alpha)
+  # Persist edits with validation
   observeEvent(input$save_node_edit, {
-    removeModal()
     id <- rv$ctx$edit_node_id
-    # basic validation for alpha
-    a <- input$edit_node_alpha
-    if (is.na(a) || a < 0 || a > 1) {
-      showNotification("Alpha must be in [0, 1]. Edit discarded.", type = "error")
+    if (is.null(id)) return(invisible(NULL))
+    
+    h_new <- input$edit_node_hypo
+    a_str <- input$edit_node_alpha
+    
+    # Validate hypothesis uniqueness (case-sensitive), excluding the current node
+    existing <- rv$nodes$hypothesis[rv$nodes$id != id]
+    if (is.null(h_new) || !nzchar(h_new)) {
+      showNotification("Hypothesis cannot be empty.", type = "error")
       return(invisible(NULL))
     }
+    if (h_new %in% existing) {
+      showNotification(sprintf("Hypothesis '%s' already exists. Please choose a unique value.", h_new), type = "error")
+      return(invisible(NULL))
+    }
+    
+    # Validate alpha format and range (no scientific notation)
+    if (!is_valid_alpha_str(a_str)) {
+      showNotification("Alpha must be a plain decimal within [0, 1], no scientific notation.", type = "error")
+      return(invisible(NULL))
+    }
+    a_val <- as.numeric(a_str)
+    
+    # Apply updates
     rv$nodes <- rv$nodes %>%
       mutate(
-        label      = ifelse(id == !!id, input$edit_node_label, label),
-        hypothesis = ifelse(id == !!id, input$edit_node_hypo,  hypothesis),
-        alpha      = ifelse(id == !!id, a, alpha)
+        hypothesis = ifelse(id == !!id, h_new, hypothesis),
+        alpha      = ifelse(id == !!id, a_val, alpha)
       )
-    visNetworkProxy("graph") %>% visUpdateNodes(rv$nodes)
+    removeModal()
+    visNetworkProxy("graph") %>% visUpdateNodes(rv$nodes %>% mutate(label = hypothesis))
   })
 }
 
