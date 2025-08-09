@@ -92,6 +92,15 @@ ui <- fluidPage(
 server <- function(input, output, session) {
   
   # ---------- Helpers ----------
+  focus_and_select <- function(input_id) {
+    shinyjs::runjs(sprintf("
+    $('#shiny-modal').one('shown.bs.modal', function(){
+      var el = document.getElementById('%s');
+      if (el) { el.focus(); el.select(); }
+    });
+  ", input_id))
+  }
+  
   # Node label: hypothesis on line 1, alpha on line 2 (no scientific notation)
   with_node_label <- function(df) {
     df %>%
@@ -416,6 +425,8 @@ server <- function(input, output, session) {
         actionButton("save_node_edit", "Save", class = "btn-primary")
       )
     ))
+    focus_and_select("edit_node_alpha")
+    
   })
   
   observeEvent(input$ctx_del_node, {
@@ -456,6 +467,8 @@ server <- function(input, output, session) {
         actionButton("save_node_edit", "Save", class = "btn-primary")
       )
     ))
+    focus_and_select("edit_node_alpha")
+    
   })
   
   observeEvent(input$save_node_edit, {
@@ -568,6 +581,8 @@ server <- function(input, output, session) {
         actionButton("save_new_edge", "Save", class = "btn-primary")
       )
     ))
+    focus_and_select("new_edge_weight")
+    
   }, ignoreInit = TRUE)
   
   observeEvent(input$save_new_edge, {
@@ -645,6 +660,8 @@ server <- function(input, output, session) {
         actionButton("save_edge_edit", "Save", class = "btn-primary")
       )
     ))
+    focus_and_select("edit_edge_weight")
+    
   })
   
   observeEvent(input$save_edge_edit, {
