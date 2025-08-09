@@ -18,15 +18,38 @@ ui <- fluidPage(
     }
     #ctx-menu .ctx-item:hover { background: #f5f5f5; }
   "))),
-  titlePanel("Nodes + Create Edge (right-click start)"),
-  visNetworkOutput("graph", height = "640px"),
-  # Context menu (buttons so Shiny can capture clicks)
-  tags$div(
-    id = "ctx-menu",
-    actionButton("ctx_add_node",   "Add node here",        class = "ctx-item"),
-    actionButton("ctx_del_node",   "Delete this node",     class = "ctx-item"),
-    actionButton("ctx_edge_start", "Start edge from here", class = "ctx-item"),
-    actionButton("ctx_del_edge",   "Delete this edge",     class = "ctx-item")
+  titlePanel("Directed Graph Designer"),
+  
+  tabsetPanel(id = "main_tabs",
+              # --- Tab 1: Landing (placeholder content for now) ---
+              tabPanel(
+                title = "Landing",
+                fluidRow(
+                  column(
+                    width = 12,
+                    h3("Welcome"),
+                    p("This app lets you interactively design a directed graph for statistical workflows."),
+                    p("Use the 'Design' tab to add/delete nodes, create directed edges, and edit attributes."),
+                    tags$hr(),
+                    p(em("Note: This landing content is a placeholder and can be refined later."))
+                  )
+                )
+              ),
+              
+              # --- Tab 2: Design (your existing graph UI moved here) ---
+              tabPanel(
+                title = "Design",
+                # keep your existing graph canvas and context menu here
+                visNetworkOutput("graph", height = "640px"),
+                # context menu
+                tags$div(
+                  id = "ctx-menu",
+                  actionButton("ctx_add_node",   "Add node here",        class = "ctx-item"),
+                  actionButton("ctx_del_node",   "Delete this node",     class = "ctx-item"),
+                  actionButton("ctx_edge_start", "Start edge from here", class = "ctx-item"),
+                  actionButton("ctx_del_edge",   "Delete this edge",     class = "ctx-item")
+                )
+              )
   )
 )
 
@@ -209,6 +232,9 @@ server <- function(input, output, session) {
         "
       )
   })
+  
+  # Keep the visNetwork output active even when the tab is hidden
+  outputOptions(output, "graph", suspendWhenHidden = FALSE)
   
   # Update node position when dragged
   observeEvent(input$node_dragged, {
