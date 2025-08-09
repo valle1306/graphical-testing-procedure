@@ -205,6 +205,22 @@ server <- function(input, output, session) {
     }
     a_val <- as.numeric(a_str)
     
+    # Alpha validation (plain decimal in [0,1], no scientific notation)
+    if (!is_valid_alpha_str(a_str)) {
+      showNotification("Alpha must be a plain decimal within [0, 1], no scientific notation.", type = "error")
+      return(invisible(NULL))
+    }
+    a_val <- as.numeric(a_str)
+    
+    # global alpha sum constraint: sum of all alphas must be <= 1
+    others_sum <- sum(rv$nodes$alpha[rv$nodes$id != id], na.rm = TRUE)
+    # small epsilon to avoid float noise when exactly 1
+    if (others_sum + a_val > 1 + 1e-12) {
+      msg <- sprintf("Total alpha would be %.6f (> 1). Please reduce this node's alpha.", others_sum + a_val)
+      showNotification(msg, type = "error")
+      return(invisible(NULL))
+    }
+    
     # Apply updates
     rv$nodes <- rv$nodes %>%
       mutate(
