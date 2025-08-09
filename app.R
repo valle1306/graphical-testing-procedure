@@ -25,7 +25,9 @@ ui <- fluidPage(
     id = "ctx-menu",
     actionButton("ctx_add_node",   "Add node here",        class = "ctx-item"),
     actionButton("ctx_del_node",   "Delete this node",     class = "ctx-item"),
-    actionButton("ctx_edge_start", "Start edge from here", class = "ctx-item")
+    actionButton("ctx_edge_start", "Start edge from here", class = "ctx-item"),
+    actionButton("ctx_del_edge",   "Delete this edge",     class = "ctx-item")
+    
   )
 )
 
@@ -134,24 +136,38 @@ server <- function(input, output, session) {
             params.event.preventDefault();
             // always notify a right-click so server can cancel pending state
             Shiny.setInputValue('any_context', { }, {priority: 'event'});
-
+        
             var pointer = params.pointer;
             var nodeId = this.getNodeAt(pointer.DOM);
-
+            var edgeId = null;
+            if (!nodeId) {
+              edgeId = this.getEdgeAt(pointer.DOM);
+            }
+            
+            // toggle menu items
+            var showNode = !!nodeId;
+            var showEdge = !showNode && !!edgeId;
+            var showBlank = !showNode && !showEdge; 
+        
             Shiny.setInputValue('ctx_event', {
               node: nodeId || null,
+              edge: edgeId || null,
               canvas: pointer.canvas
             }, {priority: 'event'});
-
+        
             var menu = document.getElementById('ctx-menu');
             menu.style.left = params.event.pageX + 'px';
             menu.style.top  = params.event.pageY + 'px';
             menu.style.display = 'block';
-
-            // Show items depending on target (blank vs node)
-            document.getElementById('ctx_add_node').style.display   = nodeId ? 'none' : 'block';
-            document.getElementById('ctx_del_node').style.display   = nodeId ? 'block' : 'none';
-            document.getElementById('ctx_edge_start').style.display = nodeId ? 'block' : 'none';
+        
+            // Toggle menu items:
+            // - blank: only 'Add node here'
+            // - node:  'Delete this node' + 'Start edge from here'
+            // - edge:  only 'Delete this edge'
+            document.getElementById('ctx_add_node').style.display   = showBlank ? 'block' : 'none';
+            document.getElementById('ctx_del_node').style.display   = showNode  ? 'block' : 'none';
+            document.getElementById('ctx_edge_start').style.display = showNode  ? 'block' : 'none';
+            document.getElementById('ctx_del_edge').style.display   = showEdge ? 'block' : 'none';
           }
         ",
         # Double-click node -> open node editor
@@ -192,6 +208,7 @@ server <- function(input, output, session) {
   # Right-click context target
   observeEvent(input$ctx_event, {
     rv$ctx$node   <- input$ctx_event$node
+    rv$ctx$edge   <- input$ctx_event$edge
     rv$ctx$canvas <- unlist(input$ctx_event$canvas)
   })
   
@@ -400,6 +417,18 @@ server <- function(input, output, session) {
       visUpdateEdges(with_edge_label(rv$edges)) %>%
       visSelectNodes(id = NULL)
   })
+  
+  # Delete an edge
+  observeEvent(input$ctx_del_edge, {
+    runjs("document.getElementById('ctx-menu').style.display='none';")
+    eid <- rv$ctx$edge
+    if (!is.null(eid) && nrow(rv$edges) > 0 && eid %in% rv$edges$id) {
+      rv$edges <- dplyr::filter(rv$edges, id != eid)
+      visNetworkProxy("graph") %>%
+        visUpdateEdges(with_edge_label(rv$edges))
+    }
+  })
+  
 }
 
 shinyApp(ui, server)
