@@ -198,13 +198,6 @@ server <- function(input, output, session) {
       return(invisible(NULL))
     }
     
-    # Validate alpha format and range (no scientific notation)
-    if (!is_valid_alpha_str(a_str)) {
-      showNotification("Alpha must be a plain decimal within [0, 1], no scientific notation.", type = "error")
-      return(invisible(NULL))
-    }
-    a_val <- as.numeric(a_str)
-    
     # Alpha validation (plain decimal in [0,1], no scientific notation)
     if (!is_valid_alpha_str(a_str)) {
       showNotification("Alpha must be a plain decimal within [0, 1], no scientific notation.", type = "error")
