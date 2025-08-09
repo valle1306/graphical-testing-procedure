@@ -145,6 +145,9 @@ server <- function(input, output, session) {
     pending_source = NULL  # when not NULL, we're in PendingTarget(source)
   )
   
+  tables_tick <- reactiveVal(0)
+  bump_tables <- function() tables_tick(tables_tick() + 1)
+  
   # ---------- Render network ----------
   output$graph <- renderVisNetwork({
     nodes_data <- with_node_label(rv$nodes)
@@ -255,56 +258,40 @@ server <- function(input, output, session) {
   
   # Nodes table: hypothesis, alpha; no search/sort/selection/edit
   output$nodes_table <- renderDT({
-    if (!nrow(rv$nodes)) {
-      return(datatable(
-        data.frame(hypothesis = character(), alpha = numeric()),
-        rownames = FALSE,
-        options = list(dom = 't', paging = FALSE, searching = FALSE, ordering = FALSE, info = FALSE)
-      ))
-    }
-    df <- rv$nodes |> dplyr::transmute(
-      hypothesis,
-      alpha = as.numeric(alpha)
-    )
-    # ensure no scientific notation in display
-    df$alpha <- vapply(df$alpha, function(x) format(x, trim = TRUE, scientific = FALSE), character(1))
-    datatable(
-      df,
-      rownames = FALSE,
-      options = list(dom = 't', paging = FALSE, searching = FALSE, ordering = FALSE, info = FALSE)
-    )
+    tables_tick()
+    isolate({
+      if (!nrow(rv$nodes)) {
+        return(datatable(data.frame(hypothesis=character(), alpha=numeric()),
+                         rownames=FALSE,
+                         options=list(dom='t', paging=FALSE, searching=FALSE, ordering=FALSE, info=FALSE)
+        ))
+      }
+      df <- rv$nodes |> dplyr::transmute(hypothesis, alpha = as.numeric(alpha))
+      df$alpha <- vapply(df$alpha, function(x) format(x, trim=TRUE, scientific=FALSE), character(1))
+      datatable(df, rownames=FALSE,
+                options=list(dom='t', paging=FALSE, searching=FALSE, ordering=FALSE, info=FALSE)
+      )
+    })
   })
   
   # Edges table: from, to (as hypothesis), weight; search enabled, no sort/selection/edit
   output$edges_table <- renderDT({
-    if (!nrow(rv$edges)) {
-      return(datatable(
-        data.frame(from = character(), to = character(), weight = numeric()),
-        rownames = FALSE,
-        options = list(dom = 'ft', paging = FALSE, searching = TRUE, ordering = FALSE, info = FALSE)
-      ))
-    }
-    # map node ids -> hypothesis (case-sensitive)
-    from_h <- rv$nodes$hypothesis[match(rv$edges$from, rv$nodes$id)]
-    to_h   <- rv$nodes$hypothesis[match(rv$edges$to,   rv$nodes$id)]
-    df <- data.frame(
-      from = from_h,
-      to   = to_h,
-      weight = rv$edges$weight,
-      stringsAsFactors = FALSE
-    )
-    df$weight <- vapply(df$weight, function(x) format(x, trim = TRUE, scientific = FALSE), character(1))
-    datatable(
-      df,
-      rownames = FALSE,
-      options = list(
-        dom = 'ft',           # only filtering (search) + table, no extras
-        paging = FALSE,
-        searching = TRUE,     # enable global search
-        ordering = FALSE,
-        info = FALSE
+    tables_tick()  # ← 同上
+    isolate({
+      if (!nrow(rv$edges)) {
+        return(datatable(data.frame(from=character(), to=character(), weight=numeric()),
+                         rownames=FALSE,
+                         options=list(dom='ft', paging=FALSE, searching=TRUE, ordering=FALSE, info=FALSE)
+        ))
+      }
+      from_h <- rv$nodes$hypothesis[match(rv$edges$from, rv$nodes$id)]
+      to_h   <- rv$nodes$hypothesis[match(rv$edges$to,   rv$nodes$id)]
+      df <- data.frame(from=from_h, to=to_h, weight=rv$edges$weight, stringsAsFactors=FALSE)
+      df$weight <- vapply(df$weight, function(x) format(x, trim=TRUE, scientific=FALSE), character(1))
+      datatable(df, rownames=FALSE,
+                options=list(dom='ft', paging=FALSE, searching=TRUE, ordering=FALSE, info=FALSE)
       )
-    )
+    })
   })
   
   # Update node position when dragged
@@ -354,7 +341,6 @@ server <- function(input, output, session) {
     default_h <- next_hypothesis(rv$nodes$hypothesis)
     default_a <- "0"
     
-    # 1) 基础行（写入后端）
     base_row <- tibble::tibble(
       id = nid,
       x  = rv$ctx$canvas[1],
@@ -363,10 +349,9 @@ server <- function(input, output, session) {
       alpha      = as.numeric(default_a)
     )
     
-    # 2) 更新后端状态
     rv$nodes <- dplyr::bind_rows(rv$nodes, base_row)
+    bump_tables()
     
-    # 3) 增量推送到前端（立刻显示）
     new_node <- with_node_label(base_row) |> 
       as.data.frame(stringsAsFactors = FALSE)
     
@@ -401,6 +386,8 @@ server <- function(input, output, session) {
       visNetworkProxy("graph") %>%
         visUpdateNodes(nodes_data) %>%
         visUpdateEdges(with_edge_label(rv$edges))
+      
+      bump_tables()
       
       # Restore positions for remaining nodes
       for(i in seq_len(nrow(rv$nodes))) {
@@ -473,6 +460,7 @@ server <- function(input, output, session) {
     visNetworkProxy("graph") %>% 
       visUpdateNodes(nodes_data) %>%
       visMoveNode(id = id, x = current_x, y = current_y)
+    bump_tables()
   })
   
   # ---------- Create edge ----------
@@ -562,6 +550,7 @@ server <- function(input, output, session) {
     visNetworkProxy("graph") %>%
       visUpdateEdges(with_edge_label(rv$edges)) %>%
       visSelectNodes(id = NULL)
+    bump_tables()
     
     # Restore all node positions after edge update
     for(i in seq_len(nrow(positions))) {
@@ -581,6 +570,7 @@ server <- function(input, output, session) {
       rv$edges <- dplyr::filter(rv$edges, id != eid)
       visNetworkProxy("graph") %>%
         visUpdateEdges(with_edge_label(rv$edges))
+      bump_tables()
       
       # Restore positions
       for(i in seq_len(nrow(positions))) {
@@ -633,6 +623,7 @@ server <- function(input, output, session) {
     
     visNetworkProxy("graph") %>%
       visUpdateEdges(with_edge_label(rv$edges))
+    bump_tables()
     
     # Restore positions
     for(i in seq_len(nrow(positions))) {
