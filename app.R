@@ -281,7 +281,7 @@ server <- function(input, output, session) {
       if (!nrow(rv$edges)) {
         return(datatable(data.frame(from=character(), to=character(), weight=numeric()),
                          rownames=FALSE,
-                         options=list(dom='ft', paging=FALSE, searching=TRUE, ordering=FALSE, info=FALSE)
+                         options=list(dom='ft', paging=FALSE, searching=FALSE, ordering=FALSE, info=FALSE)
         ))
       }
       from_h <- rv$nodes$hypothesis[match(rv$edges$from, rv$nodes$id)]
@@ -289,7 +289,7 @@ server <- function(input, output, session) {
       df <- data.frame(from=from_h, to=to_h, weight=rv$edges$weight, stringsAsFactors=FALSE)
       df$weight <- vapply(df$weight, function(x) format(x, trim=TRUE, scientific=FALSE), character(1))
       datatable(df, rownames=FALSE,
-                options=list(dom='ft', paging=FALSE, searching=TRUE, ordering=FALSE, info=FALSE)
+                options=list(dom='t', paging=FALSE, searching=FALSE, ordering=FALSE, info=FALSE)
       )
     })
   })
