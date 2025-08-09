@@ -28,11 +28,26 @@ ui <- fluidPage(
                 fluidRow(
                   column(
                     width = 12,
+                    
                     h3("Welcome"),
                     p("This app lets you interactively design a directed graph for statistical workflows."),
                     p("Use the 'Design' tab to add/delete nodes, create directed edges, and edit attributes."),
                     tags$hr(),
-                    p(em("Note: This landing content is a placeholder and can be refined later."))
+                    p(em("Note: This landing content is a placeholder and can be refined later.")),
+                    tags$hr(), 
+                    
+                    # --- Quick Guide ---
+                    h3("Quick Guide"),
+                    tags$ul(
+                      tags$li("Right-click empty canvas → Add node (default hypothesis: H1, H2, ..., alpha = 0)."),
+                      tags$li("Double-click node → Edit (hypothesis unique, alpha sum ≤ 1, 0 ≤ alpha ≤ 1, no scientific notation)."),
+                      tags$li("Right-click node → Delete."),
+                      tags$li("Right-click source node → Start edge → Click target node → Set weight (0 < weight ≤ 1, default 1)."),
+                      tags$li("Double-click edge → Edit weight."),
+                      tags$li("Right-click edge → Delete."),
+                      tags$li("Drag nodes to adjust layout; edges follow."),
+                      tags$li("Left panel mirrors nodes/edges in real time; Hide/Show to maximize canvas.")
+                    )
                   )
                 )
               ),
