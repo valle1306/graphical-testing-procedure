@@ -40,10 +40,16 @@ ui <- fluidPage(
               # --- Tab 2: Design (your existing graph UI moved here) ---
               tabPanel(
                 title = "Design",
+                
+                # Toggle button (small link above the row)
+                div(style = "margin-bottom: 8px;",
+                    actionLink("toggle_panel", label = "Hide data panel")
+                ),
+                
                 fluidRow(
                   # ----- Left column: data panel (read-only tables) -----
                   column(
-                    width = 3,
+                    width = 3, id = "left-col", 
                     h4("Nodes"),
                     DTOutput("nodes_table"),
                     tags$hr(),
@@ -52,9 +58,9 @@ ui <- fluidPage(
                   ),
                   # ----- Right column: graph canvas -----
                   column(
-                    width = 9,
+                    width = 9, id = "right-col", 
                     visNetworkOutput("graph", height = "640px"),
-                    # context menu must remain inside Design tab
+                    # context menu stays here
                     tags$div(
                       id = "ctx-menu",
                       actionButton("ctx_add_node",   "Add node here",        class = "ctx-item"),
@@ -253,6 +259,31 @@ server <- function(input, output, session) {
   
   # Keep the visNetwork output active even when the tab is hidden
   outputOptions(output, "graph", suspendWhenHidden = FALSE)
+  
+  # --- Collapse/expand left data panel (Design page) ---
+  panel_visible <- reactiveVal(TRUE)
+  
+  observeEvent(input$toggle_panel, {
+    if (isTRUE(panel_visible())) {
+      # Hide left panel, make right panel full width
+      shinyjs::hide("left-col")
+      runjs("
+      var rc = document.getElementById('right-col');
+      if (rc) { rc.classList.remove('col-sm-9'); rc.classList.add('col-sm-12'); }
+    ")
+      updateActionButton(session, "toggle_panel", label = "Show data panel")
+      panel_visible(FALSE)
+    } else {
+      # Show left panel, restore 3/9 grid
+      shinyjs::show("left-col")
+      runjs("
+      var rc = document.getElementById('right-col');
+      if (rc) { rc.classList.remove('col-sm-12'); rc.classList.add('col-sm-9'); }
+    ")
+      updateActionButton(session, "toggle_panel", label = "Hide data panel")
+      panel_visible(TRUE)
+    }
+  })
   
   # ---- Read-only tables for Design page ----
   
