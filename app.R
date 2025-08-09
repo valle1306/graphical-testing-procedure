@@ -91,7 +91,7 @@ server <- function(input, output, session) {
       visNodes(font = list(size = 16)) %>%
       visEdges(smooth = list(enabled = TRUE, type = "dynamic")) %>%
       visPhysics(enabled = FALSE) %>%
-      visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE) %>%
+      visOptions(highlightNearest = FALSE, nodesIdSelection = TRUE) %>%
       visEvents(
         # Right-click anywhere -> show menu; also notify server (for potential cancel)
         oncontext = "
@@ -280,7 +280,9 @@ server <- function(input, output, session) {
     rv$pending_source <- src
     # Highlight source node (select)
     visNetworkProxy("graph") %>% visSelectNodes(id = src)
-    showNotification(sprintf("Select a target node for edge from %s", src), type = "message", duration = 2)
+    
+    showNotification(sprintf("Select a target node for edge from %s", src),
+                     type = "message", duration = 2)
   })
   
   # Cancel PendingTarget on ESC / blank click
