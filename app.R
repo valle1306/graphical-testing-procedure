@@ -10,7 +10,7 @@ ui <- fluidPage(
     #ctx-menu {
       position: absolute; z-index: 10000; display: none;
       background: #fff; border: 1px solid #ddd; border-radius: 6px;
-      box-shadow: 0 6px 18px rgba(0,0,0,.15); min-width: 170px;
+      box-shadow: 0 6px 18px rgba(0,0,0,.15); min-width: 180px;
     }
     #ctx-menu .ctx-item {
       width: 100%; border: 0; background: transparent; text-align: left;
@@ -18,46 +18,58 @@ ui <- fluidPage(
     }
     #ctx-menu .ctx-item:hover { background: #f5f5f5; }
   "))),
-  titlePanel("Step 1: Nodes only (context menu + double-click)"),
-  visNetworkOutput("graph", height = "600px"),
+  titlePanel("Nodes + Create Edge (right-click start)"),
+  visNetworkOutput("graph", height = "640px"),
   # Context menu (buttons so Shiny can capture clicks)
   tags$div(
     id = "ctx-menu",
-    actionButton("ctx_add_node", "Add node here", class = "ctx-item"),
-    actionButton("ctx_del_node", "Delete this node", class = "ctx-item")
+    actionButton("ctx_add_node",   "Add node here",        class = "ctx-item"),
+    actionButton("ctx_del_node",   "Delete this node",     class = "ctx-item"),
+    actionButton("ctx_edge_start", "Start edge from here", class = "ctx-item")
   )
 )
 
 server <- function(input, output, session) {
   
-  # ---- Helpers ----
-  # Compose 2-line label: first line hypothesis, second line alpha (no scientific notation)
+  # ---------- Helpers ----------
+  # Node label: hypothesis on line 1, alpha on line 2 (no scientific notation)
   with_node_label <- function(df) {
     df %>%
       mutate(label = paste0(hypothesis, "\n",
                             format(alpha, trim = TRUE, scientific = FALSE)))
   }
   
-  # Get next available hypothesis name: H1, H2, ...
+  # Edge label = weight (no scientific notation)
+  with_edge_label <- function(df) {
+    if (nrow(df) == 0) return(df)
+    df %>%
+      mutate(label = format(weight, trim = TRUE, scientific = FALSE),
+             arrows = "to")
+  }
+  
+  # Next available hypothesis name: H1, H2, ...
   next_hypothesis <- function(existing) {
     k <- 1L
     while (paste0("H", k) %in% existing) k <- k + 1L
     paste0("H", k)
   }
   
-  # Validate alpha string: must be plain decimal in [0,1], no scientific notation.
-  # Accepts: "0", "0.5", "1", "1.0", "0.00"... Rejects: ".5", "1.", "1e-3", "01", " 0.1 "
+  # Alpha string validator: plain decimal in [0,1], no scientific notation
   is_valid_alpha_str <- function(s) {
     if (is.null(s) || !is.character(s) || length(s) != 1) return(FALSE)
-    # strict pattern: 0 or 0.xxx or 1 or 1.0...
-    if (!grepl("^(0(\\.\\d+)?|1(\\.0+)?)$", s)) return(FALSE)
-    v <- suppressWarnings(as.numeric(s))
-    is.finite(v) && v >= 0 && v <= 1
+    grepl("^(0(\\.\\d+)?|1(\\.0+)?)$", s)
   }
   
-  # ---- State ----
+  # Weight string validator: plain decimal in (0,1], no scientific notation, not 0
+  is_valid_weight_str <- function(s) {
+    if (is.null(s) || !is.character(s) || length(s) != 1) return(FALSE)
+    grepl("^(0\\.[0-9]+|1(\\.0+)?)$", s)
+  }
+  
+  cancel_pending_js <- "Shiny.setInputValue('cancel_pending', Math.random(), {priority:'event'});"
+  
+  # ---------- State ----------
   rv <- reactiveValues(
-    # Only store id, position, and the two attributes requested
     nodes = tibble::tibble(
       id    = 1:3,
       x     = c(-150, 0, 150),
@@ -65,22 +77,29 @@ server <- function(input, output, session) {
       hypothesis = c("H1", "H2", "H3"),
       alpha      = c(0, 0, 0)
     ),
-    ctx = list(node = NULL, canvas = c(0,0), edit_node_id = NULL)
+    edges = tibble::tibble(
+      id = integer(), from = integer(), to = integer(), weight = numeric()
+    ),
+    ctx = list(node = NULL, canvas = c(0,0), edit_node_id = NULL),
+    pending_source = NULL  # when not NULL, we're in PendingTarget(source)
   )
   
-  # ---- Render network ----
+  # ---------- Render network ----------
   output$graph <- renderVisNetwork({
-    # Map hypothesis to label for visualization; do not expose "label" as a first-class attribute
-    nodes_vis <- with_node_label(rv$nodes)
-    visNetwork(nodes_vis, data.frame()) %>%
+    visNetwork(with_node_label(rv$nodes),
+               with_edge_label(rv$edges)) %>%
       visNodes(font = list(size = 16)) %>%
-      visPhysics(enabled = FALSE) %>% # fixed positions
+      visEdges(smooth = list(enabled = TRUE, type = "dynamic")) %>%
+      visPhysics(enabled = FALSE) %>%
       visOptions(highlightNearest = TRUE, nodesIdSelection = TRUE) %>%
       visEvents(
-        # Right-click: record target node and canvas position, show custom menu
+        # Right-click anywhere -> show menu; also notify server (for potential cancel)
         oncontext = "
           function(params) {
             params.event.preventDefault();
+            // always notify a right-click so server can cancel pending state
+            Shiny.setInputValue('any_context', { }, {priority: 'event'});
+
             var pointer = params.pointer;
             var nodeId = this.getNodeAt(pointer.DOM);
 
@@ -95,11 +114,12 @@ server <- function(input, output, session) {
             menu.style.display = 'block';
 
             // Show items depending on target (blank vs node)
-            document.getElementById('ctx_add_node').style.display = nodeId ? 'none' : 'block';
-            document.getElementById('ctx_del_node').style.display = nodeId ? 'block' : 'none';
+            document.getElementById('ctx_add_node').style.display   = nodeId ? 'none' : 'block';
+            document.getElementById('ctx_del_node').style.display   = nodeId ? 'block' : 'none';
+            document.getElementById('ctx_edge_start').style.display = nodeId ? 'block' : 'none';
           }
         ",
-        # Double-click node -> open editor
+        # Double-click node -> open node editor
         doubleClick = "
           function(params) {
             var nid = (params.nodes && params.nodes.length) ? params.nodes[0] : null;
@@ -107,32 +127,53 @@ server <- function(input, output, session) {
               Shiny.setInputValue('dbl_node', nid, {priority: 'event'});
             }
           }
+        ",
+        # General click (to detect clicking blank or selecting a target node)
+        click = "
+          function(params) {
+            var nid = (params.nodes && params.nodes.length) ? params.nodes[0] : null;
+            var eid = (params.edges && params.edges.length) ? params.edges[0] : null;
+            Shiny.setInputValue('click_event', {node: nid, edge: eid}, {priority: 'event'});
+          }
         "
       )
   })
   
-  # Hide context menu when clicking anywhere
+  # Global JS: hide context menu on any click & listen for ESC to cancel pending
   observe({
     runjs("
       document.addEventListener('click', function(){
         var m = document.getElementById('ctx-menu');
         if (m) m.style.display='none';
       });
+      document.addEventListener('keydown', function(e){
+        if (e.key === 'Escape') {
+          Shiny.setInputValue('cancel_pending', Math.random(), {priority:'event'});
+        }
+      });
     ")
   })
   
-  # Capture right-click context
+  # Right-click context target
   observeEvent(input$ctx_event, {
     rv$ctx$node   <- input$ctx_event$node
     rv$ctx$canvas <- unlist(input$ctx_event$canvas)
   })
   
-  # Add node at right-click position -> immediately open editor with defaults
+  # Any right-click cancels PendingTarget first (then normal menu handling proceeds)
+  observeEvent(input$any_context, {
+    if (!is.null(rv$pending_source)) {
+      rv$pending_source <- NULL
+      visNetworkProxy("graph") %>% visSelectNodes(id = NULL) # clear highlight
+    }
+  }, ignoreInit = TRUE)
+  
+  # ---------- Node: add / delete / edit (unchanged except label mapping) ----------
   observeEvent(input$ctx_add_node, {
     runjs("document.getElementById('ctx-menu').style.display='none';")
     nid <- ifelse(nrow(rv$nodes)==0, 1, max(rv$nodes$id)+1)
     default_h <- next_hypothesis(rv$nodes$hypothesis)
-    default_a <- "0"  # keep as string for input prefill
+    default_a <- "0"
     
     rv$nodes <- bind_rows(
       rv$nodes,
@@ -145,7 +186,7 @@ server <- function(input, output, session) {
     )
     visNetworkProxy("graph") %>% visUpdateNodes(with_node_label(rv$nodes))
     
-    # Open editor immediately with defaults
+    # Open node editor immediately
     rv$ctx$edit_node_id <- nid
     showModal(modalDialog(
       title = paste("Edit node", nid),
@@ -159,17 +200,19 @@ server <- function(input, output, session) {
     ))
   })
   
-  # Delete the right-clicked node
   observeEvent(input$ctx_del_node, {
     runjs("document.getElementById('ctx-menu').style.display='none';")
     nid <- rv$ctx$node
     if (!is.null(nid)) {
+      # Also remove incident edges
+      rv$edges <- dplyr::filter(rv$edges, !(from == nid | to == nid))
       rv$nodes <- dplyr::filter(rv$nodes, id != nid)
-      visNetworkProxy("graph") %>% visUpdateNodes(with_node_label(rv$nodes))
+      visNetworkProxy("graph") %>%
+        visUpdateNodes(with_node_label(rv$nodes)) %>%
+        visUpdateEdges(with_edge_label(rv$edges))
     }
   })
   
-  # Double-click existing node -> open editor with current values
   observeEvent(input$dbl_node, {
     nid <- input$dbl_node
     nd <- rv$nodes %>% dplyr::filter(id == nid) %>% dplyr::slice(1)
@@ -186,7 +229,6 @@ server <- function(input, output, session) {
     ))
   })
   
-  # Persist edits with validation
   observeEvent(input$save_node_edit, {
     id <- rv$ctx$edit_node_id
     if (is.null(id)) return(invisible(NULL))
@@ -194,11 +236,10 @@ server <- function(input, output, session) {
     h_new <- input$edit_node_hypo
     a_str <- input$edit_node_alpha
     
-    # Validate hypothesis uniqueness (case-sensitive), excluding the current node
+    # Uniqueness check (case-sensitive), excluding the current node
     existing <- rv$nodes$hypothesis[rv$nodes$id != id]
     if (is.null(h_new) || !nzchar(h_new)) {
-      showNotification("Hypothesis cannot be empty.", type = "error")
-      return(invisible(NULL))
+      showNotification("Hypothesis cannot be empty.", type = "error"); return(invisible(NULL))
     }
     if (h_new %in% existing) {
       showNotification(sprintf("Hypothesis '%s' already exists. Please choose a unique value.", h_new), type = "error")
@@ -212,16 +253,14 @@ server <- function(input, output, session) {
     }
     a_val <- as.numeric(a_str)
     
-    # global alpha sum constraint: sum of all alphas must be <= 1
+    # Global alpha sum constraint: sum(other) + a_val <= 1
     others_sum <- sum(rv$nodes$alpha[rv$nodes$id != id], na.rm = TRUE)
-    # small epsilon to avoid float noise when exactly 1
     if (others_sum + a_val > 1 + 1e-12) {
       msg <- sprintf("Total alpha would be %.6f (> 1). Please reduce this node's alpha.", others_sum + a_val)
       showNotification(msg, type = "error")
       return(invisible(NULL))
     }
     
-    # Apply updates
     rv$nodes <- rv$nodes %>%
       mutate(
         hypothesis = ifelse(id == !!id, h_new, hypothesis),
@@ -229,6 +268,100 @@ server <- function(input, output, session) {
       )
     removeModal()
     visNetworkProxy("graph") %>% visUpdateNodes(with_node_label(rv$nodes))
+  })
+  
+  # ---------- Create edge: right-click node -> Start edge from here ----------
+  observeEvent(input$ctx_edge_start, {
+    runjs("document.getElementById('ctx-menu').style.display='none';")
+    src <- rv$ctx$node
+    if (is.null(src)) return(invisible(NULL))
+    
+    # Enter PendingTarget
+    rv$pending_source <- src
+    # Highlight source node (select)
+    visNetworkProxy("graph") %>% visSelectNodes(id = src)
+    showNotification(sprintf("Select a target node for edge from %s", src), type = "message", duration = 2)
+  })
+  
+  # Cancel PendingTarget on ESC / blank click
+  observeEvent(input$cancel_pending, {
+    if (!is.null(rv$pending_source)) {
+      rv$pending_source <- NULL
+      visNetworkProxy("graph") %>% visSelectNodes(id = NULL)
+      showNotification("Canceled.", type = "default", duration = 1.5)
+    }
+  }, ignoreInit = TRUE)
+  
+  # Click handler: pick target or cancel if clicked blank while pending
+  observeEvent(input$click_event, {
+    if (is.null(rv$pending_source)) return(invisible(NULL))
+    nid <- input$click_event$node
+    
+    # Clicked blank -> cancel
+    if (is.null(nid)) {
+      rv$pending_source <- NULL
+      visNetworkProxy("graph") %>% visSelectNodes(id = NULL)
+      showNotification("Canceled.", type = "default", duration = 1.5)
+      return(invisible(NULL))
+    }
+    
+    src <- rv$pending_source
+    tgt <- nid
+    
+    # Self-loop not allowed
+    if (tgt == src) {
+      rv$pending_source <- NULL
+      visNetworkProxy("graph") %>% visSelectNodes(id = NULL)
+      showNotification("Self-loop is not allowed.", type = "error")
+      return(invisible(NULL))
+    }
+    
+    # Same-direction edge already exists?
+    exists_ab <- any(rv$edges$from == src & rv$edges$to == tgt)
+    if (exists_ab) {
+      rv$pending_source <- NULL
+      visNetworkProxy("graph") %>% visSelectNodes(id = NULL)
+      showNotification(sprintf("Edge %s → %s already exists.", src, tgt), type = "error")
+      return(invisible(NULL))
+    }
+    
+    # Open weight dialog (default 1)
+    rv$edge_new <- list(from = src, to = tgt)
+    showModal(modalDialog(
+      title = sprintf("New edge: %s \u2192 %s", src, tgt),
+      textInput("new_edge_weight", "Weight (0–1, no scientific notation)", value = "1"),
+      easyClose = FALSE,
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("save_new_edge", "Save", class = "btn-primary")
+      )
+    ))
+  }, ignoreInit = TRUE)
+  
+  # Save new edge (validate weight then create)
+  observeEvent(input$save_new_edge, {
+    req(rv$edge_new)
+    w_str <- input$new_edge_weight
+    if (!is_valid_weight_str(w_str)) {
+      showNotification("Weight must be a plain decimal in (0, 1], no scientific notation.", type = "error")
+      return(invisible(NULL))
+    }
+    w_val <- as.numeric(w_str)
+    
+    from <- rv$edge_new$from
+    to   <- rv$edge_new$to
+    # Create edge
+    eid <- ifelse(nrow(rv$edges) == 0, 1L, max(rv$edges$id) + 1L)
+    rv$edges <- bind_rows(rv$edges,
+                          tibble::tibble(id = eid, from = from, to = to, weight = w_val))
+    removeModal()
+    rv$edge_new <- NULL
+    
+    # Exit PendingTarget and clear highlight
+    rv$pending_source <- NULL
+    visNetworkProxy("graph") %>%
+      visUpdateEdges(with_edge_label(rv$edges)) %>%
+      visSelectNodes(id = NULL)
   })
 }
 
