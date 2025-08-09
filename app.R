@@ -27,7 +27,6 @@ ui <- fluidPage(
     actionButton("ctx_del_node",   "Delete this node",     class = "ctx-item"),
     actionButton("ctx_edge_start", "Start edge from here", class = "ctx-item"),
     actionButton("ctx_del_edge",   "Delete this edge",     class = "ctx-item")
-    
   )
 )
 
@@ -41,11 +40,7 @@ server <- function(input, output, session) {
                             format(alpha, trim = TRUE, scientific = FALSE)))
   }
   
-  # Edge label & shape:
-  # - Label is weight (no scientific notation)
-  # - For opposite directions between the same pair of nodes, draw opposite arcs
-  #   so A->B and B->A won't overlap. Add label background for readability.
-  # Replace your with_edge_label() with this version
+  # Edge label & shape with proper curve handling
   with_edge_label <- function(df) {
     if (nrow(df) == 0) return(df)
     
@@ -54,11 +49,7 @@ server <- function(input, output, session) {
     dup_counts <- ave(key, key, FUN = length)
     has_pair   <- dup_counts > 1  # TRUE when both directions exist
     
-    # Per-edge smooth config:
-    # - If reverse exists, use the SAME type ('curvedCW') for BOTH directions.
-    #   Because the curve is defined relative to the arrow direction, they land
-    #   on opposite sides in screen coordinates -> no overlap.
-    # - If no reverse, keep straight line for cleaner look.
+    # Per-edge smooth config
     smooth_list <- vector("list", nrow(df))
     for (i in seq_len(nrow(df))) {
       if (has_pair[i]) {
@@ -118,24 +109,52 @@ server <- function(input, output, session) {
   
   # ---------- Render network ----------
   output$graph <- renderVisNetwork({
-    visNetwork(with_node_label(rv$nodes),
-               with_edge_label(rv$edges)) %>%
-      visNodes(font = list(size = 16)) %>%
+    nodes_data <- with_node_label(rv$nodes)
+    
+    visNetwork(nodes_data, with_edge_label(rv$edges)) %>%
+      visNodes(
+        font = list(size = 16)
+        # Removed fixed property to allow free dragging
+      ) %>%
       visEdges(
-        # Let per-edge 'smooth' from with_edge_label() take effect
-        font = list(background = "white"),   # default safety; per-edge also sets it
+        font = list(background = "white"),
         hoverWidth = 3,
         selectionWidth = 3
       ) %>%
-      visPhysics(enabled = FALSE) %>%
-      visOptions(highlightNearest = FALSE, nodesIdSelection = TRUE) %>%
-      visInteraction(selectConnectedEdges = FALSE, hoverConnectedEdges = FALSE) %>% 
+      visPhysics(
+        enabled = FALSE,  # Completely disable physics
+        stabilization = FALSE  # Disable stabilization
+      ) %>%
+      visOptions(
+        highlightNearest = FALSE, 
+        nodesIdSelection = TRUE,
+        manipulation = list(enabled = FALSE)  # Disable built-in manipulation
+      ) %>%
+      visInteraction(
+        selectConnectedEdges = FALSE, 
+        hoverConnectedEdges = FALSE,
+        dragNodes = TRUE,  # Allow manual dragging
+        dragView = TRUE    # Allow panning
+      ) %>% 
       visEvents(
-        # Right-click anywhere -> show menu; also notify server (for potential cancel)
+        # Track node position changes when dragged
+        dragEnd = "
+          function(params) {
+            if (params.nodes && params.nodes.length > 0) {
+              var nodeId = params.nodes[0];
+              var pos = this.getPositions([nodeId])[nodeId];
+              Shiny.setInputValue('node_dragged', {
+                id: nodeId,
+                x: pos.x,
+                y: pos.y
+              }, {priority: 'event'});
+            }
+          }
+        ",
+        # Right-click anywhere -> show menu
         oncontext = "
           function(params) {
             params.event.preventDefault();
-            // always notify a right-click so server can cancel pending state
             Shiny.setInputValue('any_context', { }, {priority: 'event'});
         
             var pointer = params.pointer;
@@ -145,7 +164,6 @@ server <- function(input, output, session) {
               edgeId = this.getEdgeAt(pointer.DOM);
             }
             
-            // toggle menu items
             var showNode = !!nodeId;
             var showEdge = !showNode && !!edgeId;
             var showBlank = !showNode && !showEdge; 
@@ -161,17 +179,13 @@ server <- function(input, output, session) {
             menu.style.top  = params.event.pageY + 'px';
             menu.style.display = 'block';
         
-            // Toggle menu items:
-            // - blank: only 'Add node here'
-            // - node:  'Delete this node' + 'Start edge from here'
-            // - edge:  only 'Delete this edge'
             document.getElementById('ctx_add_node').style.display   = showBlank ? 'block' : 'none';
             document.getElementById('ctx_del_node').style.display   = showNode  ? 'block' : 'none';
             document.getElementById('ctx_edge_start').style.display = showNode  ? 'block' : 'none';
             document.getElementById('ctx_del_edge').style.display   = showEdge ? 'block' : 'none';
           }
         ",
-        # Double-click node/edge -> open node/edge editor
+        # Double-click node/edge -> open editor
         doubleClick = "
           function(params) {
             var eid = (params.edges && params.edges.length) ? params.edges[0] : null;
@@ -185,7 +199,7 @@ server <- function(input, output, session) {
             }
           }
         ",
-        # General click (to detect clicking blank or selecting a target node)
+        # General click
         click = "
           function(params) {
             var nid = (params.nodes && params.nodes.length) ? params.nodes[0] : null;
@@ -196,7 +210,17 @@ server <- function(input, output, session) {
       )
   })
   
-  # Global JS: hide context menu on any click & listen for ESC to cancel pending
+  # Update node position when dragged
+  observeEvent(input$node_dragged, {
+    node_id <- input$node_dragged$id
+    rv$nodes <- rv$nodes %>%
+      mutate(
+        x = ifelse(id == node_id, input$node_dragged$x, x),
+        y = ifelse(id == node_id, input$node_dragged$y, y)
+      )
+  })
+  
+  # Global JS: hide context menu on any click & listen for ESC
   observe({
     runjs("
       document.addEventListener('click', function(){
@@ -218,15 +242,15 @@ server <- function(input, output, session) {
     rv$ctx$canvas <- unlist(input$ctx_event$canvas)
   })
   
-  # Any right-click cancels PendingTarget first (then normal menu handling proceeds)
+  # Any right-click cancels PendingTarget first
   observeEvent(input$any_context, {
     if (!is.null(rv$pending_source)) {
       rv$pending_source <- NULL
-      visNetworkProxy("graph") %>% visSelectNodes(id = NULL) # clear highlight
+      visNetworkProxy("graph") %>% visSelectNodes(id = NULL)
     }
   }, ignoreInit = TRUE)
   
-  # ---------- Node: add / delete / edit (unchanged except label mapping) ----------
+  # ---------- Node: add / delete / edit ----------
   observeEvent(input$ctx_add_node, {
     runjs("document.getElementById('ctx-menu').style.display='none';")
     nid <- ifelse(nrow(rv$nodes)==0, 1, max(rv$nodes$id)+1)
@@ -237,14 +261,20 @@ server <- function(input, output, session) {
       rv$nodes,
       tibble::tibble(
         id = nid,
-        x  = rv$ctx$canvas[1], y = rv$ctx$canvas[2],
+        x  = rv$ctx$canvas[1], 
+        y = rv$ctx$canvas[2],
         hypothesis = default_h,
         alpha      = as.numeric(default_a)
       )
     )
-    visNetworkProxy("graph") %>% visUpdateNodes(with_node_label(rv$nodes))
     
-    # Open node editor immediately
+    # Use visUpdateNodes with moveNode to maintain positions
+    nodes_data <- with_node_label(rv$nodes)
+    visNetworkProxy("graph") %>% 
+      visUpdateNodes(nodes_data) %>%
+      visMoveNode(id = nid, x = rv$ctx$canvas[1], y = rv$ctx$canvas[2])
+    
+    # Open node editor
     rv$ctx$edit_node_id <- nid
     showModal(modalDialog(
       title = paste("Edit node", nid),
@@ -262,12 +292,21 @@ server <- function(input, output, session) {
     runjs("document.getElementById('ctx-menu').style.display='none';")
     nid <- rv$ctx$node
     if (!is.null(nid)) {
-      # Also remove incident edges
+      # Remove incident edges
       rv$edges <- dplyr::filter(rv$edges, !(from == nid | to == nid))
       rv$nodes <- dplyr::filter(rv$nodes, id != nid)
+      
+      nodes_data <- with_node_label(rv$nodes)
+      
       visNetworkProxy("graph") %>%
-        visUpdateNodes(with_node_label(rv$nodes)) %>%
+        visUpdateNodes(nodes_data) %>%
         visUpdateEdges(with_edge_label(rv$edges))
+      
+      # Restore positions for remaining nodes
+      for(i in seq_len(nrow(rv$nodes))) {
+        visNetworkProxy("graph") %>%
+          visMoveNode(id = rv$nodes$id[i], x = rv$nodes$x[i], y = rv$nodes$y[i])
+      }
     }
   })
   
@@ -294,24 +333,23 @@ server <- function(input, output, session) {
     h_new <- input$edit_node_hypo
     a_str <- input$edit_node_alpha
     
-    # Uniqueness check (case-sensitive), excluding the current node
+    # Validation checks
     existing <- rv$nodes$hypothesis[rv$nodes$id != id]
     if (is.null(h_new) || !nzchar(h_new)) {
-      showNotification("Hypothesis cannot be empty.", type = "error"); return(invisible(NULL))
+      showNotification("Hypothesis cannot be empty.", type = "error")
+      return(invisible(NULL))
     }
     if (h_new %in% existing) {
       showNotification(sprintf("Hypothesis '%s' already exists. Please choose a unique value.", h_new), type = "error")
       return(invisible(NULL))
     }
     
-    # Alpha validation (plain decimal in [0,1], no scientific notation)
     if (!is_valid_alpha_str(a_str)) {
       showNotification("Alpha must be a plain decimal within [0, 1], no scientific notation.", type = "error")
       return(invisible(NULL))
     }
     a_val <- as.numeric(a_str)
     
-    # Global alpha sum constraint: sum(other) + a_val <= 1
     others_sum <- sum(rv$nodes$alpha[rv$nodes$id != id], na.rm = TRUE)
     if (others_sum + a_val > 1 + 1e-12) {
       msg <- sprintf("Total alpha would be %.6f (> 1). Please reduce this node's alpha.", others_sum + a_val)
@@ -319,31 +357,37 @@ server <- function(input, output, session) {
       return(invisible(NULL))
     }
     
+    # Store current positions before update
+    current_x <- rv$nodes$x[rv$nodes$id == id]
+    current_y <- rv$nodes$y[rv$nodes$id == id]
+    
     rv$nodes <- rv$nodes %>%
       mutate(
         hypothesis = ifelse(id == !!id, h_new, hypothesis),
         alpha      = ifelse(id == !!id, a_val, alpha)
       )
     removeModal()
-    visNetworkProxy("graph") %>% visUpdateNodes(with_node_label(rv$nodes))
+    
+    nodes_data <- with_node_label(rv$nodes)
+    
+    visNetworkProxy("graph") %>% 
+      visUpdateNodes(nodes_data) %>%
+      visMoveNode(id = id, x = current_x, y = current_y)
   })
   
-  # ---------- Create edge: right-click node -> Start edge from here ----------
+  # ---------- Create edge ----------
   observeEvent(input$ctx_edge_start, {
     runjs("document.getElementById('ctx-menu').style.display='none';")
     src <- rv$ctx$node
     if (is.null(src)) return(invisible(NULL))
     
-    # Enter PendingTarget
     rv$pending_source <- src
-    # Highlight source node (select)
     visNetworkProxy("graph") %>% visSelectNodes(id = src)
     
     showNotification(sprintf("Select a target node for edge from %s", src),
                      type = "message", duration = 2)
   })
   
-  # Cancel PendingTarget on ESC / blank click
   observeEvent(input$cancel_pending, {
     if (!is.null(rv$pending_source)) {
       rv$pending_source <- NULL
@@ -352,12 +396,10 @@ server <- function(input, output, session) {
     }
   }, ignoreInit = TRUE)
   
-  # Click handler: pick target or cancel if clicked blank while pending
   observeEvent(input$click_event, {
     if (is.null(rv$pending_source)) return(invisible(NULL))
     nid <- input$click_event$node
     
-    # Clicked blank -> cancel
     if (is.null(nid)) {
       rv$pending_source <- NULL
       visNetworkProxy("graph") %>% visSelectNodes(id = NULL)
@@ -368,7 +410,6 @@ server <- function(input, output, session) {
     src <- rv$pending_source
     tgt <- nid
     
-    # Self-loop not allowed
     if (tgt == src) {
       rv$pending_source <- NULL
       visNetworkProxy("graph") %>% visSelectNodes(id = NULL)
@@ -376,7 +417,6 @@ server <- function(input, output, session) {
       return(invisible(NULL))
     }
     
-    # Same-direction edge already exists?
     exists_ab <- any(rv$edges$from == src & rv$edges$to == tgt)
     if (exists_ab) {
       rv$pending_source <- NULL
@@ -385,7 +425,6 @@ server <- function(input, output, session) {
       return(invisible(NULL))
     }
     
-    # Open weight dialog (default 1)
     rv$edge_new <- list(from = src, to = tgt)
     showModal(modalDialog(
       title = sprintf("New edge: %s \u2192 %s", src, tgt),
@@ -398,7 +437,6 @@ server <- function(input, output, session) {
     ))
   }, ignoreInit = TRUE)
   
-  # Save new edge (validate weight then create)
   observeEvent(input$save_new_edge, {
     req(rv$edge_new)
     w_str <- input$new_edge_weight
@@ -410,32 +448,49 @@ server <- function(input, output, session) {
     
     from <- rv$edge_new$from
     to   <- rv$edge_new$to
-    # Create edge
     eid <- ifelse(nrow(rv$edges) == 0, 1L, max(rv$edges$id) + 1L)
+    
+    # Store current positions before adding edge
+    positions <- rv$nodes %>% select(id, x, y)
+    
     rv$edges <- bind_rows(rv$edges,
                           tibble::tibble(id = eid, from = from, to = to, weight = w_val))
     removeModal()
     rv$edge_new <- NULL
     
-    # Exit PendingTarget and clear highlight
     rv$pending_source <- NULL
     visNetworkProxy("graph") %>%
       visUpdateEdges(with_edge_label(rv$edges)) %>%
       visSelectNodes(id = NULL)
+    
+    # Restore all node positions after edge update
+    for(i in seq_len(nrow(positions))) {
+      visNetworkProxy("graph") %>%
+        visMoveNode(id = positions$id[i], x = positions$x[i], y = positions$y[i])
+    }
   })
   
-  # Delete an edge
+  # Delete edge
   observeEvent(input$ctx_del_edge, {
     runjs("document.getElementById('ctx-menu').style.display='none';")
     eid <- rv$ctx$edge
     if (!is.null(eid) && nrow(rv$edges) > 0 && eid %in% rv$edges$id) {
+      # Store positions before deletion
+      positions <- rv$nodes %>% select(id, x, y)
+      
       rv$edges <- dplyr::filter(rv$edges, id != eid)
       visNetworkProxy("graph") %>%
         visUpdateEdges(with_edge_label(rv$edges))
+      
+      # Restore positions
+      for(i in seq_len(nrow(positions))) {
+        visNetworkProxy("graph") %>%
+          visMoveNode(id = positions$id[i], x = positions$x[i], y = positions$y[i])
+      }
     }
   })
   
-  # Edit an edge
+  # Edit edge
   observeEvent(input$dbl_edge, {
     if (!is.null(rv$pending_source)) return(invisible(NULL))
     
@@ -457,7 +512,6 @@ server <- function(input, output, session) {
     ))
   })
   
-  # Save edge
   observeEvent(input$save_edge_edit, {
     eid <- rv$ctx$edit_edge_id
     if (is.null(eid)) return(invisible(NULL))
@@ -469,6 +523,9 @@ server <- function(input, output, session) {
     }
     w_val <- as.numeric(w_str)
     
+    # Store positions before update
+    positions <- rv$nodes %>% select(id, x, y)
+    
     rv$edges <- rv$edges %>% mutate(
       weight = ifelse(id == !!eid, w_val, weight)
     )
@@ -476,6 +533,12 @@ server <- function(input, output, session) {
     
     visNetworkProxy("graph") %>%
       visUpdateEdges(with_edge_label(rv$edges))
+    
+    # Restore positions
+    for(i in seq_len(nrow(positions))) {
+      visNetworkProxy("graph") %>%
+        visMoveNode(id = positions$id[i], x = positions$x[i], y = positions$y[i])
+    }
   })
   
 }
