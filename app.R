@@ -111,7 +111,8 @@ server <- function(input, output, session) {
     edges = tibble::tibble(
       id = integer(), from = integer(), to = integer(), weight = numeric()
     ),
-    ctx = list(node = NULL, canvas = c(0,0), edit_node_id = NULL),
+    ctx = list(node = NULL, edge = NULL, canvas = c(0,0), 
+               edit_node_id = NULL, edit_edge_id = NULL),
     pending_source = NULL  # when not NULL, we're in PendingTarget(source)
   )
   
@@ -170,9 +171,14 @@ server <- function(input, output, session) {
             document.getElementById('ctx_del_edge').style.display   = showEdge ? 'block' : 'none';
           }
         ",
-        # Double-click node -> open node editor
+        # Double-click node/edge -> open node/edge editor
         doubleClick = "
           function(params) {
+            var eid = (params.edges && params.edges.length) ? params.edges[0] : null;
+            if(eid !== null) {
+              Shiny.setInputValue('dbl_edge', eid, {priority: 'event'});
+              return;
+            }
             var nid = (params.nodes && params.nodes.length) ? params.nodes[0] : null;
             if(nid !== null) {
               Shiny.setInputValue('dbl_node', nid, {priority: 'event'});
@@ -427,6 +433,49 @@ server <- function(input, output, session) {
       visNetworkProxy("graph") %>%
         visUpdateEdges(with_edge_label(rv$edges))
     }
+  })
+  
+  # Edit an edge
+  observeEvent(input$dbl_edge, {
+    if (!is.null(rv$pending_source)) return(invisible(NULL))
+    
+    eid <- input$dbl_edge
+    if (is.null(eid) || !nrow(rv$edges)) return(invisible(NULL))
+    ed <- rv$edges %>% dplyr::filter(id == eid) %>% dplyr::slice(1)
+    if (!nrow(ed)) return(invisible(NULL))
+    
+    rv$ctx$edit_edge_id <- eid
+    showModal(modalDialog(
+      title = sprintf("Edit edge: %s \u2192 %s", ed$from, ed$to),
+      textInput("edit_edge_weight", "Weight (0–1, no scientific notation)",
+                value = format(ed$weight, trim = TRUE, scientific = FALSE)),
+      easyClose = FALSE,
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("save_edge_edit", "Save", class = "btn-primary")
+      )
+    ))
+  })
+  
+  # Save edge
+  observeEvent(input$save_edge_edit, {
+    eid <- rv$ctx$edit_edge_id
+    if (is.null(eid)) return(invisible(NULL))
+    
+    w_str <- input$edit_edge_weight
+    if (!is_valid_weight_str(w_str)) {
+      showNotification("Weight must be a plain decimal in (0, 1], no scientific notation.", type = "error")
+      return(invisible(NULL))
+    }
+    w_val <- as.numeric(w_str)
+    
+    rv$edges <- rv$edges %>% mutate(
+      weight = ifelse(id == !!eid, w_val, weight)
+    )
+    removeModal()
+    
+    visNetworkProxy("graph") %>%
+      visUpdateEdges(with_edge_label(rv$edges))
   })
   
 }
