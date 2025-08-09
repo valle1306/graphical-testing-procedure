@@ -173,8 +173,7 @@ server <- function(input, output, session) {
         stabilization = FALSE  # Disable stabilization
       ) %>%
       visOptions(
-        highlightNearest = FALSE, 
-        nodesIdSelection = TRUE,
+        highlightNearest = FALSE,
         manipulation = list(enabled = FALSE)  # Disable built-in manipulation
       ) %>%
       visInteraction(
