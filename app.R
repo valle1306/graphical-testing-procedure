@@ -4,6 +4,8 @@ library(visNetwork)
 library(shinyjs)
 library(dplyr)
 library(DT)
+library(TrialSimulator)
+library(jsonlite)
 
 ui <- fluidPage(
   useShinyjs(),
@@ -61,6 +63,14 @@ ui <- fluidPage(
                     actionLink("toggle_panel", label = "Hide data panel")
                 ),
                 
+                # Add control buttons for TrialSimulator
+                div(style = "margin-bottom: 10px;",
+                    actionButton("run_ts", "Create Test Object", class = "btn btn-warning"),
+                    actionButton("reject_ts", "Reject Selected Hypothesis", class = "btn btn-warning"), 
+                    actionButton("edit_mode", "Edit Mode", class = "btn btn-info")
+                ),
+                selectInput("graph_selected", "Select hypothesis to reject", choices = NULL),
+                
                 fluidRow(
                   # ----- Left column: data panel (read-only tables) -----
                   column(
@@ -74,7 +84,7 @@ ui <- fluidPage(
                   # ----- Right column: graph canvas -----
                   column(
                     width = 9, id = "right-col", 
-                    visNetworkOutput("graph", height = "640px"),
+                    uiOutput("graph_ui"),
                     # context menu stays here
                     tags$div(
                       id = "ctx-menu",
@@ -84,7 +94,18 @@ ui <- fluidPage(
                       actionButton("ctx_del_edge",   "Delete this edge",     class = "ctx-item")
                     )
                   )
+                  
+                ),
+                # ___________Test Results Section____________
+                fluidRow(
+                  column(12,
+                         tags$hr(),
+                         h4(tags$b("Test Results"), style = "color:purple"),
+                         verbatimTextOutput("ts_log"),
+                         dataTableOutput("ts_result_table")
+                  )
                 )
+                
               )
   )
 )
@@ -103,9 +124,32 @@ server <- function(input, output, session) {
   
   # Node label: hypothesis on line 1, alpha on line 2 (no scientific notation)
   with_node_label <- function(df) {
-    df %>%
+    result <- df %>%
       mutate(label = paste0(hypothesis, "\n",
                             format(alpha, trim = TRUE, scientific = FALSE)))
+    
+    # Add default styling
+    result$color <- "lightblue"
+    result$font.color <- "black"
+    
+    # If we have test results, update colors for rejected hypotheses
+    # If we have test results, update colors for rejected hypotheses
+    if (!is.null(rv$ts_summary)) {
+      cat("Checking for rejected hypotheses...\n")
+      print(names(rv$ts_summary))
+      print(rv$ts_summary)
+      
+      if ("rejected" %in% names(rv$ts_summary)) {
+        rejected_hyps <- rv$ts_summary$hypothesis[rv$ts_summary$rejected == TRUE]
+        cat("Rejected hypotheses:", paste(rejected_hyps, collapse = ", "), "\n")
+        result$color <- ifelse(result$hypothesis %in% rejected_hyps, "red", "lightblue")
+        result$font.color <- ifelse(result$hypothesis %in% rejected_hyps, "white", "black")
+      } else {
+        cat("No 'rejected' column found in ts_summary\n")
+      }
+    }
+    
+    result
   }
   
   # Edge label & shape with proper curve handling
@@ -172,11 +216,43 @@ server <- function(input, output, session) {
     ),
     ctx = list(node = NULL, edge = NULL, canvas = c(0,0), 
                edit_node_id = NULL, edit_edge_id = NULL),
-    pending_source = NULL  # when not NULL, we're in PendingTarget(source)
+    pending_source = NULL, # when not NULL, we're in PendingTarget(source)
+    # Add these new TrialSimulator variables:
+    ts_object = NULL,
+    ts_log = "",
+    ts_summary = NULL,
+    alpha_spending = character(0),
+    planned_max_info = numeric(0),
+    transition = matrix(0, 0, 0)
   )
   
   tables_tick <- reactiveVal(0)
   bump_tables <- function() tables_tick(tables_tick() + 1)
+  
+  # Helper function for TrialSimulator
+  create_trialsimulator_objects <- function() {
+    rv$alpha_spending <- rep("asOF", nrow(rv$nodes))
+    rv$planned_max_info <- rep(100, nrow(rv$nodes))
+    
+    # Create transition matrix
+    n <- nrow(rv$nodes)
+    mat <- matrix(0, n, n)
+    if (n > 0) {
+      rownames(mat) <- colnames(mat) <- rv$nodes$hypothesis
+      
+      if (nrow(rv$edges) > 0) {
+        for (i in seq_len(nrow(rv$edges))) {
+          from_idx <- which(rv$nodes$id == rv$edges$from[i])
+          to_idx <- which(rv$nodes$id == rv$edges$to[i])
+          if (length(from_idx) == 1 && length(to_idx) == 1) {
+            mat[from_idx, to_idx] <- rv$edges$weight[i]
+          }
+        }
+      }
+    }
+    rv$transition <- mat
+    invisible(NULL)
+  }
   
   # ---------- Render network ----------
   output$graph <- renderVisNetwork({
@@ -278,6 +354,19 @@ server <- function(input, output, session) {
           }
         "
       )
+  })
+  
+  output$graph_ui <- renderUI({
+    if (is.null(rv$ts_object)) {
+      visNetworkOutput("graph", height = "640px")
+    } else {
+      plotOutput("ts_plot", height = "640px")
+    }
+  })
+  
+  output$ts_plot <- renderPlot({
+    req(rv$ts_object)
+    print(rv$ts_object)
   })
   
   # Keep the visNetwork output active even when the tab is hidden
@@ -405,6 +494,7 @@ server <- function(input, output, session) {
     
     rv$nodes <- dplyr::bind_rows(rv$nodes, base_row)
     bump_tables()
+    updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis) 
     
     new_node <- with_node_label(base_row) |> 
       as.data.frame(stringsAsFactors = FALSE)
@@ -450,6 +540,7 @@ server <- function(input, output, session) {
         visNetworkProxy("graph") %>%
           visMoveNode(id = rv$nodes$id[i], x = rv$nodes$x[i], y = rv$nodes$y[i])
       }
+      updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
     }
   })
   
@@ -519,6 +610,7 @@ server <- function(input, output, session) {
       visUpdateNodes(nodes_data) %>%
       visMoveNode(id = id, x = current_x, y = current_y)
     bump_tables()
+    updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
   })
   
   # ---------- Create edge ----------
@@ -692,6 +784,91 @@ server <- function(input, output, session) {
       visNetworkProxy("graph") %>%
         visMoveNode(id = positions$id[i], x = positions$x[i], y = positions$y[i])
     }
+    
+  })
+  # TrialSimulator integration
+  observeEvent(input$run_ts, {
+    req(nrow(rv$nodes) > 0)
+    create_trialsimulator_objects()
+    tryCatch({
+      rv$ts_object <- NULL
+      log_lines <- NULL
+      log_message <- function(m) { log_lines <<- c(log_lines, conditionMessage(m)); invokeRestart("muffleMessage") }
+      withCallingHandlers(
+        {
+          rv$ts_object <- GraphicalTesting$new(
+            alpha = rv$nodes$alpha,
+            transition = rv$transition,
+            alpha_spending = rv$alpha_spending,
+            planned_max_info = rv$planned_max_info,
+            hypotheses = rv$nodes$hypothesis,
+            silent = FALSE
+          )
+        }, 
+        message = log_message
+      )
+      rv$ts_log <- paste(log_lines, collapse = "\n")
+      rv$ts_summary <- rv$ts_object$get_current_testing_results()
+      
+      # Debug: print the structure of ts_summary
+      cat("ts_summary structure:\n")
+      print(str(rv$ts_summary))
+      cat("ts_summary content:\n")
+      print(rv$ts_summary)
+      cat("Column names:\n")
+      print(names(rv$ts_summary))
+      
+      updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
+    }, error = function(e) {
+      rv$ts_log <- paste("Error during TrialSimulator setup:", e$message)
+      rv$ts_object <- NULL
+      rv$ts_summary <- NULL
+    })
+  })
+  
+  observeEvent(input$reject_ts, {
+    req(rv$ts_object, input$graph_selected)
+    tryCatch({
+      log_lines <- NULL
+      log_message <- function(m) { log_lines <<- c(log_lines, conditionMessage(m)); invokeRestart("muffleMessage") }
+      withCallingHandlers(
+        rv$ts_object$reject_a_hypothesis(input$graph_selected),
+        message = log_message
+      )
+      rv$ts_log <- paste(log_lines, collapse = "\n")
+      rv$ts_summary <- rv$ts_object$get_current_testing_results()
+      output$ts_plot <- renderPlot({ print(rv$ts_object) })  # <- ADD THIS LINE
+      
+      # Update selectInput to only show non-rejected hypotheses
+      if (!is.null(rv$ts_summary) && "rejected" %in% names(rv$ts_summary)) {
+        active_hyps <- rv$ts_summary$hypothesis[rv$ts_summary$rejected == FALSE]
+        updateSelectInput(session, "graph_selected", choices = active_hyps)
+      }
+      
+    }, error = function(e) {
+      rv$ts_log <- paste("Reject error:", e$message)
+    })
+  })
+  
+  observeEvent(input$edit_mode, {
+    rv$ts_object <- NULL
+    rv$ts_log <- ""
+    rv$ts_summary <- NULL
+    
+    # Reset graph colors and update selectInput
+    nodes_data <- with_node_label(rv$nodes)
+    visNetworkProxy("graph") %>% visUpdateNodes(nodes_data)
+    updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
+  })
+  
+  # Add output renderers
+  output$ts_result_table <- renderDataTable({
+    req(rv$ts_summary)
+    rv$ts_summary
+  })
+  
+  output$ts_log <- renderText({
+    rv$ts_log
   })
   
 }
