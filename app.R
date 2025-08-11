@@ -1,4 +1,3 @@
-# app.R
 library(shiny)
 library(visNetwork)
 library(shinyjs)
@@ -7,9 +6,112 @@ library(DT)
 library(TrialSimulator)
 library(jsonlite)
 
-ui <- fluidPage(
-  useShinyjs(),
-  tags$head(tags$style(HTML("
+ui <- navbarPage(
+  "My Application",
+  
+  # ----------- HOME -----------
+  tabPanel(
+    "Home",
+    fluidPage(
+      tags$head(
+        tags$style(HTML("
+        .feature-card {
+          border-radius: 12px;
+          padding: 20px;
+          margin-bottom: 20px;
+          background-color: #f8f9fa;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .feature-title {
+          font-size: 20px;
+          font-weight: bold;
+          margin-bottom: 8px;
+          color: #007bff;
+        }
+        .feature-text {
+          font-size: 16px;
+          color: #444;
+        }
+      "))
+      ),
+      # Title and Image
+      fluidRow(
+        column(12, align = "center",
+               tags$img(src = "graphical_testing_image.png", height = "180px"),
+               tags$h2("Graphical Approach for Multiple Testing Procedure"),
+               tags$p("An interactive tool for visualizing and designing multiple testing strategies in clinical trials.")
+        )
+      ),
+      br(),
+      # New Introduction Section
+      fluidRow(
+        column(12,
+               tags$div(style = "padding: 20px;",
+                        tags$h4("🧬 Introduction"),
+                        tags$p("With the rise of innovative trial designs—such as adaptive and platform studies—clinical researchers and statisticians face growing complexity in managing multiple hypotheses while preserving statistical rigor. Traditional fixed-sequence procedures often fall short in these evolving contexts."),
+                        tags$p("Graphical Approach for Multiple Testing Procedure is a visual and interactive tool built to meet this challenge. Grounded in the graphical methodology pioneered by Bretz et al., it offers a transparent way to design, test, and dynamically redistribute alpha levels across networks of hypotheses."),
+                        tags$p("This app was developed in collaboration with methodologists, researchers, and developers committed to making advanced statistical design accessible, reproducible, and human-centered. While still evolving, it is built on the open-source TrialSimulator R package and maintained by a volunteer team.")
+               )
+        )
+      ),
+      # Key Features Cards
+      fluidRow(
+        column(4,
+               div(class = "feature-card",
+                   div(class = "feature-title", "📊 Visualize Hypotheses"),
+                   div(class = "feature-text", "Draw, connect, and edit null hypotheses with intuitive graphs.")
+               )
+        ),
+        column(4,
+               div(class = "feature-card",
+                   div(class = "feature-title", "🧮 Allocate Alpha Dynamically"),
+                   div(class = "feature-text", "Create and run testing procedures using dynamic α-spending rules.")
+               )
+        ),
+        column(4,
+               div(class = "feature-card",
+                   div(class = "feature-title", "📁 Import & Export"),
+                   div(class = "feature-text", "Upload saved JSON graphs or export your design to share with collaborators.")
+               )
+        )
+      ),
+      # References
+      fluidRow(
+        column(12,
+               tags$div(style = "padding: 20px;",
+                        tags$h4("📘 References"),
+                        tags$ul(
+                          tags$li(
+                            tags$span("Bretz F., Maurer W., Brannath W., Posch M. (2009). "),
+                            tags$i("A graphical approach to sequentially rejective multiple testing procedures."),
+                            " Stat Med 28(4): 586–604. ",
+                            tags$a(href = "https://doi.org/10.1002/sim.3495", "https://doi.org/10.1002/sim.3495")
+                          ),
+                          tags$li(
+                            tags$span("TrialSimulator R package: "),
+                            tags$a(href = "https://zhangh12.github.io/TrialSimulator/", 
+                                   "zhangh12.github.io/TrialSimulator/")
+                          )
+                        )
+               )
+        )
+      ),
+      # Footer
+      fluidRow(
+        column(12, align = "center",
+               tags$hr(),
+               tags$p("Developed using the TrialSimulator package for modular and reproducible graphical testing design.")
+        )
+      )
+    )
+  ),
+  
+  # ----------- DESIGN TAB (Modern functionality) -----------
+  tabPanel(
+    "Design",
+    fluidPage(
+      useShinyjs(),
+      tags$head(tags$style(HTML("
     #ctx-menu {
       position: fixed; z-index: 10000; display: none;
       background: #fff; border: 1px solid #ddd; border-radius: 6px;
@@ -21,147 +123,92 @@ ui <- fluidPage(
     }
     #ctx-menu .ctx-item:hover { background: #f5f5f5; }
   "))),
-  titlePanel("Directed Graph Designer"),
-  
-  tabsetPanel(id = "main_tabs",
-              # --- Tab 1: Landing (placeholder content for now) ---
-              tabPanel(
-                title = "Landing",
-                fluidRow(
-                  column(
-                    width = 12,
-                    
-                    h3("Welcome"),
-                    p("This app lets you interactively design a directed graph for statistical workflows."),
-                    p("Use the 'Design' tab to add/delete nodes, create directed edges, and edit attributes."),
-                    tags$hr(),
-                    p(em("Note: This landing content is a placeholder and can be refined later.")),
-                    tags$hr(), 
-                    
-                    # --- Quick Guide ---
-                    h3("Quick Guide"),
-                    tags$ul(
-                      tags$li("Right-click empty canvas → Add node (default hypothesis: H1, H2, ..., alpha = 0)."),
-                      tags$li("Double-click node → Edit (hypothesis unique, alpha sum ≤ 1, 0 ≤ alpha ≤ 1, no scientific notation)."),
-                      tags$li("Right-click node → Delete."),
-                      tags$li("Right-click source node → Start edge → Click target node → Set weight (0 < weight ≤ 1, default 1)."),
-                      tags$li("Double-click edge → Edit weight."),
-                      tags$li("Right-click edge → Delete."),
-                      tags$li("Drag nodes to adjust layout; edges follow."),
-                      tags$li("Left panel mirrors nodes/edges in real time; Hide/Show to maximize canvas.")
-                    )
-                  )
-                )
-              ),
-              
-              # --- Tab 2: Design (your existing graph UI moved here) ---
-              tabPanel(
-                title = "Design",
-                
-                # Toggle button (small link above the row)
-                div(style = "margin-bottom: 8px;",
-                    actionLink("toggle_panel", label = "Hide data panel")
-                ),
-                
-                # Add control buttons for TrialSimulator
-                div(style = "margin-bottom: 10px;",
-                    actionButton("run_ts", "Create Test Object", class = "btn btn-warning"),
-                    actionButton("reject_ts", "Reject Selected Hypothesis", class = "btn btn-warning"), 
-                    actionButton("edit_mode", "Edit Mode", class = "btn btn-info")
-                ),
-                selectInput("graph_selected", "Select hypothesis to reject", choices = NULL),
-                
-                fluidRow(
-                  # ----- Left column: data panel (read-only tables) -----
-                  column(
-                    width = 3, id = "left-col", 
-                    h4("Nodes"),
-                    DTOutput("nodes_table"),
-                    tags$hr(),
-                    h4("Edges"),
-                    DTOutput("edges_table")
-                  ),
-                  # ----- Right column: graph canvas -----
-                  column(
-                    width = 9, id = "right-col", 
-                    uiOutput("graph_ui"),
-                    # context menu stays here
-                    tags$div(
-                      id = "ctx-menu",
-                      actionButton("ctx_add_node",   "Add node here",        class = "ctx-item"),
-                      actionButton("ctx_del_node",   "Delete this node",     class = "ctx-item"),
-                      actionButton("ctx_edge_start", "Start edge from here", class = "ctx-item"),
-                      actionButton("ctx_del_edge",   "Delete this edge",     class = "ctx-item")
-                    )
-                  )
-                  
-                ),
-                # ___________Test Results Section____________
-                fluidRow(
-                  column(12,
-                         tags$hr(),
-                         h4(tags$b("Test Results"), style = "color:purple"),
-                         verbatimTextOutput("ts_log"),
-                         dataTableOutput("ts_result_table")
-                  )
-                )
-                
-              )
+      titlePanel("Directed Graph Designer"),
+      
+      # Toggle button (small link above the row)
+      div(style = "margin-bottom: 8px;",
+          actionLink("toggle_panel", label = "Hide data panel")
+      ),
+      
+      # Controls for TrialSimulator
+      div(style = "margin-bottom: 10px;",
+          actionButton("run_ts", "Create Test Object", class = "btn btn-warning"),
+          actionButton("reject_ts", "Reject Selected Hypothesis", class = "btn btn-warning"),
+          actionButton("edit_mode", "Edit Mode", class = "btn btn-info")
+      ),
+      selectInput("graph_selected", "Select hypothesis to reject", choices = NULL),
+      
+      fluidRow(
+        # ----- Left column: data panel (read-only tables + import/export) -----
+        column(
+          width = 3, id = "left-col", 
+          h4("Nodes"),
+          DTOutput("nodes_table"),
+          tags$hr(),
+          h4("Edges"),
+          DTOutput("edges_table"),
+          tags$hr(),
+          fileInput("upload_graph", "Import JSON graph"),
+          downloadButton("download_graph", "Export graph")
+        ),
+        # ----- Right column: graph canvas -----
+        column(
+          width = 9, id = "right-col", 
+          uiOutput("graph_ui"),
+          tags$div(
+            id = "ctx-menu",
+            actionButton("ctx_add_node",   "Add node here",        class = "ctx-item"),
+            actionButton("ctx_del_node",   "Delete this node",     class = "ctx-item"),
+            actionButton("ctx_edge_start", "Start edge from here", class = "ctx-item"),
+            actionButton("ctx_del_edge",   "Delete this edge",     class = "ctx-item")
+          )
+        )
+      ),
+      # ------------Test Results Section-------------
+      fluidRow(
+        column(12,
+               tags$hr(),
+               h4(tags$b("Test Results"), style = "color:purple"),
+               verbatimTextOutput("ts_log"),
+               dataTableOutput("ts_result_table")
+        )
+      )
+    )
   )
 )
 
 server <- function(input, output, session) {
   
-  # ---------- Helpers ----------
   focus_and_select <- function(input_id) {
     shinyjs::runjs(sprintf("
     $('#shiny-modal').one('shown.bs.modal', function(){
       var el = document.getElementById('%s');
       if (el) { el.focus(); el.select(); }
-    });
-  ", input_id))
+    });", input_id))
   }
   
-  # Node label: hypothesis on line 1, alpha on line 2 (no scientific notation)
   with_node_label <- function(df) {
     result <- df %>%
       mutate(label = paste0(hypothesis, "\n",
                             format(alpha, trim = TRUE, scientific = FALSE)))
-    
     # Add default styling
     result$color <- "lightblue"
     result$font.color <- "black"
-    
-    # If we have test results, update colors for rejected hypotheses
-    # If we have test results, update colors for rejected hypotheses
     if (!is.null(rv$ts_summary)) {
-      cat("Checking for rejected hypotheses...\n")
-      print(names(rv$ts_summary))
-      print(rv$ts_summary)
-      
       if ("rejected" %in% names(rv$ts_summary)) {
         rejected_hyps <- rv$ts_summary$hypothesis[rv$ts_summary$rejected == TRUE]
-        cat("Rejected hypotheses:", paste(rejected_hyps, collapse = ", "), "\n")
         result$color <- ifelse(result$hypothesis %in% rejected_hyps, "red", "lightblue")
         result$font.color <- ifelse(result$hypothesis %in% rejected_hyps, "white", "black")
-      } else {
-        cat("No 'rejected' column found in ts_summary\n")
       }
     }
-    
     result
   }
   
-  # Edge label & shape with proper curve handling
   with_edge_label <- function(df) {
     if (nrow(df) == 0) return(df)
-    
-    # undirected pair key to detect reverse edges
     key        <- paste(pmin(df$from, df$to), pmax(df$from, df$to), sep = "_")
     dup_counts <- ave(key, key, FUN = length)
-    has_pair   <- dup_counts > 1  # TRUE when both directions exist
-    
-    # Per-edge smooth config
+    has_pair   <- dup_counts > 1
     smooth_list <- vector("list", nrow(df))
     for (i in seq_len(nrow(df))) {
       if (has_pair[i]) {
@@ -170,7 +217,6 @@ server <- function(input, output, session) {
         smooth_list[[i]] <- list(enabled = FALSE)
       }
     }
-    
     out <- df
     out$label <- format(df$weight, trim = TRUE, scientific = FALSE)
     out$arrows <- "to"
@@ -181,20 +227,17 @@ server <- function(input, output, session) {
     out
   }
   
-  # Next available hypothesis name: H1, H2, ...
   next_hypothesis <- function(existing) {
     k <- 1L
     while (paste0("H", k) %in% existing) k <- k + 1L
     paste0("H", k)
   }
   
-  # Alpha string validator: plain decimal in [0,1], no scientific notation
   is_valid_alpha_str <- function(s) {
     if (is.null(s) || !is.character(s) || length(s) != 1) return(FALSE)
     grepl("^(0(\\.\\d+)?|1(\\.0+)?)$", s)
   }
   
-  # Weight string validator: plain decimal in (0,1], no scientific notation, not 0
   is_valid_weight_str <- function(s) {
     if (is.null(s) || !is.character(s) || length(s) != 1) return(FALSE)
     grepl("^(0\\.[0-9]+|1(\\.0+)?)$", s)
@@ -202,7 +245,6 @@ server <- function(input, output, session) {
   
   cancel_pending_js <- "Shiny.setInputValue('cancel_pending', Math.random(), {priority:'event'});"
   
-  # ---------- State ----------
   rv <- reactiveValues(
     nodes = tibble::tibble(
       id    = 1:3,
@@ -216,8 +258,7 @@ server <- function(input, output, session) {
     ),
     ctx = list(node = NULL, edge = NULL, canvas = c(0,0), 
                edit_node_id = NULL, edit_edge_id = NULL),
-    pending_source = NULL, # when not NULL, we're in PendingTarget(source)
-    # Add these new TrialSimulator variables:
+    pending_source = NULL,
     ts_object = NULL,
     ts_log = "",
     ts_summary = NULL,
@@ -229,17 +270,13 @@ server <- function(input, output, session) {
   tables_tick <- reactiveVal(0)
   bump_tables <- function() tables_tick(tables_tick() + 1)
   
-  # Helper function for TrialSimulator
   create_trialsimulator_objects <- function() {
     rv$alpha_spending <- rep("asOF", nrow(rv$nodes))
     rv$planned_max_info <- rep(100, nrow(rv$nodes))
-    
-    # Create transition matrix
     n <- nrow(rv$nodes)
     mat <- matrix(0, n, n)
     if (n > 0) {
       rownames(mat) <- colnames(mat) <- rv$nodes$hypothesis
-      
       if (nrow(rv$edges) > 0) {
         for (i in seq_len(nrow(rv$edges))) {
           from_idx <- which(rv$nodes$id == rv$edges$from[i])
@@ -254,14 +291,11 @@ server <- function(input, output, session) {
     invisible(NULL)
   }
   
-  # ---------- Render network ----------
   output$graph <- renderVisNetwork({
     nodes_data <- with_node_label(rv$nodes)
-    
     visNetwork(nodes_data, with_edge_label(rv$edges)) %>%
       visNodes(
         font = list(size = 16)
-        # Removed fixed property to allow free dragging
       ) %>%
       visEdges(
         font = list(background = "white"),
@@ -269,21 +303,20 @@ server <- function(input, output, session) {
         selectionWidth = 3
       ) %>%
       visPhysics(
-        enabled = FALSE,  # Completely disable physics
-        stabilization = FALSE  # Disable stabilization
+        enabled = FALSE,
+        stabilization = FALSE
       ) %>%
       visOptions(
         highlightNearest = FALSE,
-        manipulation = list(enabled = FALSE)  # Disable built-in manipulation
+        manipulation = list(enabled = FALSE)
       ) %>%
       visInteraction(
         selectConnectedEdges = FALSE, 
         hoverConnectedEdges = FALSE,
-        dragNodes = TRUE,  # Allow manual dragging
-        dragView = TRUE    # Allow panning
+        dragNodes = TRUE,
+        dragView = TRUE
       ) %>% 
       visEvents(
-        # Track node position changes when dragged
         dragEnd = "
           function(params) {
             if (params.nodes && params.nodes.length > 0) {
@@ -297,7 +330,6 @@ server <- function(input, output, session) {
             }
           }
         ",
-        # Right-click anywhere -> show menu
         oncontext = "
           function(params) {
             params.event.preventDefault();
@@ -331,7 +363,6 @@ server <- function(input, output, session) {
             document.getElementById('ctx_del_edge').style.display   = showEdge ? 'block' : 'none';
           }
         ",
-        # Double-click node/edge -> open editor
         doubleClick = "
           function(params) {
             var eid = (params.edges && params.edges.length) ? params.edges[0] : null;
@@ -345,7 +376,6 @@ server <- function(input, output, session) {
             }
           }
         ",
-        # General click
         click = "
           function(params) {
             var nid = (params.nodes && params.nodes.length) ? params.nodes[0] : null;
@@ -369,15 +399,12 @@ server <- function(input, output, session) {
     print(rv$ts_object)
   })
   
-  # Keep the visNetwork output active even when the tab is hidden
   outputOptions(output, "graph", suspendWhenHidden = FALSE)
   
-  # --- Collapse/expand left data panel (Design page) ---
   panel_visible <- reactiveVal(TRUE)
   
   observeEvent(input$toggle_panel, {
     if (isTRUE(panel_visible())) {
-      # Hide left panel, make right panel full width
       shinyjs::hide("left-col")
       runjs("
       var rc = document.getElementById('right-col');
@@ -386,7 +413,6 @@ server <- function(input, output, session) {
       updateActionButton(session, "toggle_panel", label = "Show data panel")
       panel_visible(FALSE)
     } else {
-      # Show left panel, restore 3/9 grid
       shinyjs::show("left-col")
       runjs("
       var rc = document.getElementById('right-col');
@@ -397,9 +423,6 @@ server <- function(input, output, session) {
     }
   })
   
-  # ---- Read-only tables for Design page ----
-  
-  # Nodes table: hypothesis, alpha; no search/sort/selection/edit
   output$nodes_table <- renderDT({
     tables_tick()
     isolate({
@@ -417,9 +440,8 @@ server <- function(input, output, session) {
     })
   })
   
-  # Edges table: from, to (as hypothesis), weight; search enabled, no sort/selection/edit
   output$edges_table <- renderDT({
-    tables_tick()  # ← 同上
+    tables_tick()
     isolate({
       if (!nrow(rv$edges)) {
         return(datatable(data.frame(from=character(), to=character(), weight=numeric()),
@@ -437,7 +459,6 @@ server <- function(input, output, session) {
     })
   })
   
-  # Update node position when dragged
   observeEvent(input$node_dragged, {
     node_id <- input$node_dragged$id
     rv$nodes <- rv$nodes %>%
@@ -447,7 +468,6 @@ server <- function(input, output, session) {
       )
   })
   
-  # Global JS: hide context menu on any click & listen for ESC
   observe({
     runjs("
       document.addEventListener('click', function(){
@@ -462,14 +482,12 @@ server <- function(input, output, session) {
     ")
   })
   
-  # Right-click context target
   observeEvent(input$ctx_event, {
     rv$ctx$node   <- input$ctx_event$node
     rv$ctx$edge   <- input$ctx_event$edge
     rv$ctx$canvas <- unlist(input$ctx_event$canvas)
   })
   
-  # Any right-click cancels PendingTarget first
   observeEvent(input$any_context, {
     if (!is.null(rv$pending_source)) {
       rv$pending_source <- NULL
@@ -483,7 +501,6 @@ server <- function(input, output, session) {
     nid <- ifelse(nrow(rv$nodes)==0, 1, max(rv$nodes$id)+1)
     default_h <- next_hypothesis(rv$nodes$hypothesis)
     default_a <- "0"
-    
     base_row <- tibble::tibble(
       id = nid,
       x  = rv$ctx$canvas[1],
@@ -491,19 +508,14 @@ server <- function(input, output, session) {
       hypothesis = default_h,
       alpha      = as.numeric(default_a)
     )
-    
     rv$nodes <- dplyr::bind_rows(rv$nodes, base_row)
     bump_tables()
-    updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis) 
-    
+    updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
     new_node <- with_node_label(base_row) |> 
       as.data.frame(stringsAsFactors = FALSE)
-    
     session$onFlushed(function() {
       visNetworkProxy("graph") %>% visUpdateNodes(new_node)
     }, once = TRUE)
-    
-    # Open node editor immediately (as in original)
     rv$ctx$edit_node_id <- nid
     showModal(modalDialog(
       title = paste("Edit node", nid),
@@ -516,26 +528,19 @@ server <- function(input, output, session) {
       )
     ))
     focus_and_select("edit_node_alpha")
-    
   })
   
   observeEvent(input$ctx_del_node, {
     runjs("document.getElementById('ctx-menu').style.display='none';")
     nid <- rv$ctx$node
     if (!is.null(nid)) {
-      # Remove incident edges
       rv$edges <- dplyr::filter(rv$edges, !(from == nid | to == nid))
       rv$nodes <- dplyr::filter(rv$nodes, id != nid)
-      
       nodes_data <- with_node_label(rv$nodes)
-      
       visNetworkProxy("graph") %>%
         visUpdateNodes(nodes_data) %>%
         visUpdateEdges(with_edge_label(rv$edges))
-      
       bump_tables()
-      
-      # Restore positions for remaining nodes
       for(i in seq_len(nrow(rv$nodes))) {
         visNetworkProxy("graph") %>%
           visMoveNode(id = rv$nodes$id[i], x = rv$nodes$x[i], y = rv$nodes$y[i])
@@ -559,17 +564,13 @@ server <- function(input, output, session) {
       )
     ))
     focus_and_select("edit_node_alpha")
-    
   })
   
   observeEvent(input$save_node_edit, {
     id <- rv$ctx$edit_node_id
     if (is.null(id)) return(invisible(NULL))
-    
     h_new <- input$edit_node_hypo
     a_str <- input$edit_node_alpha
-    
-    # Validation checks
     existing <- rv$nodes$hypothesis[rv$nodes$id != id]
     if (is.null(h_new) || !nzchar(h_new)) {
       showNotification("Hypothesis cannot be empty.", type = "error")
@@ -579,33 +580,26 @@ server <- function(input, output, session) {
       showNotification(sprintf("Hypothesis '%s' already exists. Please choose a unique value.", h_new), type = "error")
       return(invisible(NULL))
     }
-    
     if (!is_valid_alpha_str(a_str)) {
       showNotification("Alpha must be a plain decimal within [0, 1], no scientific notation.", type = "error")
       return(invisible(NULL))
     }
     a_val <- as.numeric(a_str)
-    
     others_sum <- sum(rv$nodes$alpha[rv$nodes$id != id], na.rm = TRUE)
     if (others_sum + a_val > 1 + 1e-12) {
       msg <- sprintf("Total alpha would be %.6f (> 1). Please reduce this node's alpha.", others_sum + a_val)
       showNotification(msg, type = "error")
       return(invisible(NULL))
     }
-    
-    # Store current positions before update
     current_x <- rv$nodes$x[rv$nodes$id == id]
     current_y <- rv$nodes$y[rv$nodes$id == id]
-    
     rv$nodes <- rv$nodes %>%
       mutate(
         hypothesis = ifelse(id == !!id, h_new, hypothesis),
         alpha      = ifelse(id == !!id, a_val, alpha)
       )
     removeModal()
-    
     nodes_data <- with_node_label(rv$nodes)
-    
     visNetworkProxy("graph") %>% 
       visUpdateNodes(nodes_data) %>%
       visMoveNode(id = id, x = current_x, y = current_y)
@@ -618,10 +612,8 @@ server <- function(input, output, session) {
     runjs("document.getElementById('ctx-menu').style.display='none';")
     src <- rv$ctx$node
     if (is.null(src)) return(invisible(NULL))
-    
     rv$pending_source <- src
     visNetworkProxy("graph") %>% visSelectNodes(id = src)
-    
     showNotification(sprintf("Select a target node for edge from %s", src),
                      type = "message", duration = 2)
   })
@@ -637,24 +629,20 @@ server <- function(input, output, session) {
   observeEvent(input$click_event, {
     if (is.null(rv$pending_source)) return(invisible(NULL))
     nid <- input$click_event$node
-    
     if (is.null(nid)) {
       rv$pending_source <- NULL
       visNetworkProxy("graph") %>% visSelectNodes(id = NULL)
       showNotification("Canceled.", type = "default", duration = 1.5)
       return(invisible(NULL))
     }
-    
     src <- rv$pending_source
     tgt <- nid
-    
     if (tgt == src) {
       rv$pending_source <- NULL
       visNetworkProxy("graph") %>% visSelectNodes(id = NULL)
       showNotification("Self-loop is not allowed.", type = "error")
       return(invisible(NULL))
     }
-    
     exists_ab <- any(rv$edges$from == src & rv$edges$to == tgt)
     if (exists_ab) {
       rv$pending_source <- NULL
@@ -662,7 +650,6 @@ server <- function(input, output, session) {
       showNotification(sprintf("Edge %s → %s already exists.", src, tgt), type = "error")
       return(invisible(NULL))
     }
-    
     rv$edge_new <- list(from = src, to = tgt)
     showModal(modalDialog(
       title = sprintf("New edge: %s \u2192 %s", src, tgt),
@@ -674,7 +661,6 @@ server <- function(input, output, session) {
       )
     ))
     focus_and_select("new_edge_weight")
-    
   }, ignoreInit = TRUE)
   
   observeEvent(input$save_new_edge, {
@@ -685,26 +671,19 @@ server <- function(input, output, session) {
       return(invisible(NULL))
     }
     w_val <- as.numeric(w_str)
-    
     from <- rv$edge_new$from
     to   <- rv$edge_new$to
     eid <- ifelse(nrow(rv$edges) == 0, 1L, max(rv$edges$id) + 1L)
-    
-    # Store current positions before adding edge
     positions <- rv$nodes %>% select(id, x, y)
-    
     rv$edges <- bind_rows(rv$edges,
                           tibble::tibble(id = eid, from = from, to = to, weight = w_val))
     removeModal()
     rv$edge_new <- NULL
-    
     rv$pending_source <- NULL
     visNetworkProxy("graph") %>%
       visUpdateEdges(with_edge_label(rv$edges)) %>%
       visSelectNodes(id = NULL)
     bump_tables()
-    
-    # Restore all node positions after edge update
     for(i in seq_len(nrow(positions))) {
       visNetworkProxy("graph") %>%
         visMoveNode(id = positions$id[i], x = positions$x[i], y = positions$y[i])
@@ -716,15 +695,11 @@ server <- function(input, output, session) {
     runjs("document.getElementById('ctx-menu').style.display='none';")
     eid <- rv$ctx$edge
     if (!is.null(eid) && nrow(rv$edges) > 0 && eid %in% rv$edges$id) {
-      # Store positions before deletion
       positions <- rv$nodes %>% select(id, x, y)
-      
       rv$edges <- dplyr::filter(rv$edges, id != eid)
       visNetworkProxy("graph") %>%
         visUpdateEdges(with_edge_label(rv$edges))
       bump_tables()
-      
-      # Restore positions
       for(i in seq_len(nrow(positions))) {
         visNetworkProxy("graph") %>%
           visMoveNode(id = positions$id[i], x = positions$x[i], y = positions$y[i])
@@ -735,12 +710,10 @@ server <- function(input, output, session) {
   # Edit edge
   observeEvent(input$dbl_edge, {
     if (!is.null(rv$pending_source)) return(invisible(NULL))
-    
     eid <- input$dbl_edge
     if (is.null(eid) || !nrow(rv$edges)) return(invisible(NULL))
     ed <- rv$edges %>% dplyr::filter(id == eid) %>% dplyr::slice(1)
     if (!nrow(ed)) return(invisible(NULL))
-    
     rv$ctx$edit_edge_id <- eid
     showModal(modalDialog(
       title = sprintf("Edit edge: %s \u2192 %s", ed$from, ed$to),
@@ -753,39 +726,31 @@ server <- function(input, output, session) {
       )
     ))
     focus_and_select("edit_edge_weight")
-    
   })
   
   observeEvent(input$save_edge_edit, {
     eid <- rv$ctx$edit_edge_id
     if (is.null(eid)) return(invisible(NULL))
-    
     w_str <- input$edit_edge_weight
     if (!is_valid_weight_str(w_str)) {
       showNotification("Weight must be a plain decimal in (0, 1], no scientific notation.", type = "error")
       return(invisible(NULL))
     }
     w_val <- as.numeric(w_str)
-    
-    # Store positions before update
     positions <- rv$nodes %>% select(id, x, y)
-    
     rv$edges <- rv$edges %>% mutate(
       weight = ifelse(id == !!eid, w_val, weight)
     )
     removeModal()
-    
     visNetworkProxy("graph") %>%
       visUpdateEdges(with_edge_label(rv$edges))
     bump_tables()
-    
-    # Restore positions
     for(i in seq_len(nrow(positions))) {
       visNetworkProxy("graph") %>%
         visMoveNode(id = positions$id[i], x = positions$x[i], y = positions$y[i])
     }
-    
   })
+  
   # TrialSimulator integration
   observeEvent(input$run_ts, {
     req(nrow(rv$nodes) > 0)
@@ -809,15 +774,6 @@ server <- function(input, output, session) {
       )
       rv$ts_log <- paste(log_lines, collapse = "\n")
       rv$ts_summary <- rv$ts_object$get_current_testing_results()
-      
-      # Debug: print the structure of ts_summary
-      cat("ts_summary structure:\n")
-      print(str(rv$ts_summary))
-      cat("ts_summary content:\n")
-      print(rv$ts_summary)
-      cat("Column names:\n")
-      print(names(rv$ts_summary))
-      
       updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
     }, error = function(e) {
       rv$ts_log <- paste("Error during TrialSimulator setup:", e$message)
@@ -837,14 +793,11 @@ server <- function(input, output, session) {
       )
       rv$ts_log <- paste(log_lines, collapse = "\n")
       rv$ts_summary <- rv$ts_object$get_current_testing_results()
-      output$ts_plot <- renderPlot({ print(rv$ts_object) })  # <- ADD THIS LINE
-      
-      # Update selectInput to only show non-rejected hypotheses
+      output$ts_plot <- renderPlot({ print(rv$ts_object) })
       if (!is.null(rv$ts_summary) && "rejected" %in% names(rv$ts_summary)) {
         active_hyps <- rv$ts_summary$hypothesis[rv$ts_summary$rejected == FALSE]
         updateSelectInput(session, "graph_selected", choices = active_hyps)
       }
-      
     }, error = function(e) {
       rv$ts_log <- paste("Reject error:", e$message)
     })
@@ -854,14 +807,11 @@ server <- function(input, output, session) {
     rv$ts_object <- NULL
     rv$ts_log <- ""
     rv$ts_summary <- NULL
-    
-    # Reset graph colors and update selectInput
     nodes_data <- with_node_label(rv$nodes)
     visNetworkProxy("graph") %>% visUpdateNodes(nodes_data)
     updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
   })
   
-  # Add output renderers
   output$ts_result_table <- renderDataTable({
     req(rv$ts_summary)
     rv$ts_summary
@@ -871,6 +821,66 @@ server <- function(input, output, session) {
     rv$ts_log
   })
   
+  ##### ---- IMPORT/EXPORT HANDLERS ---- #####
+  # ==== EXPORT HANDLER ====
+  output$download_graph <- downloadHandler(
+    filename = function() paste0("graph-", Sys.Date(), ".json"),
+    content = function(file) {
+      # Make sure nodes/edges are "data.frames" (no named vectors, no tibbles)
+      nodes_out <- as.data.frame(rv$nodes)
+      edges_out <- as.data.frame(rv$edges)
+      
+      # If a column is a named vector, turn it into a list
+      for (nm in names(nodes_out)) {
+        if (is.vector(nodes_out[[nm]]) && !is.null(names(nodes_out[[nm]]))) {
+          nodes_out[[nm]] <- as.list(nodes_out[[nm]])
+        }
+      }
+      for (nm in names(edges_out)) {
+        if (is.vector(edges_out[[nm]]) && !is.null(names(edges_out[[nm]]))) {
+          edges_out[[nm]] <- as.list(edges_out[[nm]])
+        }
+      }
+      
+      write_json(list(
+        nodes = nodes_out,
+        edges = edges_out
+      ),
+      file, pretty = TRUE, auto_unbox = TRUE)
+    }
+  )
+  
+  # ==== IMPORT HANDLER ====
+  observeEvent(input$upload_graph, {
+    req(input$upload_graph)
+    dat <- fromJSON(input$upload_graph$datapath, simplifyDataFrame=TRUE)
+    
+    # Defensive: if data are weird or come as lists:
+    nodes <- dat$nodes
+    edges <- dat$edges
+    
+    # If nodes/edges is a list: convert to data.frame
+    if (is.list(nodes) && !is.data.frame(nodes)) nodes <- as.data.frame(nodes, stringsAsFactors=FALSE)
+    if (is.list(edges) && !is.data.frame(edges)) edges <- as.data.frame(edges, stringsAsFactors=FALSE)
+    
+    # If imported columns are lists (not atomic): unlist
+    list_to_vector <- function(x) if(is.list(x)) unlist(x) else x
+    nodes[] <- lapply(nodes, list_to_vector)
+    edges[] <- lapply(edges, list_to_vector)
+    
+    # Ensure correct types:
+    if(!is.null(nodes$id)) nodes$id <- as.integer(nodes$id)
+    if(!is.null(edges$id)) edges$id <- as.integer(edges$id)
+    
+    rv$nodes <- tibble::as_tibble(nodes)
+    rv$edges <- tibble::as_tibble(edges)
+    bump_tables()
+    
+    updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
+    rv$ts_object <- NULL
+    rv$ts_log <- ""
+    rv$ts_summary <- NULL
+  })
 }
 
 shinyApp(ui, server)
