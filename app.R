@@ -10,11 +10,15 @@ ui <- navbarPage(
   "My Application",
   id = "nav",
   theme = bslib::bs_theme(
-    version = 5,
-    primary = "#6F56F3", secondary = "#06B6D4",
-    base_font = bslib::font_google("Inter"),
-    heading_font = bslib::font_google("Poppins")
-  ),
+  version = 5,
+  primary = "#6F56F3", secondary = "#06B6D4",
+  base_font   = bslib::font_google("Source Sans 3"),
+  heading_font= bslib::font_google("Source Sans 3"),
+  "font-size-base" = "0.93rem",
+  "line-height-base" = 1.45
+)
+
+  ,
   
   # ----------- HOME -----------
   tabPanel(
