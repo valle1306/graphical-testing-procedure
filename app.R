@@ -16,21 +16,19 @@ ui <- navbarPage(
       tags$head(
         tags$style(HTML("
         .feature-card {
-          border-radius: 12px;
-          padding: 20px;
-          margin-bottom: 20px;
+          border-radius: 10px;
+          padding: 10px 12px;   /* was 20px */
+          margin-bottom: 12px;  /* was 20px */
           background-color: #f8f9fa;
-          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+          box-shadow: 0 1px 2px rgba(0,0,0,0.08);
         }
         .feature-title {
-          font-size: 20px;
-          font-weight: bold;
-          margin-bottom: 8px;
-          color: #007bff;
+          font-size: 16px;      /* was 20px */
+          margin-bottom: 4px;
         }
         .feature-text {
-          font-size: 16px;
-          color: #444;
+          font-size: 13px;      /* was 16px */
+          line-height: 1.35;
         }
       "))
       ),
@@ -47,31 +45,51 @@ ui <- navbarPage(
       fluidRow(
         column(12,
                tags$div(style = "padding: 20px;",
-                        tags$h4("🧬 Introduction"),
+                        tags$h3("🧬 Introduction"),
                         tags$p("With the rise of innovative trial designs—such as adaptive and platform studies—clinical researchers and statisticians face growing complexity in managing multiple hypotheses while preserving statistical rigor. Traditional fixed-sequence procedures often fall short in these evolving contexts."),
                         tags$p("Graphical Approach for Multiple Testing Procedure is a visual and interactive tool built to meet this challenge. Grounded in the graphical methodology pioneered by Bretz et al., it offers a transparent way to design, test, and dynamically redistribute alpha levels across networks of hypotheses."),
                         tags$p("This app was developed in collaboration with methodologists, researchers, and developers committed to making advanced statistical design accessible, reproducible, and human-centered. While still evolving, it is built on the open-source TrialSimulator R package and maintained by a volunteer team.")
                )
         )
       ),
-      # Key Features Cards
+      # Features Cards - 6 features in 2 rows
       fluidRow(
         column(4,
                div(class = "feature-card",
-                   div(class = "feature-title", "📊 Visualize Hypotheses"),
-                   div(class = "feature-text", "Draw, connect, and edit null hypotheses with intuitive graphs.")
+                   div(class = "feature-title", "🎯 Interactive Graph Design"),
+                   div(class = "feature-text", "Right-click empty canvas to add nodes, drag to position, and visually design your hypothesis network with intuitive controls.")
                )
         ),
         column(4,
                div(class = "feature-card",
-                   div(class = "feature-title", "🧮 Allocate Alpha Dynamically"),
-                   div(class = "feature-text", "Create and run testing procedures using dynamic α-spending rules.")
+                   div(class = "feature-title", "🔗 Smart Edge Management"),
+                   div(class = "feature-text", "Right-click nodes to start edges, click targets to connect, and double-click to edit weights with automatic validation.")
                )
         ),
         column(4,
                div(class = "feature-card",
-                   div(class = "feature-title", "📁 Import & Export"),
-                   div(class = "feature-text", "Upload saved JSON graphs or export your design to share with collaborators.")
+                   div(class = "feature-title", "⚡ Real-time Editing"),
+                   div(class = "feature-text", "Double-click nodes or edges to edit properties instantly. All changes reflect immediately with live validation.")
+               )
+        )
+      ),
+      fluidRow(
+        column(4,
+               div(class = "feature-card",
+                   div(class = "feature-title", "🧮 Alpha Management"),
+                   div(class = "feature-text", "Allocate alpha levels with automatic sum validation (≤ 1), supporting dynamic α-spending rules for sequential testing.")
+               )
+        ),
+        column(4,
+               div(class = "feature-card",
+                   div(class = "feature-title", "📊 Testing Simulation"),
+                   div(class = "feature-text", "Create test objects and simulate hypothesis rejections with real-time graph updates showing rejected hypotheses.")
+               )
+        ),
+        column(4,
+               div(class = "feature-card",
+                   div(class = "feature-title", "💾 Data Management"),
+                   div(class = "feature-text", "Import/export graphs as JSON files, with live data tables showing nodes and edges for easy collaboration.")
                )
         )
       ),
@@ -79,7 +97,7 @@ ui <- navbarPage(
       fluidRow(
         column(12,
                tags$div(style = "padding: 20px;",
-                        tags$h4("📘 References"),
+                        tags$h3("📘 References"),
                         tags$ul(
                           tags$li(
                             tags$span("Bretz F., Maurer W., Brannath W., Posch M. (2009). "),
@@ -817,27 +835,36 @@ server <- function(input, output, session) {
   output$download_graph <- downloadHandler(
     filename = function() paste0("graph-", Sys.Date(), ".json"),
     content = function(file) {
-      # Make sure nodes/edges are "data.frames" (no named vectors, no tibbles)
-      nodes_out <- as.data.frame(rv$nodes)
-      edges_out <- as.data.frame(rv$edges)
+      # Convert to data frames and ensure no named vectors
+      nodes_out <- as.data.frame(rv$nodes, stringsAsFactors = FALSE)
+      edges_out <- as.data.frame(rv$edges, stringsAsFactors = FALSE)
       
-      # If a column is a named vector, turn it into a list
-      for (nm in names(nodes_out)) {
-        if (is.vector(nodes_out[[nm]]) && !is.null(names(nodes_out[[nm]]))) {
-          nodes_out[[nm]] <- as.list(nodes_out[[nm]])
+      # Remove names from all columns to prevent jsonlite warnings
+      for (col in names(nodes_out)) {
+        if (is.vector(nodes_out[[col]])) {
+          names(nodes_out[[col]]) <- NULL
         }
       }
-      for (nm in names(edges_out)) {
-        if (is.vector(edges_out[[nm]]) && !is.null(names(edges_out[[nm]]))) {
-          edges_out[[nm]] <- as.list(edges_out[[nm]])
+      for (col in names(edges_out)) {
+        if (is.vector(edges_out[[col]])) {
+          names(edges_out[[col]]) <- NULL
         }
       }
       
-      write_json(list(
+      # Create the export data
+      export_data <- list(
         nodes = nodes_out,
         edges = edges_out
-      ),
-      file, pretty = TRUE, auto_unbox = TRUE)
+      )
+      
+      # Use write_json with explicit parameters to avoid warnings
+      write_json(
+        export_data, 
+        file, 
+        pretty = TRUE, 
+        auto_unbox = TRUE,
+        keep_vec_names = FALSE  # This prevents the warning
+      )
     }
   )
   
