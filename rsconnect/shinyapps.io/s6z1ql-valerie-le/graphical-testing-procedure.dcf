@@ -5,9 +5,9 @@ account: s6z1ql-valerie-le
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 15195014
-bundleId: 10763085
+bundleId: 10763245
 url: https://s6z1ql-valerie-le.shinyapps.io/graphical-testing-procedure/
 version: 1
 asMultiple: FALSE
 asStatic: FALSE
-ignoredFiles: Code/Final (ui+server).R|Code/final_with_zhang_cmt.R
+ignoredFiles: Code/Final (ui+server).R|Code/final_with_zhang_cmt.R|Code/www/graphical_testing_image.png

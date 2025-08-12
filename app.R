@@ -8,6 +8,13 @@ library(jsonlite)
 
 ui <- navbarPage(
   "My Application",
+  id = "nav",
+  theme = bslib::bs_theme(
+    version = 5,
+    primary = "#6F56F3", secondary = "#06B6D4",
+    base_font = bslib::font_google("Inter"),
+    heading_font = bslib::font_google("Poppins")
+  ),
   
   # ----------- HOME -----------
   tabPanel(
@@ -30,15 +37,51 @@ ui <- navbarPage(
           font-size: 13px;      /* was 16px */
           line-height: 1.35;
         }
+        
+        /* Hero header */
+        .hero {
+          display: flex;
+          align-items: center;         /* vertical centering */
+          justify-content: center;     /* center on the page */
+          gap: 32px;
+          margin: 12px 0 8px 0;
+        }
+        .landing-logo {
+          height: 220px;               /* bigger than before (was 180px) */
+          max-width: 100%;
+          border-radius: 16px;
+          box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+          object-fit: contain;
+          display: block;
+        }
+        .brand { text-align: left; max-width: 780px; }
+        .app-title { margin: 0 0 6px 0; font-weight: 600; }
+        .app-subtitle { margin: 0; font-size: 16px; color: #6c757d; }
+      
+        /* Stack vertically on small screens */
+        @media (max-width: 992px) {
+          .hero { flex-direction: column; text-align: center; }
+          .brand { text-align: center; }
+          .landing-logo { height: 160px; }
+        }
       "))
       ),
-      # Title and Image
-      fluidRow(
-        column(12, align = "center",
-               tags$img(src = "graphical_testing_image.png", height = "180px"),
-               tags$h2("Graphical Approach for Multiple Testing Procedure"),
-               tags$p("An interactive tool for visualizing and designing multiple testing strategies in clinical trials.")
-        )
+      
+      # Hero: logo on left, title/subtitle on right
+      div(class = "hero",
+          tags$video(
+            class = "landing-logo",
+            autoplay = NA, loop = NA, muted = NA, playsinline = NA,
+            poster = "graphical_testing_image.png",
+            tags$source(src = "logo.mp4", type = "video/mp4"),
+            # Fallback image if video can't play:
+            tags$img(src = "graphical_testing_image.png", height = "220px")
+          ),
+          div(class = "brand",
+              tags$h2(class = "app-title", "Graphical Approach for Multiple Testing"),
+              tags$p(class = "app-subtitle",
+                     "An interactive tool for visualizing and designing multiple testing strategies in clinical trials.")
+          )
       ),
       br(),
       # New Introduction Section
@@ -55,19 +98,19 @@ ui <- navbarPage(
       # Features Cards - 6 features in 2 rows
       fluidRow(
         column(4,
-               div(class = "feature-card",
+               div(class = "feature-card fc-1",
                    div(class = "feature-title", "🎯 Interactive Graph Design"),
                    div(class = "feature-text", "Right-click empty canvas to add nodes, drag to position, and visually design your hypothesis network with intuitive controls.")
                )
         ),
         column(4,
-               div(class = "feature-card",
+               div(class = "feature-card fc-2",
                    div(class = "feature-title", "🔗 Smart Edge Management"),
                    div(class = "feature-text", "Right-click nodes to start edges, click targets to connect, and double-click to edit weights with automatic validation.")
                )
         ),
         column(4,
-               div(class = "feature-card",
+               div(class = "feature-card fc-3",
                    div(class = "feature-title", "⚡ Real-time Editing"),
                    div(class = "feature-text", "Double-click nodes or edges to edit properties instantly. All changes reflect immediately with live validation.")
                )
@@ -75,19 +118,19 @@ ui <- navbarPage(
       ),
       fluidRow(
         column(4,
-               div(class = "feature-card",
+               div(class = "feature-card fc-4",
                    div(class = "feature-title", "🧮 Alpha Management"),
                    div(class = "feature-text", "Allocate alpha levels with automatic sum validation (≤ 1), supporting dynamic α-spending rules for sequential testing.")
                )
         ),
         column(4,
-               div(class = "feature-card",
+               div(class = "feature-card fc-5",
                    div(class = "feature-title", "📊 Testing Simulation"),
                    div(class = "feature-text", "Create test objects and simulate hypothesis rejections with real-time graph updates showing rejected hypotheses.")
                )
         ),
         column(4,
-               div(class = "feature-card",
+               div(class = "feature-card fc-6",
                    div(class = "feature-title", "💾 Data Management"),
                    div(class = "feature-text", "Import/export graphs as JSON files, with live data tables showing nodes and edges for easy collaboration.")
                )
