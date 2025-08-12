@@ -100,7 +100,7 @@ ui <- navbarPage(
       fluidRow(
         column(12, align = "center",
                tags$hr(),
-               tags$p("Developed using the TrialSimulator package for modular and reproducible graphical testing design.")
+               tags$p("Developed by Phan Nguyen Huong Le & MengYang Yi, advised by Dr. Han Zhang & Dr. Philip He")
         )
       )
     )
@@ -511,23 +511,14 @@ server <- function(input, output, session) {
     rv$nodes <- dplyr::bind_rows(rv$nodes, base_row)
     bump_tables()
     updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
-    new_node <- with_node_label(base_row) |> 
-      as.data.frame(stringsAsFactors = FALSE)
-    session$onFlushed(function() {
-      visNetworkProxy("graph") %>% visUpdateNodes(new_node)
-    }, once = TRUE)
-    rv$ctx$edit_node_id <- nid
-    showModal(modalDialog(
-      title = paste("Edit node", nid),
-      textInput("edit_node_hypo",  "Hypothesis (unique, case-sensitive)", value = default_h, placeholder = "e.g., H4"),
-      textInput("edit_node_alpha", "Alpha (0–1, no scientific notation)", value = default_a, placeholder = "0 or 0.xxx or 1"),
-      easyClose = FALSE,
-      footer = tagList(
-        modalButton("Cancel"),
-        actionButton("save_node_edit", "Save", class = "btn-primary")
-      )
-    ))
-    focus_and_select("edit_node_alpha")
+    
+    # Update the graph immediately without modal interference
+    nodes_data <- with_node_label(rv$nodes)
+    visNetworkProxy("graph") %>% visUpdateNodes(nodes_data)
+    
+    # Show notification that node was created
+    showNotification(paste("Node", default_h, "created. Double-click to edit alpha value."), 
+                     type = "message", duration = 3)
   })
   
   observeEvent(input$ctx_del_node, {
