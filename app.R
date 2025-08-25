@@ -181,6 +181,9 @@ ui <- navbarPage(
       position: fixed; z-index: 10000; display: none;
       background: #fff; border: 1px solid #ddd; border-radius: 6px;
       box-shadow: 0 6px 18px rgba(0,0,0,.15); min-width: 180px;
+      max-width: calc(100vw - 24px);
+      max-height: calc(100vh - 24px);
+      overflow: auto;
     }
     #ctx-menu .ctx-item {
       width: 100%; border: 0; background: transparent; text-align: left;
@@ -396,38 +399,53 @@ server <- function(input, output, session) {
           }
         ",
         oncontext = "
-          function(params) {
-            params.event.preventDefault();
-            Shiny.setInputValue('any_context', { }, {priority: 'event'});
-        
-            var pointer = params.pointer;
-            var nodeId = this.getNodeAt(pointer.DOM);
-            var edgeId = null;
-            if (!nodeId) {
-              edgeId = this.getEdgeAt(pointer.DOM);
-            }
-            
-            var showNode = !!nodeId;
-            var showEdge = !showNode && !!edgeId;
-            var showBlank = !showNode && !showEdge; 
-        
-            Shiny.setInputValue('ctx_event', {
-              node: nodeId || null,
-              edge: edgeId || null,
-              canvas: pointer.canvas
-            }, {priority: 'event'});
-        
-            var menu = document.getElementById('ctx-menu');
-            menu.style.left = (params.event.clientX) + 'px';
-            menu.style.top  = (params.event.clientY) + 'px';
-            menu.style.display = 'block';
-        
-            document.getElementById('ctx_add_node').style.display   = showBlank ? 'block' : 'none';
-            document.getElementById('ctx_del_node').style.display   = showNode  ? 'block' : 'none';
-            document.getElementById('ctx_edge_start').style.display = showNode  ? 'block' : 'none';
-            document.getElementById('ctx_del_edge').style.display   = showEdge ? 'block' : 'none';
-          }
-        ",
+    function(params) {
+      params.event.preventDefault();
+      Shiny.setInputValue('any_context', { }, {priority: 'event'});
+
+      var pointer = params.pointer;
+      var nodeId = this.getNodeAt(pointer.DOM);
+      var edgeId = null;
+      if (!nodeId) {
+        edgeId = this.getEdgeAt(pointer.DOM);
+      }
+
+      var showNode  = !!nodeId;
+      var showEdge  = !showNode && !!edgeId;
+      var showBlank = !showNode && !showEdge;
+
+      Shiny.setInputValue('ctx_event', {
+        node: nodeId || null,
+        edge: edgeId || null,
+        canvas: pointer.canvas
+      }, {priority: 'event'});
+
+      var menu = document.getElementById('ctx-menu');
+
+      // Make visible briefly to measure size correctly
+      menu.style.visibility = 'hidden';
+      menu.style.display = 'block';
+
+      // Compute bottom-right corner position (with padding)
+      var pad = 12;  // space from window edges
+      var w = menu.offsetWidth || 180;  // fallback to min-width
+      var h = menu.offsetHeight || 120;
+
+      var left = window.innerWidth  - w - pad;
+      var top  = window.innerHeight - h - pad;
+
+      // Apply final position and show
+      menu.style.left = left + 'px';
+      menu.style.top  = top  + 'px';
+      menu.style.visibility = 'visible';
+
+      // Toggle which items appear based on target type
+      document.getElementById('ctx_add_node').style.display   = showBlank ? 'block' : 'none';
+      document.getElementById('ctx_del_node').style.display   = showNode  ? 'block' : 'none';
+      document.getElementById('ctx_edge_start').style.display = showNode  ? 'block' : 'none';
+      document.getElementById('ctx_del_edge').style.display   = showEdge  ? 'block' : 'none';
+    }
+  ",
         doubleClick = "
           function(params) {
             var eid = (params.edges && params.edges.length) ? params.edges[0] : null;
