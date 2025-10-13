@@ -1,4 +1,4 @@
-# Graphical Approach for Multiple Testing — Interactive App 🎨📊
+# Graphical Approach for Multiple Testing App🎨📊
 
 Welcome! This repository contains a simple, friendly Shiny app for designing and visualizing graphical multiple testing procedures used in clinical trials.
 
