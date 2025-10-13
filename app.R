@@ -10,14 +10,14 @@ ui <- navbarPage(
   "My Application",
   id = "nav",
   theme = bslib::bs_theme(
-  version = 5,
-  primary = "#6F56F3", secondary = "#06B6D4",
-  base_font   = bslib::font_google("Source Sans 3"),
-  heading_font= bslib::font_google("Source Sans 3"),
-  "font-size-base" = "0.93rem",
-  "line-height-base" = 1.45
-)
-
+    version = 5,
+    primary = "#6F56F3", secondary = "#06B6D4",
+    base_font   = bslib::font_google("Source Sans 3"),
+    heading_font= bslib::font_google("Source Sans 3"),
+    "font-size-base" = "0.93rem",
+    "line-height-base" = 1.45
+  )
+  
   ,
   
   # ----------- HOME -----------
@@ -581,9 +581,20 @@ server <- function(input, output, session) {
     nodes_data <- with_node_label(rv$nodes)
     visNetworkProxy("graph") %>% visUpdateNodes(nodes_data)
     
-    # Show notification that node was created
-    showNotification(paste("Node", default_h, "created. Double-click to edit alpha value."), 
-                     type = "message", duration = 3)
+    # Immediately open the edit modal for the new node (Dr. Zhang's intended UX)
+    # Set edit target so the existing save logic can be reused
+    rv$ctx$edit_node_id <- nid
+    showModal(modalDialog(
+      title = paste("Edit node", nid),
+      textInput("edit_node_hypo",  "Hypothesis (unique, case-sensitive)", value = default_h, placeholder = "e.g., H1"),
+      textInput("edit_node_alpha", "Alpha (0–1, no scientific notation)", value = default_a),
+      easyClose = FALSE,
+      footer = tagList(
+        actionButton("cancel_new_node", "Cancel"),
+        actionButton("save_node_edit", "Save", class = "btn-primary")
+      )
+    ))
+    focus_and_select("edit_node_alpha")
   })
   
   observeEvent(input$ctx_del_node, {
@@ -661,6 +672,20 @@ server <- function(input, output, session) {
       visMoveNode(id = id, x = current_x, y = current_y)
     bump_tables()
     updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
+  })
+  
+  # If the user cancels the initial edit on a newly-created node, remove it
+  observeEvent(input$cancel_new_node, {
+    id_to_remove <- rv$ctx$edit_node_id
+    if (!is.null(id_to_remove)) {
+      rv$nodes <- rv$nodes[rv$nodes$id != id_to_remove, ]
+      bump_tables()
+      updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
+      nodes_data <- with_node_label(rv$nodes)
+      visNetworkProxy("graph") %>% visUpdateNodes(nodes_data)
+    }
+    rv$ctx$edit_node_id <- NULL
+    removeModal()
   })
   
   # ---------- Create edge ----------
