@@ -62,10 +62,7 @@ Windows (Rscript) example:
 - If the app fails to start, check `app_run.log` in the project root for errors.
 - Ensure `TrialSimulator` is installed from GitHub as shown above.
 
-**Want me to commit this README?**
-- I can commit and push this README to `main` for you — tell me to "commit and push" and I'll do it.
 
-Enjoy! If you'd like a shorter quickstart or a screenshot-based walkthrough, tell me which images to include and I'll add them.
 
 **Authors / Contributors**
 - Phan Nguyen Huong Le
