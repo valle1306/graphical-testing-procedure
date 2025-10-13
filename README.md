@@ -1,87 +1,75 @@
-# TrialSimulatorShiny_Interface
+# Graphical Approach for Multiple Testing — Interactive App 🎨📊
 
-An interactive R Shiny interface for the [`TrialSimulator`](https://github.com/zhangh12/TrialSimulator) package, enabling graphical multiple testing design, visualization, and hypothesis evaluation in clinical trial settings.
+Welcome! This repository contains a simple, friendly Shiny app for designing and visualizing graphical multiple testing procedures used in clinical trials.
 
----
+Why this app?
+- It makes alpha allocation and weight redistribution visual and interactive.
+- Add nodes and edges, set alpha and weights, and simulate rejections with the TrialSimulator backend.
 
-## 📚 Table of Contents
+What you'll find in this repo
+- `Code/Final (ui+server).R` — main app source (UI + server).
+- `app.R` — alternate entrypoint that launches the app.
+- `scripts/` — helper scripts (e.g., `run_shiny_debug.R`).
+- `www/`, `images/` — static assets used by the UI.
 
-- [Project Overview](#project-overview)
-- [Step 1: Graphical Interface Setup](#step-1-graphical-interface-setup)
-- [Step 2: Statistical Testing Integration](#step-2-statistical-testing-integration-phase-2)
-- [Example JSON File](#example-json-file)
-- [How to Launch the App](#how-to-launch-the-app)
+Quick start (local)
 
----
-
-## 📍 Project Overview
-
-This project aims to create a visual and modular interface for constructing and evaluating graphical multiple testing procedures. It is designed to support hypothesis testing workflows in complex trial designs through both interactive visualization and statistical simulation.
-
----
-
-## 🔧 Step 1: Graphical Interface Setup
-
-This Shiny app provides an interactive UI for visually defining a multiple testing procedure as a graph.
-
-### Features
-
-- **Add / Delete Nodes**  
-  Represent hypotheses as nodes. Each node has an editable `alpha` level.
-
-- **Add / Delete Edges**  
-  Represent weight transfers between hypotheses.
-
-- **Edit Edge Weights**  
-  Double-click on edges to modify their weights directly.
-
-- **Export / Upload JSON**  
-  - Save the current node-edge structure as a `.json` file  
-  - Reload previous work by uploading a `.json` graph
-
-### Interface Preview
-
-![Step 1 Graph Editor UI](images/step1_interface_screenshot.png)
-
----
-
-## 🧪 Step 2: Statistical Testing Integration (Phase 2)
-
-In **Phase 2**, the interface is connected to Dr. Zhang’s [`TrialSimulator`](https://github.com/zhangh12/TrialSimulator) R package to enable dynamic testing logic for graphical multiple testing procedures.
-
-### Features
-
-- **Create Test Object**  
-  After developing your graph (nodes with `alpha` values and weighted edges), click **"Create Test Object"**. This freezes the graph structure and initializes the test object using the `TrialSimulator` backend.
-
-- **Reject Hypotheses**  
-  Select any hypothesis from the dropdown and click **"Reject Selected Hypothesis"** to remove it. The app redistributes weights according to the defined graph logic.
-
-- **Iterative Rejection**  
-  You can reject hypotheses multiple times, observing the redistribution of alpha levels and weights until no further rejections can occur.
-
-- **Live Test Results**  
-  The app displays the current test results, including the number of hypotheses and the FWER level, at the bottom of the UI.
-
----
-
-## 📁 Example JSON File
-
-To test the upload functionality, a sample `.json` file is included in the `code/` directory: code/upload_example.json
-
-
-Use this to instantly load a pre-configured graph and explore the full testing workflow.
-
-![Step 2 Uploaded current graph via Browse function](images/step2_integrate_trialsimulator_package.png)
----
-
-## 🚀 How to Launch the App
-
-Make sure the following packages are installed:
+1. Install R (we tested with R 4.5.1) and open this project in R or RStudio.
+2. Install packages from R:
 
 ```r
-install.packages(c("shiny", "DT", "visNetwork", "jsonlite"))
+install.packages(c(
+  "shiny", "visNetwork", "shinyjs", "dplyr", "DT",
+  "jsonlite", "bslib", "tibble"
+))
+if (!requireNamespace("devtools", quietly = TRUE)) install.packages("devtools")
 devtools::install_github("zhangh12/TrialSimulator")
-shiny::runApp("path_to_app_directory")
+```
 
+3. Run the app:
+
+```r
+shiny::runApp('.', port = 4567, launch.browser = TRUE)
+```
+
+Windows (Rscript) example:
+
+```powershell
+# adjust path to Rscript.exe if needed
+"C:\\Program Files\\R\\R-4.5.1\\bin\\Rscript.exe" -e "shiny::runApp('.', port = 4567, launch.browser = TRUE)"
+```
+
+Overview — how to use the app
+
+- Home tab: intro and references.
+- Design tab: build your graph and run simulations.
+  - Right-click an empty spot → "Add node here": a new node is created and the app immediately opens a modal so you can name it and set alpha.
+  - Right-click a node → start an edge; click the target node to finish the edge and set its weight.
+  - Double-click nodes or edges to edit them later.
+  - Drag nodes to reposition the layout.
+  - Use the Nodes / Edges tables to view exact values. Import/export graphs as JSON.
+
+Trial simulation
+- Click "Create Test Object" to build the TrialSimulator GraphicalTesting object from your graph.
+- Use "Reject Selected Hypothesis" to simulate a rejection and watch how alphas and node colors update.
+
+Validation rules & tips
+- Hypothesis names must be unique and non-empty (case-sensitive).
+- Alpha and edge weights must be plain decimals (no scientific notation) in [0, 1].
+- The app validates alpha totals so sum won't exceed 1.
+
+Troubleshooting
+- If the app fails to start, check `app_run.log` in the project root for errors.
+- Ensure `TrialSimulator` is installed from GitHub as shown above.
+
+Want me to commit this README?
+- I can commit and push this README to `main` for you — tell me to "commit and push" and I'll do it.
+
+Enjoy! If you'd like a shorter quickstart or a screenshot-based walkthrough, tell me which images to include and I'll add them.
+
+Authors / Contributors
+- Phan Nguyen Huong Le (code, UI)
+- MengYang Yi (design & features)
+- Dr. Han Zhang (methodology & TrialSimulator integration)
+- Dr. Philip He (advising)
 
