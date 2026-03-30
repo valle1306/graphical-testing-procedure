@@ -2,13 +2,13 @@
 
 <p align="center">
   <a href="https://u3fenv-valerie-le.shinyapps.io/graphical-testing-procedure/">
-    <img src="www/logo.gif" width="720" alt="Graphical Multiple Testing logo">
+    <img src="www/logo.gif" width="400" alt="Graphical Multiple Testing logo">
   </a>
 </p>
 
 <p align="center">
   <a href="https://u3fenv-valerie-le.shinyapps.io/graphical-testing-procedure/"><strong>Launch the app</strong></a>
-  </p>
+</p>
 
 An interactive Shiny app for building graphical multiple-testing procedures and running group-sequential analyses with `TrialSimulator`.
 
