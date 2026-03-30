@@ -2,7 +2,7 @@
 
 <p align="center">
   <a href="https://u3fenv-valerie-le.shinyapps.io/graphical-testing-procedure/">
-    <img src="www/logo.gif" width="300" alt="Graphical Multiple Testing logo">
+    <img src="www/logo.gif" width="200" alt="Graphical Multiple Testing logo">
   </a>
 </p>
 
@@ -103,36 +103,6 @@ You can test the import feature with:
 - [www/](www): app media assets.
 - [scripts/](scripts): install and verification scripts.
 - [examples/](examples): sample input files.
-
-## Deploy As A Web App
-
-This app is published at:
-
-- https://u3fenv-valerie-le.shinyapps.io/graphical-testing-procedure/
-
-It can also be republished as a public web link.
-
-The simplest option is `shinyapps.io`, which is Posit's hosted Shiny service. For teams or institutional hosting, `Posit Connect` is the more managed option.
-
-Deployment notes:
-
-- Keep app assets inside the repository, ideally under `www/`.
-- Use `app.R` as the deployable entrypoint.
-- Use the `rsconnect` package to publish the app.
-
-Step-by-step notes are in:
-
-- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
-
-## Verification
-
-Before pushing major changes, run:
-
-```powershell
-Set-Location "c:\Users\lpnhu\Documents\graphical-testing-procedure"
-& "C:\Program Files\R\R-4.5.3\bin\Rscript.exe" "scripts\verify_graphical_design_case.R"
-& "C:\Program Files\R\R-4.5.3\bin\Rscript.exe" "scripts\verify_complex_sequential_case.R"
-```
 
 ## Authors And Contributors
 
