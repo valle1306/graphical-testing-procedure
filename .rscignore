@@ -1,0 +1,7 @@
+.Rlibs/
+.Rproj.user/
+.git/
+archive/
+examples/
+docs/
+*.Rproj

@@ -1,70 +1,137 @@
-# Graphical Approach for Multiple Testing App🎨📊
+# Graphical Multiple Testing
 
-Welcome! This repository contains a simple, friendly Shiny app for designing and visualizing graphical multiple testing procedures used in clinical trials.
+<p align="center">
+	<video src="www/logo.mp4" width="720" controls muted playsinline>
+		Your browser does not support the logo video.
+	</video>
+</p>
 
-**Why this app?**
-- It makes alpha allocation and weight redistribution visual and interactive.
-- Add nodes and edges, set alpha and weights, and simulate rejections with the TrialSimulator backend.
+An interactive Shiny app for building graphical multiple-testing procedures and running group-sequential analyses with `TrialSimulator`.
 
-**What you'll find in this repo**
-- `Code/Final (ui+server).R` — main app source (UI + server).
-- `app.R` — alternate entrypoint that launches the app.
-- `scripts/` — helper scripts (e.g., `run_shiny_debug.R`).
-- `www/`, `images/` — static assets used by the UI.
+## Live App
 
-**Quick start (local)**
+Use the hosted app here:
 
-1. Install R (we tested with R 4.5.1) and open this project in R or RStudio.
-2. Install packages from R:
+- https://u3fenv-valerie-le.shinyapps.io/graphical-testing-procedure/
 
-```r
-install.packages(c(
-  "shiny", "visNetwork", "shinyjs", "dplyr", "DT",
-  "jsonlite", "bslib", "tibble"
-))
-if (!requireNamespace("devtools", quietly = TRUE)) install.packages("devtools")
-devtools::install_github("zhangh12/TrialSimulator")
-```
+## What This App Does
 
-3. Run the app:
+- Build a graphical testing procedure with hypotheses, alphas, and transition weights.
+- Run the classic graphical rejection procedure from the `Design` tab.
+- Run interim/final sequential analyses from the `Sequential` tab.
+- Preview rejection boundaries and watch alpha redistribution on the graph.
 
-```r
-shiny::runApp('.', port = 4567, launch.browser = TRUE)
-```
+## Download The Repository
 
-Windows (Rscript) example:
+Option 1: GitHub download
+
+1. Open the repository page on GitHub.
+2. Click `Code`.
+3. Click `Download ZIP`.
+4. Extract the ZIP to a local folder.
+
+Option 2: Git clone
 
 ```powershell
-# adjust path to Rscript.exe if needed
-"C:\\Program Files\\R\\R-4.5.1\\bin\\Rscript.exe" -e "shiny::runApp('.', port = 4567, launch.browser = TRUE)"
+git clone <your-repository-url>
+cd graphical-testing-procedure
 ```
 
-**Overview — how to use the app**
+## Install
 
-- Home tab: intro and references.
-- Design tab: build your graph and run simulations.
-  - Right-click an empty spot → "Add node here": a new node is created and the app immediately opens a modal so you can name it and set alpha.
-  - Right-click a node → start an edge; click the target node to finish the edge and set its weight.
-  - Double-click nodes or edges to edit them later.
-  - Drag nodes to reposition the layout.
-  - Use the Nodes / Edges tables to view exact values. Import/export graphs as JSON.
+1. Install R for Windows.
+2. Open the project folder in VS Code or RStudio.
+3. Install the required packages:
 
-**Trial simulation**
-- Click "Create Test Object" to build the TrialSimulator GraphicalTesting object from your graph.
-- Use "Reject Selected Hypothesis" to simulate a rejection and watch how alphas and node colors update.
+```powershell
+Set-Location "c:\Users\lpnhu\Documents\graphical-testing-procedure"
+& "C:\Program Files\R\R-4.5.3\bin\Rscript.exe" "scripts\install_packages.R"
+```
 
-**Validation rules & tips**
-- Hypothesis names must be unique and non-empty (case-sensitive).
-- Alpha and edge weights must be plain decimals (no scientific notation) in [0, 1].
-- The app validates alpha totals so sum won't exceed 1.
+This installs packages into a local `.Rlibs/` folder so they do not affect your global R setup.
 
-**Troubleshooting**
-- If the app fails to start, check `app_run.log` in the project root for errors.
-- Ensure `TrialSimulator` is installed from GitHub as shown above.
+## Run The App
 
+```powershell
+Set-Location "c:\Users\lpnhu\Documents\graphical-testing-procedure"
+& "C:\Program Files\R\R-4.5.3\bin\Rscript.exe" -e ".libPaths(c(normalizePath('.Rlibs', winslash='/', mustWork=TRUE), .libPaths())); shiny::runApp('app.R', host='127.0.0.1', port=4587, launch.browser=TRUE)"
+```
 
+If the browser does not open automatically, go to `http://127.0.0.1:4587`.
 
-**Authors / Contributors**
+## How To Use The App
+
+### 1. Home
+
+Use the `Home` tab for the project overview and references.
+
+### 2. Design
+
+Use the `Design` tab for the classic graphical multiple-testing procedure.
+
+- Right-click the canvas to add a node.
+- Double-click a node to edit its name or alpha.
+- Create edges and set their weights.
+- Click `Create Object` to initialize the graphical testing object.
+- Use `Reject Selected` to reject one testable hypothesis.
+- Read the result in the `Output` box.
+
+### 3. Sequential
+
+Use the `Sequential` tab for group-sequential testing.
+
+- Set one alpha-spending rule and planned max information per hypothesis.
+- Click `Create Object`.
+- Enter the current analysis order, observed p-values, observed information, and final/interim status.
+- Click `Preview` to see current boundaries.
+- Click `Apply` to run the stage and update the graph.
+- Read the stage summary in the `Activity` box.
+
+## Example File
+
+You can test the import feature with:
+
+- [examples/upload_example.json](examples/upload_example.json)
+
+## Repository Layout
+
+- [app.R](app.R): main app entrypoint.
+- [www/](www): app media assets.
+- [scripts/](scripts): install and verification scripts.
+- [examples/](examples): sample input files.
+
+## Deploy As A Web App
+
+This app is published at:
+
+- https://u3fenv-valerie-le.shinyapps.io/graphical-testing-procedure/
+
+It can also be republished as a public web link.
+
+The simplest option is `shinyapps.io`, which is Posit's hosted Shiny service. For teams or institutional hosting, `Posit Connect` is the more managed option.
+
+Deployment notes:
+
+- Keep app assets inside the repository, ideally under `www/`.
+- Use `app.R` as the deployable entrypoint.
+- Use the `rsconnect` package to publish the app.
+
+Step-by-step notes are in:
+
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+
+## Verification
+
+Before pushing major changes, run:
+
+```powershell
+Set-Location "c:\Users\lpnhu\Documents\graphical-testing-procedure"
+& "C:\Program Files\R\R-4.5.3\bin\Rscript.exe" "scripts\verify_graphical_design_case.R"
+& "C:\Program Files\R\R-4.5.3\bin\Rscript.exe" "scripts\verify_complex_sequential_case.R"
+```
+
+## Authors And Contributors
+
 - Phan Nguyen Huong Le
 - MengYang Yi
 - Dr. Han Zhang
