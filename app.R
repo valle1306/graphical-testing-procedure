@@ -6,12 +6,22 @@ library(DT)
 library(TrialSimulator)
 library(jsonlite)
 
+is_named_vector_jsonlite_warning <- function(message) {
+  grepl("keep_vec_names=TRUE", message, fixed = TRUE) ||
+    grepl("named vectors will be translated into arrays", message, fixed = TRUE) ||
+    grepl("Input to asJSON", message, fixed = TRUE)
+}
+
+if (!isTRUE(getOption("gmt.jsonlite_warning_handler_registered"))) {
+  options(gmt.jsonlite_warning_handler_registered = TRUE)
+}
+
 ui <- navbarPage(
-  "My Application",
+  "Graphical Multiple Testing",
   id = "nav",
   theme = bslib::bs_theme(
     version = 5,
-    primary = "#6F56F3", secondary = "#06B6D4",
+    primary = "#0F766E", secondary = "#D97706",
     base_font   = bslib::font_google("Source Sans 3"),
     heading_font= bslib::font_google("Source Sans 3"),
     "font-size-base" = "0.93rem",
@@ -76,10 +86,8 @@ ui <- navbarPage(
           tags$video(
             class = "landing-logo",
             autoplay = NA, loop = NA, muted = NA, playsinline = NA,
-            poster = "graphical_testing_image.png",
             tags$source(src = "logo.mp4", type = "video/mp4"),
-            # Fallback image if video can't play:
-            tags$img(src = "graphical_testing_image.png", height = "220px")
+            "Your browser does not support the logo video."
           ),
           div(class = "brand",
               tags$h2(class = "app-title", "Graphical Approach for Multiple Testing"),
@@ -187,21 +195,66 @@ ui <- navbarPage(
       padding: 8px 12px; cursor: pointer;
     }
     #ctx-menu .ctx-item:hover { background: #f5f5f5; }
+    .design-toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: end;
+      padding: 14px 16px;
+      margin-bottom: 14px;
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      background: #ffffff;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+    }
+    .design-toolbar .form-group {
+      margin-bottom: 0;
+      min-width: 220px;
+    }
+    .design-note {
+      color: #64748b;
+      font-size: 0.9rem;
+      padding-bottom: 8px;
+    }
+    .design-output-card {
+      border: 1px solid #e5e7eb;
+      border-radius: 14px;
+      background: #ffffff;
+      padding: 14px 16px;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+    }
+    .design-output-log {
+      min-height: 150px;
+      max-height: 260px;
+      overflow-y: auto;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 10px 12px;
+    }
+    .design-output-log pre {
+      margin: 0;
+      white-space: pre-wrap;
+      word-break: break-word;
+      background: transparent;
+      border: 0;
+      padding: 0;
+    }
   "))),
-      titlePanel("Directed Graph Designer"),
+      titlePanel("Graph Design"),
       
       # Toggle button (small link above the row)
       div(style = "margin-bottom: 8px;",
           actionLink("toggle_panel", label = "Hide data panel")
       ),
-      
-      # Controls for TrialSimulator
-      div(style = "margin-bottom: 10px;",
-          actionButton("run_ts", "Create Test Object", class = "btn btn-warning"),
-          actionButton("reject_ts", "Reject Selected Hypothesis", class = "btn btn-warning"),
-          actionButton("edit_mode", "Edit Mode", class = "btn btn-info")
+      div(
+        class = "design-toolbar",
+        actionButton("design_run_ts", "Create Object", class = "btn btn-warning"),
+        selectInput("design_graph_selected", "Hypothesis", choices = NULL, width = "220px"),
+        actionButton("design_reject_ts", "Reject Selected", class = "btn btn-outline-warning"),
+        actionButton("design_clear_results", "Clear Results", class = "btn btn-info"),
+        tags$span(class = "design-note", "Use these controls for classic graphical testing. Open Sequential only for interim analyses.")
       ),
-      selectInput("graph_selected", "Select hypothesis to reject", choices = NULL),
       
       fluidRow(
         # ----- Left column: data panel (read-only tables + import/export) -----
@@ -229,13 +282,209 @@ ui <- navbarPage(
           )
         )
       ),
-      # ------------Test Results Section-------------
       fluidRow(
-        column(12,
-               tags$hr(),
-               h4(tags$b("Test Results"), style = "color:purple"),
-               verbatimTextOutput("ts_log"),
-               dataTableOutput("ts_result_table")
+        column(
+          12,
+          tags$hr(),
+          div(
+            class = "design-output-card",
+            tags$p(
+              style = "color:#6c757d; margin-bottom: 12px;",
+              "Build the graph here. The Sequential tab adds staged analyses, boundary preview, and analysis history."
+            ),
+            tags$div(style = "font-weight: 600; margin-bottom: 8px;", "Output"),
+            div(class = "design-output-log", verbatimTextOutput("design_ts_log"))
+          )
+        )
+      )
+    )
+  ),
+  
+  tabPanel(
+    "Sequential",
+    fluidPage(
+      tags$head(
+        tags$style(HTML("
+          .seq-card {
+            border: 1px solid #dee2e6;
+            border-radius: 14px;
+            background: #ffffff;
+            padding: 16px;
+            margin-bottom: 16px;
+            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
+          }
+          .seq-title {
+            margin: 0 0 4px 0;
+            font-weight: 600;
+          }
+          .seq-help {
+            margin: 0 0 16px 0;
+            color: #6c757d;
+            font-size: 0.94rem;
+          }
+          .seq-grid {
+            display: grid;
+            gap: 16px;
+          }
+          .seq-subtle {
+            color: #64748b;
+            font-size: 0.85rem;
+          }
+          .seq-actions {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 16px;
+          }
+          .seq-advanced {
+            margin-top: 16px;
+            padding-top: 12px;
+            border-top: 1px solid #eef2f7;
+          }
+          .seq-advanced summary {
+            cursor: pointer;
+            color: #0f766e;
+            font-weight: 600;
+            margin-bottom: 12px;
+          }
+          .seq-section {
+            margin-top: 12px;
+            margin-bottom: 10px;
+            font-weight: 600;
+          }
+          .seq-meta {
+            color: #6c757d;
+            font-size: 0.84rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+          }
+          .seq-empty {
+            min-height: 420px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border: 1px dashed #cbd5e1;
+            border-radius: 12px;
+            color: #64748b;
+            background: linear-gradient(135deg, rgba(240,249,255,0.9), rgba(248,250,252,0.9));
+          }
+          .seq-tabset .nav-tabs {
+            margin-bottom: 16px;
+          }
+          .seq-table {
+            overflow-x: auto;
+          }
+          .seq-table table.dataTable th,
+          .seq-table table.dataTable td {
+            white-space: nowrap;
+            vertical-align: top;
+          }
+          .seq-graph {
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            overflow: hidden;
+            background: linear-gradient(180deg, #f8fbfd 0%, #ffffff 100%);
+          }
+          .seq-log {
+            min-height: 420px;
+            max-height: 560px;
+            overflow-y: auto;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            padding: 10px 12px;
+            margin-bottom: 14px;
+          }
+          .seq-log pre {
+            margin: 0;
+            white-space: pre-wrap;
+            word-break: break-word;
+            background: transparent;
+            border: 0;
+            padding: 0;
+          }
+          .seq-tabset .nav > li > a,
+          .seq-tabset .nav > li > button {
+            color: #0f766e;
+          }
+          @media (max-width: 992px) {
+            .seq-meta {
+              white-space: normal;
+            }
+          }
+        ")),
+        tags$script(HTML("
+          function adjustVisibleDataTables() {
+            if (window.jQuery && $.fn.dataTable) {
+              setTimeout(function() {
+                $.fn.dataTable.tables({visible: true, api: true}).columns.adjust();
+              }, 60);
+            }
+          }
+          $(document).on('shown.bs.tab', 'a[data-toggle=\"tab\"], a[data-bs-toggle=\"tab\"], button[data-bs-toggle=\"tab\"]', function() {
+            adjustVisibleDataTables();
+          });
+          Shiny.addCustomMessageHandler('adjust-datatables', function() {
+            adjustVisibleDataTables();
+          });
+        "))
+      ),
+      fluidRow(
+        column(
+          6,
+          div(
+            class = "seq-card",
+            tags$h3(class = "seq-title", "Current Graph"),
+            tags$p(class = "seq-help", "The graph updates as decisions are applied."),
+            div(class = "seq-graph", visNetworkOutput("seq_graph", height = "480px")),
+            tags$hr(),
+            tags$div(class = "seq-section", "Status"),
+            div(class = "seq-table", DTOutput("ts_status_table"))
+          ),
+          div(
+            class = "seq-card",
+            tags$div(class = "seq-section", "Activity"),
+            div(class = "seq-log", verbatimTextOutput("ts_log"))
+          )
+        ),
+        column(
+          6,
+          div(
+            class = "seq-card",
+            tags$h3(class = "seq-title", "Sequential Analysis"),
+            tags$p(class = "seq-help", "Set spending, preview boundaries, and apply each stage."),
+            div(
+              class = "seq-actions",
+              actionButton("run_ts", "Create Object", class = "btn btn-warning"),
+              actionButton("reset_gs", "Reset", class = "btn btn-secondary"),
+              actionButton("edit_mode", "Clear Results", class = "btn btn-info")
+            ),
+            tags$div(class = "seq-section", "Per-Hypothesis Settings"),
+            tags$p(class = "seq-subtle", "Choose a spending rule and planned information for each hypothesis."),
+            uiOutput("gs_settings_ui"),
+            tags$hr(),
+            tags$div(class = "seq-section", "Current Analysis"),
+            numericInput("gs_current_order", "Analysis order", value = 1L, min = 1L, step = 1L),
+            uiOutput("gs_stage_inputs"),
+            div(
+              class = "seq-actions",
+              actionButton("preview_gs", "Preview", class = "btn btn-success"),
+              actionButton("run_stage_gs", "Apply", class = "btn btn-warning")
+            ),
+            div(
+              class = "seq-tabset",
+              tabsetPanel(
+                id = "seq_panel",
+                tabPanel("Boundary Preview", div(class = "seq-table", DTOutput("gs_boundary_table"))),
+                tabPanel("Submitted Analyses", div(class = "seq-table", DTOutput("gs_history_table"))),
+                tabPanel(
+                  "Results",
+                  div(class = "seq-table", DTOutput("ts_result_table"))
+                )
+              )
+            )
+          )
         )
       )
     )
@@ -252,21 +501,40 @@ server <- function(input, output, session) {
     });", input_id))
   }
   
-  with_node_label <- function(df) {
-    result <- df %>%
-      mutate(label = paste0(hypothesis, "\n",
-                            format(alpha, trim = TRUE, scientific = FALSE)))
-    # Add default styling
-    result$color <- "lightblue"
-    result$font.color <- "black"
-    if (!is.null(rv$ts_summary)) {
-      if ("rejected" %in% names(rv$ts_summary)) {
-        rejected_hyps <- rv$ts_summary$hypothesis[rv$ts_summary$rejected == TRUE]
-        result$color <- ifelse(result$hypothesis %in% rejected_hyps, "red", "lightblue")
-        result$font.color <- ifelse(result$hypothesis %in% rejected_hyps, "white", "black")
-      }
+  format_plain_number <- function(x) {
+    format(as.numeric(x), trim = TRUE, scientific = FALSE)
+  }
+  
+  read_scalar_character_input <- function(input_id) {
+    value <- input[[input_id]]
+    if (is.null(value) || length(value) != 1 || is.na(value) || !nzchar(value)) {
+      return(NULL)
     }
-    result
+    as.character(value)
+  }
+  
+  read_scalar_numeric_input <- function(input_id) {
+    raw_value <- input[[input_id]]
+    if (is.null(raw_value) || length(raw_value) != 1) {
+      return(NA_real_)
+    }
+    value <- suppressWarnings(as.numeric(raw_value))
+    if (length(value) != 1 || is.na(value) || !is.finite(value)) {
+      return(NA_real_)
+    }
+    value
+  }
+  
+  quiet_jsonlite_warning <- function(expr) {
+    withCallingHandlers(
+      expr,
+      warning = function(w) {
+        msg <- conditionMessage(w)
+        if (is_named_vector_jsonlite_warning(msg)) {
+          invokeRestart("muffleWarning")
+        }
+      }
+    )
   }
   
   with_edge_label <- function(df) {
@@ -290,6 +558,141 @@ server <- function(input, output, session) {
     out$selectionWidth <- 3
     out$font <- lapply(seq_len(nrow(df)), function(i) list(background = "white"))
     out
+  }
+
+  sanitize_nodes_tbl <- function(df) {
+    if (is.null(df) || !nrow(df)) {
+      return(tibble::as_tibble(df))
+    }
+    out <- tibble::as_tibble(df)
+    for (col in intersect(c("id", "x", "y", "alpha"), names(out))) {
+      out[[col]] <- unname(out[[col]])
+    }
+    out
+  }
+
+  sanitize_edges_tbl <- function(df) {
+    if (is.null(df) || !nrow(df)) {
+      return(tibble::as_tibble(df))
+    }
+    out <- tibble::as_tibble(df)
+    for (col in intersect(c("id", "from", "to", "weight"), names(out))) {
+      out[[col]] <- unname(out[[col]])
+    }
+    out
+  }
+
+  set_ts_log <- function(...) {
+    log_lines <- unlist(list(...), use.names = FALSE)
+    log_lines <- trimws(as.character(log_lines))
+    rv$ts_log <- paste(log_lines[nzchar(log_lines)], collapse = "\n")
+    invisible(NULL)
+  }
+
+  format_hypothesis_list <- function(x) {
+    values <- unique(trimws(as.character(x)))
+    values <- values[nzchar(values)]
+    if (!length(values)) {
+      return("none")
+    }
+    paste(values, collapse = ", ")
+  }
+
+  format_alpha_snapshot <- function(allocations = get_current_allocations()) {
+    if (is.null(allocations) || !length(allocations)) {
+      return("Current alpha: none.")
+    }
+    values <- vapply(as.numeric(allocations), format_plain_number, character(1))
+    paste(
+      "Current alpha:",
+      paste(sprintf("%s=%s", names(allocations), values), collapse = ", "),
+      sep = " "
+    )
+  }
+
+  build_object_log <- function() {
+    c(
+      sprintf("Created test object for %d hypotheses.", nrow(rv$nodes)),
+      format_alpha_snapshot()
+    )
+  }
+
+  build_preview_log <- function(stage_stats, preview_tbl = rv$gs_boundary_preview) {
+    lines <- sprintf(
+      "Previewed analysis order %s for %s.",
+      unique(stage_stats$order)[1],
+      format_hypothesis_list(stage_stats$hypotheses)
+    )
+    if (!is.null(preview_tbl) && nrow(preview_tbl)) {
+      preview_lines <- vapply(seq_len(nrow(preview_tbl)), function(i) {
+        sprintf(
+          "%s: alpha=%s, level=%s, critical=%s.",
+          preview_tbl$hypothesis[i],
+          format_plain_number(preview_tbl$current_alpha[i]),
+          format_plain_number(preview_tbl$stage_level[i]),
+          format_plain_number(preview_tbl$critical_value[i])
+        )
+      }, character(1))
+      lines <- c(lines, preview_lines)
+    }
+    lines
+  }
+
+  build_stage_apply_log <- function(stage_stats) {
+    stage_order <- unique(stage_stats$order)[1]
+    latest <- tryCatch(rv$ts_object$get_current_testing_results(), error = function(e) NULL)
+    lines <- sprintf("Applied analysis order %s.", stage_order)
+    if (!is.null(latest) &&
+        nrow(latest) &&
+        all(c("order", "hypothesis", "decision") %in% names(latest))) {
+      stage_results <- latest %>%
+        dplyr::filter(order == stage_order, hypothesis %in% stage_stats$hypotheses)
+      rejected <- stage_results$hypothesis[tolower(stage_results$decision) == "reject"]
+      retained <- stage_results$hypothesis[tolower(stage_results$decision) != "reject"]
+      lines <- c(
+        lines,
+        sprintf("Rejected: %s.", format_hypothesis_list(rejected)),
+        sprintf("Not rejected: %s.", format_hypothesis_list(retained))
+      )
+    }
+    c(lines, format_alpha_snapshot())
+  }
+
+  build_design_reject_log <- function(selected_hypothesis) {
+    c(
+      sprintf("Rejected %s in the graphical procedure.", selected_hypothesis),
+      format_alpha_snapshot()
+    )
+  }
+
+  validate_transition_matrix <- function(mat, hypotheses = rownames(mat), tol = 1e-6) {
+    if (is.null(mat) || !length(mat)) {
+      return(list(valid = TRUE, message = NULL))
+    }
+    row_sums <- rowSums(mat)
+    invalid_rows <- which(!(abs(row_sums) < tol | abs(row_sums - 1) < tol))
+    if (!length(invalid_rows)) {
+      return(list(valid = TRUE, message = NULL))
+    }
+    if (is.null(hypotheses) || length(hypotheses) != nrow(mat)) {
+      hypotheses <- paste0("Row ", seq_len(nrow(mat)))
+    }
+    details <- paste(
+      vapply(
+        invalid_rows,
+        function(i) sprintf("%s = %s", hypotheses[i], format_plain_number(row_sums[i])),
+        character(1)
+      ),
+      collapse = "; "
+    )
+    list(
+      valid = FALSE,
+      message = paste0(
+        "Outgoing edge weights must sum to 0 or 1 for each hypothesis. ",
+        "Invalid totals: ", details,
+        ". If a hypothesis has outgoing edges, make their weights add to 1."
+      )
+    )
   }
   
   next_hypothesis <- function(existing) {
@@ -327,17 +730,336 @@ server <- function(input, output, session) {
     ts_object = NULL,
     ts_log = "",
     ts_summary = NULL,
+    gs_settings = tibble::tibble(
+      id = 1:3,
+      hypothesis = c("H1", "H2", "H3"),
+      alpha_spending = rep("asOF", 3),
+      planned_max_info = rep(100, 3)
+    ),
+    gs_boundary_preview = tibble::tibble(
+      hypothesis = character(),
+      order = integer(),
+      current_alpha = numeric(),
+      alpha_spending = character(),
+      planned_max_info = integer(),
+      observed_info = integer(),
+      is_final = logical(),
+      stage = integer(),
+      stage_level = numeric(),
+      critical_value = numeric(),
+      cumulative_alpha_spent = numeric(),
+      decision = character()
+    ),
+    gs_stage_history = tibble::tibble(
+      order = integer(),
+      hypotheses = character(),
+      p = numeric(),
+      info = integer(),
+      is_final = logical(),
+      max_info = integer(),
+      alpha_spent = numeric()
+    ),
     alpha_spending = character(0),
     planned_max_info = numeric(0),
     transition = matrix(0, 0, 0)
   )
   
+  update_manual_reject_choices <- function(choices = rv$nodes$hypothesis) {
+    selected_choice <- if (length(choices)) choices[[1]] else character(0)
+    updateSelectInput(session, "design_graph_selected", choices = choices, selected = selected_choice)
+  }
+  
   tables_tick <- reactiveVal(0)
   bump_tables <- function() tables_tick(tables_tick() + 1)
+  ts_state_tick <- reactiveVal(0)
+  bump_ts_state <- function() ts_state_tick(ts_state_tick() + 1)
+  
+  empty_gs_boundary_preview <- function() {
+    tibble::tibble(
+      hypothesis = character(),
+      order = integer(),
+      current_alpha = numeric(),
+      alpha_spending = character(),
+      planned_max_info = integer(),
+      observed_info = integer(),
+      is_final = logical(),
+      stage = integer(),
+      stage_level = numeric(),
+      critical_value = numeric(),
+      cumulative_alpha_spent = numeric(),
+      decision = character()
+    )
+  }
+  
+  empty_gs_stage_history <- function() {
+    tibble::tibble(
+      order = integer(),
+      hypotheses = character(),
+      p = numeric(),
+      info = integer(),
+      is_final = logical(),
+      max_info = integer(),
+      alpha_spent = numeric()
+    )
+  }
+  
+  collect_gs_settings <- function(persist = FALSE) {
+    existing <- rv$gs_settings
+    if (!nrow(rv$nodes)) {
+      out <- tibble::tibble(
+        id = integer(),
+        hypothesis = character(),
+        alpha_spending = character(),
+        planned_max_info = numeric()
+      )
+    } else {
+      out <- tibble::tibble(
+        id = rv$nodes$id,
+        hypothesis = rv$nodes$hypothesis,
+        alpha_spending = vapply(rv$nodes$id, function(id) {
+          input_val <- read_scalar_character_input(paste0("gs_asf_", id))
+          if (!is.null(input_val)) {
+            return(input_val)
+          }
+          existing_idx <- match(id, existing$id)
+          if (!is.null(existing) && nrow(existing) && !is.na(existing_idx)) {
+            return(existing$alpha_spending[existing_idx])
+          }
+          "asOF"
+        }, character(1)),
+        planned_max_info = vapply(rv$nodes$id, function(id) {
+          input_val <- read_scalar_numeric_input(paste0("gs_max_info_", id))
+          if (!is.na(input_val)) {
+            return(input_val)
+          }
+          existing_idx <- match(id, existing$id)
+          if (!is.null(existing) && nrow(existing) && !is.na(existing_idx)) {
+            return(as.numeric(existing$planned_max_info[existing_idx]))
+          }
+          100
+        }, numeric(1))
+      )
+    }
+    if (isTRUE(persist)) {
+      rv$gs_settings <- out
+    }
+    out
+  }
+  
+  validate_gs_settings <- function(settings) {
+    if (!nrow(settings)) {
+      showNotification("Create at least one hypothesis before configuring group sequential design.", type = "error")
+      return(FALSE)
+    }
+    if (any(!settings$alpha_spending %in% c("asOF", "asP", "asUser"))) {
+      showNotification("Alpha-spending setting must be one of asOF, asP, or asUser.", type = "error")
+      return(FALSE)
+    }
+    if (any(!is.finite(settings$planned_max_info) | settings$planned_max_info <= 0)) {
+      showNotification("Planned maximum information must be a positive number for every hypothesis.", type = "error")
+      return(FALSE)
+    }
+    TRUE
+  }
+  
+  get_current_allocations <- function() {
+    ts_state_tick()
+    if (is.null(rv$ts_object)) {
+      return(stats::setNames(rv$nodes$alpha, rv$nodes$hypothesis))
+    }
+    stats::setNames(
+      vapply(rv$nodes$hypothesis, function(hyp) {
+        tryCatch({
+          hid <- rv$ts_object$get_hid(hyp)
+          if (!rv$ts_object$is_in_graph(hid)) {
+            return(0)
+          }
+          rv$ts_object$get_alpha(hid)
+        }, error = function(e) {
+          rv$nodes$alpha[match(hyp, rv$nodes$hypothesis)]
+        })
+      }, numeric(1)),
+      rv$nodes$hypothesis
+    )
+  }
+  
+  build_ts_status_table <- function() {
+    ts_state_tick()
+    if (!nrow(rv$nodes)) {
+      return(NULL)
+    }
+    if (is.null(rv$ts_object)) {
+      return(tibble::tibble(
+        hypothesis = rv$nodes$hypothesis,
+        current_alpha = as.numeric(rv$nodes$alpha),
+        decision = rep("ready", nrow(rv$nodes)),
+        in_graph = rep(TRUE, nrow(rv$nodes)),
+        testable = rv$nodes$alpha > 0
+      ))
+    }
+    decisions <- tryCatch(rv$ts_object$get_current_decision(), error = function(e) {
+      stats::setNames(rep("accept", nrow(rv$nodes)), rv$nodes$hypothesis)
+    })
+    allocations <- get_current_allocations()
+    status_tbl <- tibble::tibble(
+      hypothesis = rv$nodes$hypothesis,
+      current_alpha = as.numeric(allocations[rv$nodes$hypothesis]),
+      decision = unname(decisions[rv$nodes$hypothesis]),
+      in_graph = vapply(rv$nodes$hypothesis, function(hyp) {
+        tryCatch(rv$ts_object$is_in_graph(rv$ts_object$get_hid(hyp)), error = function(e) TRUE)
+      }, logical(1)),
+      testable = vapply(rv$nodes$hypothesis, function(hyp) {
+        tryCatch(rv$ts_object$is_testable(rv$ts_object$get_hid(hyp)), error = function(e) FALSE)
+      }, logical(1))
+    )
+    status_tbl$decision[!status_tbl$in_graph] <- "reject"
+    status_tbl
+  }
+  
+  build_graph_nodes <- function() {
+    allocations <- get_current_allocations()
+    status_tbl <- build_ts_status_table()
+    result <- sanitize_nodes_tbl(rv$nodes) %>%
+      mutate(
+        x = as.numeric(x),
+        y = as.numeric(y),
+        alpha_display = as.numeric(allocations[hypothesis]),
+        label = paste0(hypothesis, "\nalpha=", format_plain_number(alpha_display))
+      )
+    result$color <- "#8ecae6"
+    font_colors <- rep("#0f172a", nrow(result))
+    result$borderWidth <- 2
+    if (!is.null(status_tbl) && nrow(status_tbl)) {
+      inactive <- status_tbl$hypothesis[status_tbl$in_graph & !status_tbl$testable]
+      rejected <- status_tbl$hypothesis[!status_tbl$in_graph | status_tbl$decision == "reject"]
+      result$color[result$hypothesis %in% inactive] <- "#cbd5e1"
+      result$color[result$hypothesis %in% rejected] <- "#dc2626"
+      font_colors[result$hypothesis %in% rejected] <- "#111827"
+    }
+    result$font <- lapply(font_colors, function(color) {
+      list(color = color, strokeWidth = 3, strokeColor = "#ffffff", vadjust = 0)
+    })
+    result
+  }
+
+  build_graph_edges <- function() {
+    base_edges <- sanitize_edges_tbl(rv$edges)
+    if (is.null(rv$ts_object) || !nrow(base_edges)) {
+      display_edges <- with_edge_label(base_edges)
+      if (nrow(display_edges)) {
+        display_edges$color <- "#5aa6cf"
+      }
+      return(display_edges)
+    }
+    current_edges <- lapply(seq_len(nrow(base_edges)), function(i) {
+      from_hyp <- rv$nodes$hypothesis[match(base_edges$from[i], rv$nodes$id)]
+      to_hyp <- rv$nodes$hypothesis[match(base_edges$to[i], rv$nodes$id)]
+      if (is.na(from_hyp) || is.na(to_hyp)) {
+        return(NULL)
+      }
+      from_hid <- tryCatch(rv$ts_object$get_hid(from_hyp), error = function(e) NA_integer_)
+      to_hid <- tryCatch(rv$ts_object$get_hid(to_hyp), error = function(e) NA_integer_)
+      if (is.na(from_hid) || is.na(to_hid)) {
+        return(NULL)
+      }
+      weight <- tryCatch(rv$ts_object$get_weight(from_hid, to_hid), error = function(e) base_edges$weight[i])
+      tibble::tibble(
+        id = base_edges$id[i],
+        from = base_edges$from[i],
+        to = base_edges$to[i],
+        weight = as.numeric(weight)
+      )
+    })
+    current_edges <- dplyr::bind_rows(current_edges) %>%
+      sanitize_edges_tbl() %>%
+      dplyr::filter(is.finite(weight) & weight > 1e-12)
+    display_edges <- with_edge_label(current_edges)
+    if (nrow(display_edges)) {
+      display_edges$color <- "#5aa6cf"
+    }
+    display_edges
+  }
+  
+  update_graph_views <- function() {
+    nodes_data <- build_graph_nodes()
+    edges_data <- build_graph_edges()
+    quiet_jsonlite_warning({
+      visNetworkProxy("graph") %>%
+        visSetData(nodes = nodes_data, edges = edges_data) %>%
+        visRedraw()
+      visNetworkProxy("seq_graph") %>%
+        visSetData(nodes = nodes_data, edges = edges_data) %>%
+        visRedraw()
+      if (nrow(rv$nodes)) {
+        for (i in seq_len(nrow(rv$nodes))) {
+          visNetworkProxy("graph") %>% visMoveNode(id = rv$nodes$id[i], x = rv$nodes$x[i], y = rv$nodes$y[i])
+          visNetworkProxy("seq_graph") %>% visMoveNode(id = rv$nodes$id[i], x = rv$nodes$x[i], y = rv$nodes$y[i])
+        }
+      }
+    })
+    invisible(NULL)
+  }
+
+  schedule_graph_refresh <- function(adjust_tables = TRUE) {
+    session$onFlushed(function() {
+      isolate({
+        update_graph_views()
+        if (isTRUE(adjust_tables)) {
+          session$sendCustomMessage("adjust-datatables", list())
+        }
+      })
+    }, once = TRUE)
+    invisible(NULL)
+  }
+  
+  refresh_ts_state <- function() {
+    status_tbl <- build_ts_status_table()
+    if (is.null(rv$ts_object)) {
+      rv$ts_summary <- NULL
+      update_manual_reject_choices(rv$nodes$hypothesis)
+      schedule_graph_refresh()
+      return(invisible(NULL))
+    }
+    latest <- tryCatch(rv$ts_object$get_current_testing_results(), error = function(e) NULL)
+    if (is.null(latest) || !nrow(latest)) {
+      latest <- status_tbl
+    }
+    rv$ts_summary <- latest
+    active_hyps <- if (!is.null(status_tbl) && nrow(status_tbl)) {
+      status_tbl$hypothesis[status_tbl$in_graph & status_tbl$testable]
+    } else {
+      rv$nodes$hypothesis
+    }
+    if (!length(active_hyps)) {
+      active_hyps <- rv$nodes$hypothesis
+    }
+    update_manual_reject_choices(active_hyps)
+    schedule_graph_refresh()
+    invisible(NULL)
+  }
+  
+  reset_group_sequential_state <- function(reset_log = TRUE) {
+    rv$ts_object <- NULL
+    if (isTRUE(reset_log)) {
+      set_ts_log("")
+    }
+    rv$ts_summary <- NULL
+    rv$gs_boundary_preview <- empty_gs_boundary_preview()
+    rv$gs_stage_history <- empty_gs_stage_history()
+    updateNumericInput(session, "gs_current_order", value = 1L)
+    update_manual_reject_choices(rv$nodes$hypothesis)
+    bump_ts_state()
+    schedule_graph_refresh()
+    invisible(NULL)
+  }
   
   create_trialsimulator_objects <- function() {
-    rv$alpha_spending <- rep("asOF", nrow(rv$nodes))
-    rv$planned_max_info <- rep(100, nrow(rv$nodes))
+    settings <- collect_gs_settings(persist = TRUE)
+    if (!validate_gs_settings(settings)) {
+      return(FALSE)
+    }
+    rv$alpha_spending <- settings$alpha_spending
+    rv$planned_max_info <- as.integer(round(settings$planned_max_info))
     n <- nrow(rv$nodes)
     mat <- matrix(0, n, n)
     if (n > 0) {
@@ -352,37 +1074,174 @@ server <- function(input, output, session) {
         }
       }
     }
+    validation <- validate_transition_matrix(mat, rv$nodes$hypothesis)
+    if (!isTRUE(validation$valid)) {
+      rv$transition <- mat
+      set_ts_log(validation$message)
+      rv$ts_object <- NULL
+      rv$ts_summary <- NULL
+      showNotification(validation$message, type = "error", duration = 8)
+      return(FALSE)
+    }
     rv$transition <- mat
-    invisible(NULL)
+    TRUE
+  }
+  
+  initialize_ts_object <- function(reset_history = FALSE) {
+    if (!isTRUE(create_trialsimulator_objects())) {
+      rv$ts_object <- NULL
+      rv$ts_summary <- NULL
+      bump_ts_state()
+      schedule_graph_refresh()
+      return(FALSE)
+    }
+    tryCatch({
+      rv$ts_object <- NULL
+      log_message <- function(m) {
+        invokeRestart("muffleMessage")
+      }
+      withCallingHandlers(
+        {
+          rv$ts_object <- GraphicalTesting$new(
+            alpha = rv$nodes$alpha,
+            transition = rv$transition,
+            alpha_spending = rv$alpha_spending,
+            planned_max_info = rv$planned_max_info,
+            hypotheses = rv$nodes$hypothesis,
+            silent = FALSE
+          )
+        },
+        message = log_message
+      )
+      bump_ts_state()
+      if (isTRUE(reset_history)) {
+        rv$gs_boundary_preview <- empty_gs_boundary_preview()
+        rv$gs_stage_history <- empty_gs_stage_history()
+        updateNumericInput(session, "gs_current_order", value = 1L)
+      }
+      refresh_ts_state()
+      set_ts_log(build_object_log())
+      TRUE
+    }, error = function(e) {
+      set_ts_log(paste("Error during TrialSimulator setup:", e$message))
+      rv$ts_object <- NULL
+      rv$ts_summary <- NULL
+      FALSE
+    })
+  }
+  
+  collect_stage_stats <- function(require_p_values = TRUE) {
+    if (!nrow(rv$nodes)) {
+      showNotification("Create at least one hypothesis before entering staged analyses.", type = "error")
+      return(NULL)
+    }
+    settings <- if (!is.null(rv$ts_object) &&
+                    length(rv$alpha_spending) == nrow(rv$nodes) &&
+                    length(rv$planned_max_info) == nrow(rv$nodes)) {
+      tibble::tibble(
+        id = rv$nodes$id,
+        hypothesis = rv$nodes$hypothesis,
+        alpha_spending = rv$alpha_spending,
+        planned_max_info = as.numeric(rv$planned_max_info)
+      )
+    } else {
+      collect_gs_settings(persist = TRUE)
+    }
+    if (!validate_gs_settings(settings)) {
+      return(NULL)
+    }
+    selected_ids <- rv$nodes$id[vapply(rv$nodes$id, function(id) {
+      isTRUE(input[[paste0("gs_use_", id)]])
+    }, logical(1))]
+    if (!length(selected_ids)) {
+      showNotification("Select at least one hypothesis in the current analysis.", type = "error")
+      return(NULL)
+    }
+    current_order <- suppressWarnings(as.integer(input$gs_current_order))
+    if (is.na(current_order) || current_order < 1L) {
+      showNotification("Analysis order must be an integer greater than or equal to 1.", type = "error")
+      return(NULL)
+    }
+    current_alpha <- get_current_allocations()
+    stage_rows <- lapply(selected_ids, function(id) {
+      idx <- match(id, rv$nodes$id)
+      hyp <- rv$nodes$hypothesis[idx]
+      spend_type <- settings$alpha_spending[match(id, settings$id)]
+      info_val <- read_scalar_numeric_input(paste0("gs_info_", id))
+      p_val <- read_scalar_numeric_input(paste0("gs_p_", id))
+      alpha_prop <- read_scalar_numeric_input(paste0("gs_alpha_spent_", id))
+      final_flag <- isTRUE(input[[paste0("gs_final_", id)]])
+      planned_info <- as.integer(round(settings$planned_max_info[match(id, settings$id)]))
+      if (is.na(info_val) || info_val <= 0) {
+        showNotification(sprintf("Observed information for %s must be a positive number.", hyp), type = "error")
+        return(NULL)
+      }
+      if (isTRUE(require_p_values) && (is.na(p_val) || p_val < 0 || p_val > 1)) {
+        showNotification(sprintf("P-value for %s must be between 0 and 1.", hyp), type = "error")
+        return(NULL)
+      }
+      if (spend_type == "asUser") {
+        if (is.na(alpha_prop) || alpha_prop < 0 || alpha_prop > 1) {
+          showNotification(sprintf("Alpha-spent proportion for %s must be between 0 and 1 when using asUser.", hyp), type = "error")
+          return(NULL)
+        }
+      } else {
+        alpha_prop <- NA_real_
+      }
+      if (is.na(current_alpha[hyp]) || current_alpha[hyp] <= 0) {
+        showNotification(sprintf("%s is not currently testable because it has no allocated alpha.", hyp), type = "error")
+        return(NULL)
+      }
+      if (!is.null(rv$ts_object)) {
+        hid <- tryCatch(rv$ts_object$get_hid(hyp), error = function(e) NA_integer_)
+        if (!is.na(hid) && !rv$ts_object$is_in_graph(hid)) {
+          showNotification(sprintf("%s has already been rejected and cannot be tested again.", hyp), type = "error")
+          return(NULL)
+        }
+      }
+      tibble::tibble(
+        order = current_order,
+        hypotheses = hyp,
+        p = if (isTRUE(require_p_values)) p_val else NA_real_,
+        info = as.integer(round(info_val)),
+        is_final = final_flag,
+        max_info = if (isTRUE(final_flag)) as.integer(round(info_val)) else planned_info,
+        alpha_spent = alpha_prop
+      )
+    })
+    if (any(vapply(stage_rows, is.null, logical(1)))) {
+      return(NULL)
+    }
+    dplyr::bind_rows(stage_rows)
   }
   
   output$graph <- renderVisNetwork({
-    nodes_data <- with_node_label(rv$nodes)
-    visNetwork(nodes_data, with_edge_label(rv$edges)) %>%
-      visNodes(
-        font = list(size = 16)
-      ) %>%
-      visEdges(
-        font = list(background = "white"),
-        hoverWidth = 3,
-        selectionWidth = 3
-      ) %>%
-      visPhysics(
-        enabled = FALSE,
-        stabilization = FALSE
-      ) %>%
-      visOptions(
-        highlightNearest = FALSE,
-        manipulation = list(enabled = FALSE)
-      ) %>%
-      visInteraction(
-        selectConnectedEdges = FALSE, 
-        hoverConnectedEdges = FALSE,
-        dragNodes = TRUE,
-        dragView = TRUE
-      ) %>% 
-      visEvents(
-        dragEnd = "
+    quiet_jsonlite_warning(
+      visNetwork(build_graph_nodes(), build_graph_edges()) %>%
+        visNodes(
+          font = list(size = 16)
+        ) %>%
+        visEdges(
+          font = list(background = "white"),
+          hoverWidth = 3,
+          selectionWidth = 3
+        ) %>%
+        visPhysics(
+          enabled = FALSE,
+          stabilization = FALSE
+        ) %>%
+        visOptions(
+          highlightNearest = FALSE,
+          manipulation = list(enabled = FALSE)
+        ) %>%
+        visInteraction(
+          selectConnectedEdges = FALSE, 
+          hoverConnectedEdges = FALSE,
+          dragNodes = TRUE,
+          dragView = TRUE
+        ) %>% 
+        visEvents(
+          dragEnd = "
           function(params) {
             if (params.nodes && params.nodes.length > 0) {
               var nodeId = params.nodes[0];
@@ -448,25 +1307,76 @@ server <- function(input, output, session) {
             Shiny.setInputValue('click_event', {node: nid, edge: eid}, {priority: 'event'});
           }
         "
-      )
+        )
+    )
+  })
+  
+  output$seq_graph <- renderVisNetwork({
+    quiet_jsonlite_warning(
+      visNetwork(build_graph_nodes(), build_graph_edges()) %>%
+        visNodes(font = list(size = 16)) %>%
+        visEdges(
+          font = list(background = "white"),
+          hoverWidth = 3,
+          selectionWidth = 3
+        ) %>%
+        visPhysics(enabled = FALSE, stabilization = FALSE) %>%
+        visInteraction(
+          selectConnectedEdges = FALSE,
+          hoverConnectedEdges = FALSE,
+          dragNodes = FALSE,
+          dragView = TRUE,
+          zoomView = TRUE
+        )
+    )
   })
   
   output$graph_ui <- renderUI({
-    if (is.null(rv$ts_object)) {
-      visNetworkOutput("graph", height = "640px")
-    } else {
-      plotOutput("ts_plot", height = "640px")
-    }
+    visNetworkOutput("graph", height = "640px")
   })
   
-  output$ts_plot <- renderPlot({
-    req(rv$ts_object)
-    print(rv$ts_object)
+  output$ts_status_table <- renderDT({
+    quiet_jsonlite_warning({
+      df <- build_ts_status_table()
+      if (is.null(df) || !nrow(df)) {
+        return(datatable(
+          data.frame(
+            hypothesis = character(),
+            current_alpha = numeric(),
+            decision = character(),
+            testable = logical(),
+            stringsAsFactors = FALSE
+          ),
+          rownames = FALSE,
+          options = list(dom = "t", paging = FALSE, searching = FALSE, ordering = FALSE, info = FALSE)
+        ))
+      }
+      display_df <- df %>%
+        transmute(
+          Hypothesis = hypothesis,
+          `Current alpha` = format(current_alpha, trim = TRUE, scientific = FALSE),
+          Decision = decision,
+          Testable = ifelse(testable, "Yes", "No"),
+          Active = ifelse(in_graph, "Yes", "No")
+        )
+      datatable(
+        display_df,
+        rownames = FALSE,
+        class = "compact stripe hover nowrap",
+        options = list(dom = "t", paging = FALSE, searching = FALSE, ordering = FALSE, info = FALSE, autoWidth = FALSE, scrollX = TRUE)
+      )
+    })
   })
   
   outputOptions(output, "graph", suspendWhenHidden = FALSE)
+  outputOptions(output, "seq_graph", suspendWhenHidden = FALSE)
   
   panel_visible <- reactiveVal(TRUE)
+  
+  observe({
+    rv$nodes
+    update_manual_reject_choices(rv$nodes$hypothesis)
+  })
   
   observeEvent(input$toggle_panel, {
     if (isTRUE(panel_visible())) {
@@ -490,7 +1400,7 @@ server <- function(input, output, session) {
   
   output$nodes_table <- renderDT({
     tables_tick()
-    isolate({
+    isolate(quiet_jsonlite_warning({
       if (!nrow(rv$nodes)) {
         return(datatable(data.frame(hypothesis=character(), alpha=numeric()),
                          rownames=FALSE,
@@ -502,12 +1412,12 @@ server <- function(input, output, session) {
       datatable(df, rownames=FALSE,
                 options=list(dom='t', paging=FALSE, searching=FALSE, ordering=FALSE, info=FALSE)
       )
-    })
+    }))
   })
   
   output$edges_table <- renderDT({
     tables_tick()
-    isolate({
+    isolate(quiet_jsonlite_warning({
       if (!nrow(rv$edges)) {
         return(datatable(data.frame(from=character(), to=character(), weight=numeric()),
                          rownames=FALSE,
@@ -521,6 +1431,245 @@ server <- function(input, output, session) {
       datatable(df, rownames=FALSE,
                 options=list(dom='t', paging=FALSE, searching=FALSE, ordering=FALSE, info=FALSE)
       )
+    }))
+  })
+  
+  output$gs_settings_ui <- renderUI({
+    if (!nrow(rv$nodes)) {
+      return(tags$p("Add at least one hypothesis to configure group sequential settings."))
+    }
+    settings <- rv$gs_settings
+    if (!nrow(settings) ||
+        nrow(settings) != nrow(rv$nodes) ||
+        !identical(settings$id, rv$nodes$id) ||
+        !identical(settings$hypothesis, rv$nodes$hypothesis)) {
+      settings <- collect_gs_settings(persist = TRUE)
+    }
+    tagList(
+      fluidRow(
+        column(4, tags$b("Hypothesis")),
+        column(4, tags$b("Alpha spending")),
+        column(4, tags$b("Planned max info"))
+      ),
+      lapply(seq_len(nrow(settings)), function(i) {
+        fluidRow(
+          style = "margin-bottom: 8px;",
+          column(4, tags$div(style = "padding-top: 8px;", tags$strong(settings$hypothesis[i]))),
+          column(
+            4,
+            selectInput(
+              inputId = paste0("gs_asf_", settings$id[i]),
+              label = NULL,
+              choices = c("asOF", "asP", "asUser"),
+              selected = settings$alpha_spending[i],
+              width = "100%"
+            )
+          ),
+          column(
+            4,
+            numericInput(
+              inputId = paste0("gs_max_info_", settings$id[i]),
+              label = NULL,
+              value = settings$planned_max_info[i],
+              min = 1,
+              step = 1,
+              width = "100%"
+            )
+          )
+        )
+      })
+    )
+  })
+  
+  output$gs_stage_inputs <- renderUI({
+    if (!nrow(rv$nodes)) {
+      return(tags$p("Create hypotheses in the graph first."))
+    }
+    settings <- collect_gs_settings(persist = FALSE)
+    current_allocations <- get_current_allocations()
+    current_or_default <- function(input_id, default = NULL) {
+      value <- isolate(input[[input_id]])
+      if (!is.null(value)) value else default
+    }
+    tagList(
+      fluidRow(
+        column(4, tags$b("Hypothesis")),
+        column(1, tags$b("Use")),
+        column(2, tags$b("Observed p")),
+        column(2, tags$b("Observed info")),
+        column(1, tags$b("Final")),
+        column(2, tags$b("Alpha spent"))
+      ),
+      lapply(seq_len(nrow(settings)), function(i) {
+        hyp <- settings$hypothesis[i]
+        hid <- settings$id[i]
+        fluidRow(
+          style = "padding: 8px 0; border-top: 1px solid #f1f3f5;",
+          column(
+            4,
+            tags$div(
+              tags$strong(hyp),
+              tags$div(
+                class = "seq-meta",
+                sprintf(
+                  "alpha %s | %s | max %s",
+                  format(current_allocations[hyp], trim = TRUE, scientific = FALSE),
+                  settings$alpha_spending[i],
+                  format(settings$planned_max_info[i], trim = TRUE, scientific = FALSE)
+                )
+              )
+            )
+          ),
+          column(1, checkboxInput(paste0("gs_use_", hid), NULL, value = current_or_default(paste0("gs_use_", hid), FALSE))),
+          column(
+            2,
+            numericInput(
+              paste0("gs_p_", hid),
+              NULL,
+              value = current_or_default(paste0("gs_p_", hid), NA_real_),
+              min = 0,
+              max = 1,
+              step = 0.0001,
+              width = "100%"
+            )
+          ),
+          column(
+            2,
+            numericInput(
+              paste0("gs_info_", hid),
+              NULL,
+              value = current_or_default(paste0("gs_info_", hid), settings$planned_max_info[i]),
+              min = 1,
+              step = 1,
+              width = "100%"
+            )
+          ),
+          column(1, checkboxInput(paste0("gs_final_", hid), NULL, value = current_or_default(paste0("gs_final_", hid), FALSE))),
+          column(
+            2,
+            numericInput(
+              paste0("gs_alpha_spent_", hid),
+              NULL,
+              value = current_or_default(paste0("gs_alpha_spent_", hid), NA_real_),
+              min = 0,
+              max = 1,
+              step = 0.01,
+              width = "100%"
+            )
+          )
+        )
+      })
+    )
+  })
+
+  observe({
+    if (!nrow(rv$nodes)) {
+      return()
+    }
+    live_settings <- collect_gs_settings(persist = FALSE)
+    old_settings <- rv$gs_settings
+    same_rows <- nrow(old_settings) == nrow(live_settings) &&
+      identical(old_settings$id, live_settings$id) &&
+      identical(old_settings$hypothesis, live_settings$hypothesis)
+    if (!same_rows) {
+      rv$gs_settings <- live_settings
+      return()
+    }
+    settings_changed <- !identical(old_settings$alpha_spending, live_settings$alpha_spending) ||
+      !isTRUE(all.equal(
+        as.numeric(old_settings$planned_max_info),
+        as.numeric(live_settings$planned_max_info),
+        tolerance = 1e-8
+      ))
+    if (!settings_changed) {
+      return()
+    }
+    for (i in seq_len(nrow(live_settings))) {
+      input_id <- paste0("gs_info_", live_settings$id[i])
+      current_info <- read_scalar_numeric_input(input_id)
+      previous_default <- as.numeric(old_settings$planned_max_info[i])
+      if (is.na(current_info) || abs(current_info - previous_default) < 1e-8) {
+        updateNumericInput(session, input_id, value = live_settings$planned_max_info[i])
+      }
+    }
+    rv$gs_settings <- live_settings
+  })
+  
+  output$gs_boundary_table <- renderDT({
+    quiet_jsonlite_warning({
+      df <- rv$gs_boundary_preview
+      if (is.null(df) || !nrow(df)) {
+        return(datatable(
+          data.frame(
+            Hypothesis = character(),
+            Order = integer(),
+            Alpha = numeric(),
+            Level = numeric(),
+            Critical = numeric(),
+            Info = integer(),
+            stringsAsFactors = FALSE
+          ),
+          rownames = FALSE,
+          options = list(dom = 't', paging = FALSE, searching = FALSE, ordering = FALSE, info = FALSE)
+        ))
+      }
+      display_df <- df %>%
+        transmute(
+          Hypothesis = hypothesis,
+          Order = order,
+          Stage = stage,
+          Alpha = format(current_alpha, trim = TRUE, scientific = FALSE),
+          Level = format(stage_level, trim = TRUE, scientific = FALSE),
+          Critical = format(critical_value, trim = TRUE, scientific = FALSE),
+          Info = observed_info,
+          Final = ifelse(is_final, "Yes", "No"),
+          Spent = format(cumulative_alpha_spent, trim = TRUE, scientific = FALSE),
+          Decision = ifelse(is.na(decision), "", decision)
+        )
+      datatable(
+        display_df,
+        rownames = FALSE,
+        class = "compact stripe hover nowrap",
+        options = list(dom = 't', pageLength = 6, lengthChange = FALSE, searching = FALSE, ordering = FALSE, info = FALSE, scrollX = TRUE, autoWidth = FALSE)
+      )
+    })
+  })
+  
+  output$gs_history_table <- renderDT({
+    quiet_jsonlite_warning({
+      df <- rv$gs_stage_history
+      if (is.null(df) || !nrow(df)) {
+        return(datatable(
+          data.frame(
+            Order = integer(),
+            Hypothesis = character(),
+            P = numeric(),
+            Info = integer(),
+            Final = character(),
+            `Max info` = integer(),
+            `Alpha spent` = numeric(),
+            stringsAsFactors = FALSE
+          ),
+          rownames = FALSE,
+          options = list(dom = 't', paging = FALSE, searching = FALSE, ordering = FALSE, info = FALSE)
+        ))
+      }
+      display_df <- df %>%
+        transmute(
+          Order = order,
+          Hypothesis = hypotheses,
+          P = format(p, trim = TRUE, scientific = FALSE),
+          Info = info,
+          Final = ifelse(is_final, "Yes", "No"),
+          `Max info` = max_info,
+          `Alpha spent` = ifelse(is.na(alpha_spent), "", format(alpha_spent, trim = TRUE, scientific = FALSE))
+        )
+      datatable(
+        display_df,
+        rownames = FALSE,
+        class = "compact stripe hover nowrap",
+        options = list(dom = 't', pageLength = 6, lengthChange = FALSE, searching = FALSE, ordering = FALSE, info = FALSE, scrollX = TRUE, autoWidth = FALSE)
+      )
     })
   })
   
@@ -530,7 +1679,11 @@ server <- function(input, output, session) {
       mutate(
         x = ifelse(id == node_id, input$node_dragged$x, x),
         y = ifelse(id == node_id, input$node_dragged$y, y)
-      )
+      ) %>%
+      sanitize_nodes_tbl()
+    quiet_jsonlite_warning({
+      visNetworkProxy("seq_graph") %>% visMoveNode(id = node_id, x = input$node_dragged$x, y = input$node_dragged$y)
+    })
   })
   
   observe({
@@ -548,9 +1701,13 @@ server <- function(input, output, session) {
   })
   
   observeEvent(input$ctx_event, {
+    canvas_coords <- suppressWarnings(as.numeric(unlist(input$ctx_event$canvas)))
+    if (length(canvas_coords) < 2 || any(!is.finite(canvas_coords[1:2]))) {
+      canvas_coords <- c(0, 0)
+    }
     rv$ctx$node   <- input$ctx_event$node
     rv$ctx$edge   <- input$ctx_event$edge
-    rv$ctx$canvas <- unlist(input$ctx_event$canvas)
+    rv$ctx$canvas <- unname(canvas_coords[1:2])
   })
   
   observeEvent(input$any_context, {
@@ -568,18 +1725,17 @@ server <- function(input, output, session) {
     default_a <- "0"
     base_row <- tibble::tibble(
       id = nid,
-      x  = rv$ctx$canvas[1],
-      y  = rv$ctx$canvas[2],
+      x  = as.numeric(rv$ctx$canvas[1]),
+      y  = as.numeric(rv$ctx$canvas[2]),
       hypothesis = default_h,
       alpha      = as.numeric(default_a)
     )
-    rv$nodes <- dplyr::bind_rows(rv$nodes, base_row)
+    rv$nodes <- dplyr::bind_rows(rv$nodes, base_row) %>%
+      sanitize_nodes_tbl()
+    collect_gs_settings(persist = TRUE)
+    reset_group_sequential_state()
     bump_tables()
-    updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
-    
-    # Update the graph immediately without modal interference
-    nodes_data <- with_node_label(rv$nodes)
-    visNetworkProxy("graph") %>% visUpdateNodes(nodes_data)
+    update_manual_reject_choices(rv$nodes$hypothesis)
     
     # Immediately open the edit modal for the new node (Dr. Zhang's intended UX)
     # Set edit target so the existing save logic can be reused
@@ -602,17 +1758,12 @@ server <- function(input, output, session) {
     nid <- rv$ctx$node
     if (!is.null(nid)) {
       rv$edges <- dplyr::filter(rv$edges, !(from == nid | to == nid))
-      rv$nodes <- dplyr::filter(rv$nodes, id != nid)
-      nodes_data <- with_node_label(rv$nodes)
-      visNetworkProxy("graph") %>%
-        visUpdateNodes(nodes_data) %>%
-        visUpdateEdges(with_edge_label(rv$edges))
+      rv$nodes <- dplyr::filter(rv$nodes, id != nid) %>%
+        sanitize_nodes_tbl()
+      collect_gs_settings(persist = TRUE)
+      reset_group_sequential_state()
       bump_tables()
-      for(i in seq_len(nrow(rv$nodes))) {
-        visNetworkProxy("graph") %>%
-          visMoveNode(id = rv$nodes$id[i], x = rv$nodes$x[i], y = rv$nodes$y[i])
-      }
-      updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
+      update_manual_reject_choices(rv$nodes$hypothesis)
     }
   })
   
@@ -664,25 +1815,26 @@ server <- function(input, output, session) {
       mutate(
         hypothesis = ifelse(id == !!id, h_new, hypothesis),
         alpha      = ifelse(id == !!id, a_val, alpha)
-      )
+      ) %>%
+      sanitize_nodes_tbl()
+    collect_gs_settings(persist = TRUE)
+    reset_group_sequential_state()
+    rv$ctx$edit_node_id <- NULL
     removeModal()
-    nodes_data <- with_node_label(rv$nodes)
-    visNetworkProxy("graph") %>% 
-      visUpdateNodes(nodes_data) %>%
-      visMoveNode(id = id, x = current_x, y = current_y)
     bump_tables()
-    updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
+    update_manual_reject_choices(rv$nodes$hypothesis)
   })
   
   # If the user cancels the initial edit on a newly-created node, remove it
   observeEvent(input$cancel_new_node, {
     id_to_remove <- rv$ctx$edit_node_id
     if (!is.null(id_to_remove)) {
-      rv$nodes <- rv$nodes[rv$nodes$id != id_to_remove, ]
+      rv$nodes <- rv$nodes[rv$nodes$id != id_to_remove, ] %>%
+        sanitize_nodes_tbl()
+      collect_gs_settings(persist = TRUE)
+      reset_group_sequential_state()
       bump_tables()
-      updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
-      nodes_data <- with_node_label(rv$nodes)
-      visNetworkProxy("graph") %>% visUpdateNodes(nodes_data)
+      update_manual_reject_choices(rv$nodes$hypothesis)
     }
     rv$ctx$edit_node_id <- NULL
     removeModal()
@@ -755,20 +1907,19 @@ server <- function(input, output, session) {
     from <- rv$edge_new$from
     to   <- rv$edge_new$to
     eid <- ifelse(nrow(rv$edges) == 0, 1L, max(rv$edges$id) + 1L)
-    positions <- rv$nodes %>% select(id, x, y)
-    rv$edges <- bind_rows(rv$edges,
-                          tibble::tibble(id = eid, from = from, to = to, weight = w_val))
+    rv$edges <- bind_rows(
+      rv$edges,
+      tibble::tibble(id = eid, from = from, to = to, weight = w_val)
+    ) %>%
+      sanitize_edges_tbl()
+    reset_group_sequential_state()
     removeModal()
     rv$edge_new <- NULL
     rv$pending_source <- NULL
-    visNetworkProxy("graph") %>%
-      visUpdateEdges(with_edge_label(rv$edges)) %>%
-      visSelectNodes(id = NULL)
+    quiet_jsonlite_warning({
+      visNetworkProxy("graph") %>% visSelectNodes(id = NULL)
+    })
     bump_tables()
-    for(i in seq_len(nrow(positions))) {
-      visNetworkProxy("graph") %>%
-        visMoveNode(id = positions$id[i], x = positions$x[i], y = positions$y[i])
-    }
   })
   
   # Delete edge
@@ -776,15 +1927,10 @@ server <- function(input, output, session) {
     runjs("document.getElementById('ctx-menu').style.display='none';")
     eid <- rv$ctx$edge
     if (!is.null(eid) && nrow(rv$edges) > 0 && eid %in% rv$edges$id) {
-      positions <- rv$nodes %>% select(id, x, y)
-      rv$edges <- dplyr::filter(rv$edges, id != eid)
-      visNetworkProxy("graph") %>%
-        visUpdateEdges(with_edge_label(rv$edges))
+      rv$edges <- dplyr::filter(rv$edges, id != eid) %>%
+        sanitize_edges_tbl()
+      reset_group_sequential_state()
       bump_tables()
-      for(i in seq_len(nrow(positions))) {
-        visNetworkProxy("graph") %>%
-          visMoveNode(id = positions$id[i], x = positions$x[i], y = positions$y[i])
-      }
     }
   })
   
@@ -818,84 +1964,176 @@ server <- function(input, output, session) {
       return(invisible(NULL))
     }
     w_val <- as.numeric(w_str)
-    positions <- rv$nodes %>% select(id, x, y)
-    rv$edges <- rv$edges %>% mutate(
-      weight = ifelse(id == !!eid, w_val, weight)
-    )
+    rv$edges <- rv$edges %>%
+      mutate(weight = ifelse(id == !!eid, w_val, weight)) %>%
+      sanitize_edges_tbl()
+    reset_group_sequential_state()
+    rv$ctx$edit_edge_id <- NULL
     removeModal()
-    visNetworkProxy("graph") %>%
-      visUpdateEdges(with_edge_label(rv$edges))
     bump_tables()
-    for(i in seq_len(nrow(positions))) {
-      visNetworkProxy("graph") %>%
-        visMoveNode(id = positions$id[i], x = positions$x[i], y = positions$y[i])
-    }
   })
   
   # TrialSimulator integration
-  observeEvent(input$run_ts, {
+  observeEvent(input$preview_gs, {
     req(nrow(rv$nodes) > 0)
-    create_trialsimulator_objects()
+    stage_stats <- collect_stage_stats(require_p_values = FALSE)
+    if (is.null(stage_stats)) return(invisible(NULL))
+    settings <- if (!is.null(rv$ts_object) &&
+                    length(rv$alpha_spending) == nrow(rv$nodes) &&
+                    length(rv$planned_max_info) == nrow(rv$nodes)) {
+      tibble::tibble(
+        id = rv$nodes$id,
+        hypothesis = rv$nodes$hypothesis,
+        alpha_spending = rv$alpha_spending,
+        planned_max_info = as.numeric(rv$planned_max_info)
+      )
+    } else {
+      collect_gs_settings(persist = TRUE)
+    }
+    current_alpha <- get_current_allocations()
+    preview_rows <- lapply(seq_len(nrow(stage_stats)), function(i) {
+      stage_row <- stage_stats[i, ]
+      hyp <- stage_row$hypotheses
+      setting_row <- settings[match(hyp, settings$hypothesis), , drop = FALSE]
+      gst <- GroupSequentialTest$new(
+        alpha = current_alpha[hyp],
+        alpha_spending = setting_row$alpha_spending,
+        planned_max_info = as.integer(round(setting_row$planned_max_info)),
+        name = hyp,
+        silent = TRUE
+      )
+      alpha_spent_arg <- if (identical(setting_row$alpha_spending, "asUser")) {
+        stage_row$alpha_spent * current_alpha[hyp]
+      } else {
+        NULL
+      }
+      gst$test(
+        observed_info = stage_row$info,
+        is_final = stage_row$is_final,
+        alpha_spent = alpha_spent_arg
+      )
+      traj <- gst$get_trajectory()
+      last <- traj[nrow(traj), , drop = FALSE]
+      tibble::tibble(
+        hypothesis = hyp,
+        order = stage_row$order,
+        current_alpha = current_alpha[hyp],
+        alpha_spending = setting_row$alpha_spending,
+        planned_max_info = as.integer(round(setting_row$planned_max_info)),
+        observed_info = stage_row$info,
+        is_final = stage_row$is_final,
+        stage = as.integer(last$stages),
+        stage_level = last$stageLevels,
+        critical_value = last$criticalValues,
+        cumulative_alpha_spent = last$alphaSpent,
+        decision = ifelse(is.na(last$decision), NA_character_, as.character(last$decision))
+      )
+    })
+    rv$gs_boundary_preview <- dplyr::bind_rows(preview_rows)
+    set_ts_log(build_preview_log(stage_stats, rv$gs_boundary_preview))
+    updateTabsetPanel(session, "seq_panel", selected = "Boundary Preview")
+    session$sendCustomMessage("adjust-datatables", list())
+  })
+  
+  observeEvent(input$run_stage_gs, {
+    req(nrow(rv$nodes) > 0)
+    if (is.null(rv$ts_object) && !isTRUE(initialize_ts_object(reset_history = TRUE))) {
+      return(invisible(NULL))
+    }
+    stage_stats <- collect_stage_stats(require_p_values = TRUE)
+    if (is.null(stage_stats)) return(invisible(NULL))
     tryCatch({
-      rv$ts_object <- NULL
-      log_lines <- NULL
-      log_message <- function(m) { log_lines <<- c(log_lines, conditionMessage(m)); invokeRestart("muffleMessage") }
+      log_message <- function(m) {
+        invokeRestart("muffleMessage")
+      }
       withCallingHandlers(
-        {
-          rv$ts_object <- GraphicalTesting$new(
-            alpha = rv$nodes$alpha,
-            transition = rv$transition,
-            alpha_spending = rv$alpha_spending,
-            planned_max_info = rv$planned_max_info,
-            hypotheses = rv$nodes$hypothesis,
-            silent = FALSE
-          )
-        }, 
+        rv$ts_object$test(stage_stats),
         message = log_message
       )
-      rv$ts_log <- paste(log_lines, collapse = "\n")
-      rv$ts_summary <- rv$ts_object$get_current_testing_results()
-      updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
+      rv$gs_stage_history <- dplyr::bind_rows(rv$gs_stage_history, stage_stats)
+      bump_ts_state()
+      refresh_ts_state()
+      set_ts_log(build_stage_apply_log(stage_stats))
+      updateNumericInput(session, "gs_current_order", value = max(rv$gs_stage_history$order) + 1L)
+      updateTabsetPanel(session, "seq_panel", selected = "Results")
+      session$sendCustomMessage("adjust-datatables", list())
     }, error = function(e) {
-      rv$ts_log <- paste("Error during TrialSimulator setup:", e$message)
-      rv$ts_object <- NULL
-      rv$ts_summary <- NULL
+      set_ts_log(paste("Stage analysis error:", e$message))
     })
   })
   
-  observeEvent(input$reject_ts, {
-    req(rv$ts_object, input$graph_selected)
+  observeEvent(input$reset_gs, {
+    reset_group_sequential_state()
+    collect_gs_settings(persist = TRUE)
+    showNotification("Analysis reset.", type = "message")
+  })
+  
+  observeEvent(input$run_ts, {
+    req(nrow(rv$nodes) > 0)
+    initialize_ts_object(reset_history = TRUE)
+  })
+  
+  manual_reject_hypothesis <- function(selected_hypothesis) {
+    req(rv$ts_object, selected_hypothesis)
     tryCatch({
-      log_lines <- NULL
-      log_message <- function(m) { log_lines <<- c(log_lines, conditionMessage(m)); invokeRestart("muffleMessage") }
+      log_message <- function(m) { invokeRestart("muffleMessage") }
       withCallingHandlers(
-        rv$ts_object$reject_a_hypothesis(input$graph_selected),
+        rv$ts_object$reject_a_hypothesis(selected_hypothesis),
         message = log_message
       )
-      rv$ts_log <- paste(log_lines, collapse = "\n")
-      rv$ts_summary <- rv$ts_object$get_current_testing_results()
-      output$ts_plot <- renderPlot({ print(rv$ts_object) })
-      if (!is.null(rv$ts_summary) && "rejected" %in% names(rv$ts_summary)) {
-        active_hyps <- rv$ts_summary$hypothesis[rv$ts_summary$rejected == FALSE]
-        updateSelectInput(session, "graph_selected", choices = active_hyps)
-      }
+      bump_ts_state()
+      refresh_ts_state()
+      set_ts_log(build_design_reject_log(selected_hypothesis))
     }, error = function(e) {
-      rv$ts_log <- paste("Reject error:", e$message)
+      set_ts_log(paste("Reject error:", e$message))
     })
+  }
+  
+  observeEvent(input$design_reject_ts, {
+    manual_reject_hypothesis(input$design_graph_selected)
+  })
+  
+  observeEvent(input$design_run_ts, {
+    req(nrow(rv$nodes) > 0)
+    initialize_ts_object(reset_history = TRUE)
+  })
+  
+  observeEvent(input$design_clear_results, {
+    reset_group_sequential_state()
   })
   
   observeEvent(input$edit_mode, {
-    rv$ts_object <- NULL
-    rv$ts_log <- ""
-    rv$ts_summary <- NULL
-    nodes_data <- with_node_label(rv$nodes)
-    visNetworkProxy("graph") %>% visUpdateNodes(nodes_data)
-    updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
+    reset_group_sequential_state()
+    update_manual_reject_choices(rv$nodes$hypothesis)
   })
   
-  output$ts_result_table <- renderDataTable({
+  output$ts_result_table <- renderDT({
     req(rv$ts_summary)
-    rv$ts_summary
+    quiet_jsonlite_warning({
+      df <- rv$ts_summary
+      if (all(c("hypothesis", "obs_p_value", "max_allocated_alpha", "decision", "stages", "order", "typeOfDesign") %in% names(df))) {
+        df <- df %>%
+          transmute(
+            Hypothesis = hypothesis,
+            `Observed p` = format(obs_p_value, trim = TRUE, scientific = FALSE),
+            `Allocated alpha` = format(max_allocated_alpha, trim = TRUE, scientific = FALSE),
+            Decision = decision,
+            Stage = stages,
+            Order = order,
+            Spending = typeOfDesign
+          )
+      }
+      datatable(
+        df,
+        rownames = FALSE,
+        class = "compact stripe hover nowrap",
+        options = list(pageLength = 10, lengthChange = FALSE, scrollX = TRUE, autoWidth = FALSE)
+      )
+    })
+  })
+
+  output$design_ts_log <- renderText({
+    rv$ts_log
   })
   
   output$ts_log <- renderText({
@@ -907,9 +2145,11 @@ server <- function(input, output, session) {
   output$download_graph <- downloadHandler(
     filename = function() paste0("graph-", Sys.Date(), ".json"),
     content = function(file) {
+      settings_out <- collect_gs_settings(persist = TRUE)
       # Convert to data frames and ensure no named vectors
       nodes_out <- as.data.frame(rv$nodes, stringsAsFactors = FALSE)
       edges_out <- as.data.frame(rv$edges, stringsAsFactors = FALSE)
+      settings_out <- as.data.frame(settings_out, stringsAsFactors = FALSE)
       
       # Remove names from all columns to prevent jsonlite warnings
       for (col in names(nodes_out)) {
@@ -922,11 +2162,17 @@ server <- function(input, output, session) {
           names(edges_out[[col]]) <- NULL
         }
       }
+      for (col in names(settings_out)) {
+        if (is.vector(settings_out[[col]])) {
+          names(settings_out[[col]]) <- NULL
+        }
+      }
       
       # Create the export data
       export_data <- list(
         nodes = nodes_out,
-        edges = edges_out
+        edges = edges_out,
+        gs_settings = settings_out
       )
       
       # Use write_json with explicit parameters to avoid warnings
@@ -948,6 +2194,7 @@ server <- function(input, output, session) {
     # Defensive: if data are weird or come as lists:
     nodes <- dat$nodes
     edges <- dat$edges
+    gs_settings <- dat$gs_settings
     
     # If nodes/edges is a list: convert to data.frame
     if (is.list(nodes) && !is.data.frame(nodes)) nodes <- as.data.frame(nodes, stringsAsFactors=FALSE)
@@ -962,14 +2209,31 @@ server <- function(input, output, session) {
     if(!is.null(nodes$id)) nodes$id <- as.integer(nodes$id)
     if(!is.null(edges$id)) edges$id <- as.integer(edges$id)
     
-    rv$nodes <- tibble::as_tibble(nodes)
-    rv$edges <- tibble::as_tibble(edges)
+    rv$nodes <- sanitize_nodes_tbl(nodes)
+    rv$edges <- sanitize_edges_tbl(edges)
+    if (!is.null(gs_settings)) {
+      if (is.list(gs_settings) && !is.data.frame(gs_settings)) {
+        gs_settings <- as.data.frame(gs_settings, stringsAsFactors = FALSE)
+      }
+      gs_settings[] <- lapply(gs_settings, list_to_vector)
+      if (!is.null(gs_settings$id)) gs_settings$id <- as.integer(gs_settings$id)
+      if (!is.null(gs_settings$planned_max_info)) {
+        gs_settings$planned_max_info <- as.numeric(gs_settings$planned_max_info)
+      }
+      rv$gs_settings <- tibble::as_tibble(gs_settings)
+    } else {
+      rv$gs_settings <- tibble::tibble(
+        id = rv$nodes$id,
+        hypothesis = rv$nodes$hypothesis,
+        alpha_spending = rep("asOF", nrow(rv$nodes)),
+        planned_max_info = rep(100, nrow(rv$nodes))
+      )
+    }
+    collect_gs_settings(persist = TRUE)
     bump_tables()
     
-    updateSelectInput(session, "graph_selected", choices = rv$nodes$hypothesis)
-    rv$ts_object <- NULL
-    rv$ts_log <- ""
-    rv$ts_summary <- NULL
+    update_manual_reject_choices(rv$nodes$hypothesis)
+    reset_group_sequential_state()
   })
 }
 
