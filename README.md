@@ -1,9 +1,12 @@
 # Graphical Multiple Testing
+<p align="center">
+  <a href="https://u3fenv-valerie-le.shinyapps.io/graphical-testing-procedure/">
+    <img src="logo.gif" width="720" alt="Graphical Multiple Testing logo">
+  </a>
+</p>
 
 <p align="center">
-	<video src="www/logo.mp4" width="720" controls muted playsinline>
-		Your browser does not support the logo video.
-	</video>
+  <a href="https://u3fenv-valerie-le.shinyapps.io/graphical-testing-procedure/"><strong>Launch the app</strong></a>
 </p>
 
 An interactive Shiny app for building graphical multiple-testing procedures and running group-sequential analyses with `TrialSimulator`.
