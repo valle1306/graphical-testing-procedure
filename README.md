@@ -1,7 +1,7 @@
 # Graphical Multiple Testing
 <p align="center">
   <a href="https://u3fenv-valerie-le.shinyapps.io/graphical-testing-procedure/">
-    <img src="logo.mp4" width="720" alt="Graphical Multiple Testing logo">
+    <img src="logo.gif" width="720" alt="Graphical Multiple Testing logo">
   </a>
 </p>
 
