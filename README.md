@@ -97,32 +97,6 @@ Use the `Sequential` tab for group-sequential testing.
 - Use `Review` to inspect the boundary preview and submitted sequential history.
 - Open `Open graph, status, and activity` when you want the live graph or the sequential activity log without leaving the tab.
 
-## Deploy To shinyapps.io
-
-Maintainers can deploy the current app to `shinyapps.io` with:
-
-```bash
-cd /path/to/graphical-testing-procedure
-Rscript scripts/deploy_shinyapps.R
-```
-
-The deployment script expects an authenticated `rsconnect` account on the machine and publishes to:
-
-- account: `u3fenv-valerie-le`
-- app name: `graphical-testing-procedure`
-
-If this is the first deploy on a machine, register the account once with:
-
-```r
-rsconnect::setAccountInfo(
-  name = "u3fenv-valerie-le",
-  token = "<token>",
-  secret = "<secret>"
-)
-```
-
-You can also set `SHINYAPPS_ACCOUNT`, `SHINYAPPS_TOKEN`, and `SHINYAPPS_SECRET` before running the deploy script.
-
 ## Example File
 
 You can test the import feature with:
