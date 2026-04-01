@@ -10,7 +10,7 @@
   <a href="https://u3fenv-valerie-le.shinyapps.io/graphical-testing-procedure/"><strong>Launch the app</strong></a>
 </p>
 
-An interactive Shiny app for building graphical multiple-testing procedures and running group-sequential analyses with `TrialSimulator`.
+An interactive Shiny app for building graphical multiple-testing procedures and running one-sided group-sequential analyses with `TrialSimulator` and `gsDesign`.
 
 ## Live App
 
@@ -22,8 +22,8 @@ Use the hosted app here:
 
 - Build a graphical testing procedure with hypotheses, alphas, and transition weights.
 - Run the classic graphical rejection procedure from the `Design` tab.
-- Run interim/final sequential analyses from the `Sequential` tab.
-- Preview rejection boundaries and watch alpha redistribution on the graph.
+- Run planned one-sided sequential analyses from the `Sequential` tab.
+- Preview rejection boundaries at each planned analysis and watch alpha redistribution on the graph.
 
 ## Download The Repository
 
@@ -43,25 +43,31 @@ cd graphical-testing-procedure
 
 ## Install
 
-1. Install R for Windows.
+1. Install R.
 2. Open the project folder in VS Code or RStudio.
 3. Install the required packages:
 
-```powershell
-Set-Location "c:\Users\lpnhu\Documents\graphical-testing-procedure"
-& "C:\Program Files\R\R-4.5.3\bin\Rscript.exe" "scripts\install_packages.R"
+```bash
+cd /path/to/graphical-testing-procedure
+Rscript scripts/install_packages.R
 ```
 
 This installs packages into a local `.Rlibs/` folder so they do not affect your global R setup.
 
 ## Run The App
 
-```powershell
-Set-Location "c:\Users\lpnhu\Documents\graphical-testing-procedure"
-& "C:\Program Files\R\R-4.5.3\bin\Rscript.exe" -e ".libPaths(c(normalizePath('.Rlibs', winslash='/', mustWork=TRUE), .libPaths())); shiny::runApp('app.R', host='127.0.0.1', port=4587, launch.browser=TRUE)"
+```bash
+cd /path/to/graphical-testing-procedure
+Rscript scripts/run_shiny_debug.R
 ```
 
-If the browser does not open automatically, go to `http://127.0.0.1:4587`.
+By default the debug runner starts the app at `http://127.0.0.1:4567`.
+
+If you want to open it directly from the project root instead, use:
+
+```bash
+Rscript -e "local_lib <- file.path(getwd(), '.Rlibs'); if (dir.exists(local_lib)) .libPaths(c(normalizePath(local_lib, winslash='/', mustWork=TRUE), .libPaths())); shiny::runApp(getwd(), host='127.0.0.1', port=4575, launch.browser=TRUE)"
+```
 
 ## How To Use The App
 
@@ -84,12 +90,38 @@ Use the `Design` tab for the classic graphical multiple-testing procedure.
 
 Use the `Sequential` tab for group-sequential testing.
 
-- Set one alpha-spending rule and planned max information per hypothesis.
-- Click `Create Object`.
-- Enter the current analysis order, observed p-values, observed information, and final/interim status.
-- Click `Preview` to see current boundaries.
-- Click `Apply` to run the stage and update the graph.
-- Read the stage summary in the `Activity` box.
+- `Test` is the default view for the common workflow.
+- Enter one hypothesis, its planned analysis number, and a one-sided p-value.
+- Click `Apply Test` to run the analysis, recycle alpha on rejection, and recalculate the remaining one-sided boundaries automatically.
+- Use `Plan` only when a hypothesis needs an exception to the shared spending rule or timing template.
+- Use `Review` to inspect the boundary preview and submitted sequential history.
+- Open `Open graph, status, and activity` when you want the live graph or the sequential activity log without leaving the tab.
+
+## Deploy To shinyapps.io
+
+Maintainers can deploy the current app to `shinyapps.io` with:
+
+```bash
+cd /path/to/graphical-testing-procedure
+Rscript scripts/deploy_shinyapps.R
+```
+
+The deployment script expects an authenticated `rsconnect` account on the machine and publishes to:
+
+- account: `u3fenv-valerie-le`
+- app name: `graphical-testing-procedure`
+
+If this is the first deploy on a machine, register the account once with:
+
+```r
+rsconnect::setAccountInfo(
+  name = "u3fenv-valerie-le",
+  token = "<token>",
+  secret = "<secret>"
+)
+```
+
+You can also set `SHINYAPPS_ACCOUNT`, `SHINYAPPS_TOKEN`, and `SHINYAPPS_SECRET` before running the deploy script.
 
 ## Example File
 
@@ -110,4 +142,3 @@ You can test the import feature with:
 - MengYang Yi
 - Dr. Han Zhang
 - Dr. Philip He
-

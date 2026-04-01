@@ -21,7 +21,7 @@ if (dir.exists(local_library)) {
 
 required_packages <- c(
   "shiny", "visNetwork", "shinyjs", "dplyr", "DT",
-  "jsonlite", "bslib", "tibble", "TrialSimulator"
+  "jsonlite", "bslib", "tibble", "TrialSimulator", "gsDesign", "mvtnorm"
 )
 missing_packages <- required_packages[
   !vapply(required_packages, requireNamespace, logical(1), quietly = TRUE)

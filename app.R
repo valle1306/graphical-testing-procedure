@@ -6,6 +6,13 @@ library(DT)
 library(TrialSimulator)
 library(jsonlite)
 
+for (helper_file in c("alpha_spending_function.r", "Haybittle-Peto.r")) {
+  helper_path <- file.path(getwd(), helper_file)
+  if (file.exists(helper_path)) {
+    sys.source(helper_path, envir = globalenv())
+  }
+}
+
 is_named_vector_jsonlite_warning <- function(message) {
   grepl("keep_vec_names=TRUE", message, fixed = TRUE) ||
     grepl("named vectors will be translated into arrays", message, fixed = TRUE) ||
@@ -336,6 +343,57 @@ ui <- navbarPage(
             flex-wrap: wrap;
             margin-bottom: 16px;
           }
+          .seq-topbar {
+            display: flex;
+            justify-content: space-between;
+            gap: 16px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+          }
+          .seq-title-block {
+            min-width: 0;
+            flex: 1 1 320px;
+          }
+          .seq-quick-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+            align-items: end;
+            margin-bottom: 12px;
+          }
+          .seq-callout {
+            margin: 12px 0 0 0;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid #dbeafe;
+            background: #eff6ff;
+            color: #1e3a8a;
+          }
+          .seq-feedback {
+            margin-top: 12px;
+            padding: 10px 12px;
+            border-radius: 10px;
+            border: 1px solid transparent;
+            font-size: 0.9rem;
+          }
+          .seq-feedback-success {
+            border-color: #bbf7d0;
+            background: #f0fdf4;
+            color: #166534;
+          }
+          .seq-feedback-error {
+            border-color: #fecaca;
+            background: #fef2f2;
+            color: #991b1b;
+          }
+          .seq-advanced-accordion {
+            margin-top: 12px;
+          }
+          .seq-compact-note {
+            color: #475569;
+            font-size: 0.88rem;
+            margin-top: 6px;
+          }
           .seq-advanced {
             margin-top: 16px;
             padding-top: 12px;
@@ -372,6 +430,17 @@ ui <- navbarPage(
           .seq-tabset .nav-tabs {
             margin-bottom: 16px;
           }
+          .seq-main-tabs {
+            margin-top: 16px;
+          }
+          .seq-overview {
+            margin-top: 8px;
+            margin-bottom: 12px;
+          }
+          .seq-overview .nav-tabs {
+            margin-top: 12px;
+            margin-bottom: 12px;
+          }
           .seq-table {
             overflow-x: auto;
           }
@@ -404,6 +473,53 @@ ui <- navbarPage(
             border: 0;
             padding: 0;
           }
+          .seq-details summary {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            cursor: pointer;
+            font-weight: 600;
+            color: #0f172a;
+            list-style: none;
+            padding: 12px 16px;
+            border-radius: 12px;
+            border: 1px solid #bfdbfe;
+            background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%);
+            box-shadow: 0 6px 18px rgba(59, 130, 246, 0.08);
+            transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+          }
+          .seq-details summary:hover {
+            border-color: #60a5fa;
+            box-shadow: 0 8px 22px rgba(59, 130, 246, 0.12);
+            background: linear-gradient(180deg, #e0f2fe 0%, #f8fbff 100%);
+          }
+          .seq-details summary::-webkit-details-marker {
+            display: none;
+          }
+          .seq-details summary::after {
+            content: 'Show';
+            color: #0f766e;
+            font-weight: 500;
+            font-size: 0.84rem;
+            letter-spacing: 0.01em;
+            border: 1px solid #99f6e4;
+            background: #f0fdfa;
+            border-radius: 999px;
+            padding: 4px 10px;
+          }
+          .seq-details[open] summary::after {
+            content: 'Hide';
+          }
+          .seq-details .seq-log {
+            min-height: 220px;
+            max-height: 360px;
+            margin-top: 12px;
+            margin-bottom: 0;
+          }
+          .seq-overview .seq-log {
+            min-height: 200px;
+            max-height: 300px;
+          }
           .seq-tabset .nav > li > a,
           .seq-tabset .nav > li > button {
             color: #0f766e;
@@ -411,6 +527,9 @@ ui <- navbarPage(
           @media (max-width: 992px) {
             .seq-meta {
               white-space: normal;
+            }
+            .seq-quick-grid {
+              grid-template-columns: 1fr;
             }
           }
         ")),
@@ -432,55 +551,107 @@ ui <- navbarPage(
       ),
       fluidRow(
         column(
-          6,
+          12,
           div(
             class = "seq-card",
-            tags$h3(class = "seq-title", "Current Graph"),
-            tags$p(class = "seq-help", "The graph updates as decisions are applied."),
-            div(class = "seq-graph", visNetworkOutput("seq_graph", height = "480px")),
-            tags$hr(),
-            tags$div(class = "seq-section", "Status"),
-            div(class = "seq-table", DTOutput("ts_status_table"))
-          ),
-          div(
-            class = "seq-card",
-            tags$div(class = "seq-section", "Activity"),
-            div(class = "seq-log", verbatimTextOutput("ts_log"))
-          )
-        ),
-        column(
-          6,
-          div(
-            class = "seq-card",
-            tags$h3(class = "seq-title", "Sequential Analysis"),
-            tags$p(class = "seq-help", "Set spending, preview boundaries, and apply each stage."),
             div(
-              class = "seq-actions",
-              actionButton("run_ts", "Create Object", class = "btn btn-warning"),
-              actionButton("reset_gs", "Reset", class = "btn btn-secondary"),
-              actionButton("edit_mode", "Clear Results", class = "btn btn-info")
+              class = "seq-topbar",
+              div(
+                class = "seq-title-block",
+                tags$h3(class = "seq-title", "Sequential Analysis"),
+                tags$p(class = "seq-help", "Use the Test tab for the common case. Open Plan only if you need a different sequential rule or timing.")
+              ),
+              div(
+                class = "seq-actions",
+                actionButton("reset_gs", "Reset Sequential", class = "btn btn-secondary")
+              )
             ),
-            tags$div(class = "seq-section", "Per-Hypothesis Settings"),
-            tags$p(class = "seq-subtle", "Choose a spending rule and planned information for each hypothesis."),
-            uiOutput("gs_settings_ui"),
-            tags$hr(),
-            tags$div(class = "seq-section", "Current Analysis"),
-            numericInput("gs_current_order", "Analysis order", value = 1L, min = 1L, step = 1L),
-            uiOutput("gs_stage_inputs"),
-            div(
-              class = "seq-actions",
-              actionButton("preview_gs", "Preview", class = "btn btn-success"),
-              actionButton("run_stage_gs", "Apply", class = "btn btn-warning")
+            tags$details(
+              class = "seq-details seq-overview",
+              tags$summary("Open graph, status, and activity"),
+              div(
+                class = "seq-tabset",
+                tabsetPanel(
+                  id = "seq_overview_panel",
+                  selected = "Graph",
+                  tabPanel("Graph", div(class = "seq-graph", visNetworkOutput("seq_graph", height = "360px"))),
+                  tabPanel("Status", div(class = "seq-table", DTOutput("ts_status_table"))),
+                  tabPanel("Activity", div(class = "seq-log", verbatimTextOutput("ts_log")))
+                )
+              )
             ),
             div(
-              class = "seq-tabset",
+              class = "seq-tabset seq-main-tabs",
               tabsetPanel(
-                id = "seq_panel",
-                tabPanel("Boundary Preview", div(class = "seq-table", DTOutput("gs_boundary_table"))),
-                tabPanel("Submitted Analyses", div(class = "seq-table", DTOutput("gs_history_table"))),
+                id = "seq_workflow",
+                selected = "Test",
                 tabPanel(
-                  "Results",
-                  div(class = "seq-table", DTOutput("ts_result_table"))
+                  "Test",
+                  tags$p(class = "seq-subtle", "Use the shared defaults unless you need an exception. The app updates boundaries automatically."),
+                  uiOutput("seq_test_context"),
+                  uiOutput("gs_stage_inputs"),
+                  div(
+                    class = "seq-actions",
+                    actionButton("run_stage_gs", "Apply Test", class = "btn btn-warning")
+                  ),
+                  uiOutput("seq_test_feedback")
+                ),
+                tabPanel(
+                  "Plan",
+                  tags$div(class = "seq-section", "Quick Setup"),
+                  tags$p(class = "seq-subtle", "Set one shared rule and timing plan. Most users can stop here."),
+                  div(
+                    class = "seq-quick-grid",
+                    div(
+                      selectInput(
+                        "seq_quick_rule",
+                        "Shared rule",
+                        choices = c(
+                          "O'Brien-Fleming" = "OF",
+                          "Pocock" = "Pocock",
+                          "Haybittle-Peto" = "Haybittle-Peto"
+                        ),
+                        selected = "OF",
+                        width = "100%"
+                      )
+                    ),
+                    div(
+                      selectInput(
+                        "seq_quick_plan",
+                        "Timing template",
+                        choices = c(
+                          "Final only" = "final_only",
+                          "Recommended: one interim (50%, 100%)" = "one_interim",
+                          "Two interims (33%, 67%, 100%)" = "two_interims",
+                          "Three interims (25%, 50%, 75%, 100%)" = "three_interims"
+                        ),
+                        selected = "one_interim",
+                        width = "100%"
+                      )
+                    )
+                  ),
+                  tags$div(class = "seq-section", "Advanced Overrides"),
+                  tags$p(class = "seq-subtle", "Pick only the hypotheses that should differ from the shared setup."),
+                  bslib::accordion(
+                    class = "seq-advanced-accordion",
+                    bslib::accordion_panel(
+                      title = "Advanced: customize individual hypotheses",
+                      uiOutput("gs_settings_ui")
+                    )
+                  )
+                ),
+                tabPanel(
+                  "Review",
+                  tags$p(class = "seq-subtle", "Preview updates automatically. History records each submitted one-sided analysis."),
+                  div(
+                    class = "seq-tabset",
+                    tabsetPanel(
+                      id = "seq_panel",
+                      selected = "Preview",
+                      tabPanel("Preview", div(class = "seq-table", DTOutput("gs_boundary_table"))),
+                      tabPanel("History", div(class = "seq-table", DTOutput("gs_history_table")))
+                    )
+                  )
                 )
               )
             )
@@ -523,6 +694,29 @@ server <- function(input, output, session) {
       return(NA_real_)
     }
     value
+  }
+
+  read_scalar_integer_input <- function(input_id, default = NA_integer_) {
+    raw_value <- input[[input_id]]
+    if (is.null(raw_value) || length(raw_value) < 1) {
+      return(default)
+    }
+    value <- suppressWarnings(as.integer(raw_value[[1]]))
+    if (length(value) != 1 || is.na(value) || !is.finite(value)) {
+      return(default)
+    }
+    value
+  }
+
+  scalar_text_or_default <- function(value, default = "") {
+    if (is.null(value) || !length(value) || is.na(value[[1]])) {
+      return(default)
+    }
+    as.character(value[[1]])
+  }
+
+  same_trimmed_text <- function(left, right) {
+    identical(trimws(scalar_text_or_default(left)), trimws(scalar_text_or_default(right)))
   }
   
   quiet_jsonlite_warning <- function(expr) {
@@ -589,6 +783,18 @@ server <- function(input, output, session) {
     invisible(NULL)
   }
 
+  set_seq_test_feedback <- function(text = NULL, type = c("success", "error")) {
+    if (is.null(text) || !nzchar(trimws(as.character(text[[1]])))) {
+      rv$seq_test_feedback <- NULL
+      return(invisible(NULL))
+    }
+    rv$seq_test_feedback <- list(
+      text = as.character(text[[1]]),
+      type = match.arg(type)
+    )
+    invisible(NULL)
+  }
+
   format_hypothesis_list <- function(x) {
     values <- unique(trimws(as.character(x)))
     values <- values[nzchar(values)]
@@ -613,49 +819,468 @@ server <- function(input, output, session) {
   build_object_log <- function() {
     c(
       sprintf("Created test object for %d hypotheses.", nrow(rv$nodes)),
+      "Sequential boundaries use one-sided alpha and one-sided p-values.",
       format_alpha_snapshot()
     )
   }
 
-  build_preview_log <- function(stage_stats, preview_tbl = rv$gs_boundary_preview) {
-    lines <- sprintf(
-      "Previewed analysis order %s for %s.",
-      unique(stage_stats$order)[1],
-      format_hypothesis_list(stage_stats$hypotheses)
-    )
-    if (!is.null(preview_tbl) && nrow(preview_tbl)) {
-      preview_lines <- vapply(seq_len(nrow(preview_tbl)), function(i) {
-        sprintf(
-          "%s: alpha=%s, level=%s, critical=%s.",
-          preview_tbl$hypothesis[i],
-          format_plain_number(preview_tbl$current_alpha[i]),
-          format_plain_number(preview_tbl$stage_level[i]),
-          format_plain_number(preview_tbl$critical_value[i])
-        )
-      }, character(1))
-      lines <- c(lines, preview_lines)
+  default_info_timing_string <- function(k = 2L) {
+    k <- suppressWarnings(as.integer(k[[1]]))
+    if (is.na(k) || k < 1L) {
+      k <- 1L
     }
-    lines
+    if (k == 1L) {
+      return("1")
+    }
+    paste(vapply(seq_len(k), function(i) format_plain_number(i / k), character(1)), collapse = ", ")
   }
 
-  build_stage_apply_log <- function(stage_stats) {
-    stage_order <- unique(stage_stats$order)[1]
-    latest <- tryCatch(rv$ts_object$get_current_testing_results(), error = function(e) NULL)
-    lines <- sprintf("Applied analysis order %s.", stage_order)
-    if (!is.null(latest) &&
-        nrow(latest) &&
-        all(c("order", "hypothesis", "decision") %in% names(latest))) {
-      stage_results <- latest %>%
-        dplyr::filter(order == stage_order, hypothesis %in% stage_stats$hypotheses)
-      rejected <- stage_results$hypothesis[tolower(stage_results$decision) == "reject"]
-      retained <- stage_results$hypothesis[tolower(stage_results$decision) != "reject"]
-      lines <- c(
-        lines,
-        sprintf("Rejected: %s.", format_hypothesis_list(rejected)),
-        sprintf("Not rejected: %s.", format_hypothesis_list(retained))
-      )
+  default_spending_values_string <- function(k = 2L) {
+    default_info_timing_string(k)
+  }
+
+  quick_plan_defaults <- function(plan_key = "one_interim") {
+    switch(
+      as.character(plan_key[[1]]),
+      final_only = list(planned_analyses = 1L, info_timing = "1"),
+      one_interim = list(planned_analyses = 2L, info_timing = "0.5, 1"),
+      two_interims = list(planned_analyses = 3L, info_timing = "0.33, 0.67, 1"),
+      three_interims = list(planned_analyses = 4L, info_timing = "0.25, 0.5, 0.75, 1"),
+      list(planned_analyses = 2L, info_timing = "0.5, 1")
+    )
+  }
+
+  current_shared_sequential_defaults <- function() {
+    shared_rule <- read_scalar_character_input("seq_quick_rule")
+    if (is.null(shared_rule)) {
+      shared_rule <- "OF"
     }
-    c(lines, format_alpha_snapshot())
+    shared_plan_key <- read_scalar_character_input("seq_quick_plan")
+    if (is.null(shared_plan_key)) {
+      shared_plan_key <- "one_interim"
+    }
+    shared_plan <- quick_plan_defaults(shared_plan_key)
+    list(
+      alpha_spending = normalize_spending_rule(shared_rule),
+      planned_analyses = as.integer(shared_plan$planned_analyses),
+      info_timing = shared_plan$info_timing,
+      spending_values = ""
+    )
+  }
+
+  normalize_spending_rule <- function(x) {
+    value <- trimws(as.character(x[[1]]))
+    dplyr::case_when(
+      identical(value, "asOF") ~ "OF",
+      identical(value, "asP") ~ "Pocock",
+      identical(value, "asUser") ~ "Custom",
+      identical(value, "O'Brien-Fleming") ~ "OF",
+      identical(value, "Lan-DeMets O'Brien-Fleming") ~ "OF",
+      identical(value, "Custom cumulative alpha") ~ "Custom",
+      TRUE ~ value
+    )
+  }
+
+  parse_numeric_sequence <- function(text_value) {
+    if (is.null(text_value) || !length(text_value)) {
+      return(numeric(0))
+    }
+    normalized <- gsub("[\r\n\t]", " ", as.character(text_value[[1]]))
+    pieces <- unlist(strsplit(normalized, "[,;[:space:]]+"))
+    pieces <- pieces[nzchar(pieces)]
+    if (!length(pieces)) {
+      return(numeric(0))
+    }
+    suppressWarnings(as.numeric(pieces))
+  }
+
+  parse_information_timing <- function(text_value, planned_analyses) {
+    planned_analyses <- suppressWarnings(as.integer(planned_analyses[[1]]))
+    if (is.na(planned_analyses) || planned_analyses < 1L) {
+      return(list(ok = FALSE, message = "Planned analyses must be a positive integer."))
+    }
+    values <- parse_numeric_sequence(text_value)
+    if (length(values) != planned_analyses) {
+      return(list(
+        ok = FALSE,
+        message = sprintf("Enter %d cumulative information values.", planned_analyses)
+      ))
+    }
+    if (any(!is.finite(values)) || any(values <= 0)) {
+      return(list(ok = FALSE, message = "Information timing values must be positive numbers."))
+    }
+    if (any(diff(values) <= 0)) {
+      return(list(ok = FALSE, message = "Information timing values must increase from one analysis to the next."))
+    }
+    if (max(values) > 1 + 1e-8) {
+      values <- values / max(values)
+    }
+    if (abs(tail(values, 1) - 1) > 1e-8) {
+      return(list(ok = FALSE, message = "The final cumulative information value must be 1, or the final raw information count."))
+    }
+    list(ok = TRUE, values = values)
+  }
+
+  parse_spending_proportions <- function(text_value, planned_analyses) {
+    planned_analyses <- suppressWarnings(as.integer(planned_analyses[[1]]))
+    if (is.na(planned_analyses) || planned_analyses < 1L) {
+      return(list(ok = FALSE, message = "Planned analyses must be a positive integer."))
+    }
+    values <- parse_numeric_sequence(text_value)
+    if (length(values) != planned_analyses) {
+      return(list(
+        ok = FALSE,
+        message = sprintf("Enter %d cumulative spending proportions.", planned_analyses)
+      ))
+    }
+    if (any(!is.finite(values)) || any(values < 0) || any(values > 1)) {
+      return(list(ok = FALSE, message = "Cumulative spending proportions must stay between 0 and 1."))
+    }
+    if (any(diff(values) < 0)) {
+      return(list(ok = FALSE, message = "Cumulative spending proportions must be non-decreasing."))
+    }
+    if (abs(tail(values, 1) - 1) > 1e-8) {
+      return(list(ok = FALSE, message = "The final cumulative spending proportion must be 1."))
+    }
+    list(ok = TRUE, values = values)
+  }
+
+  build_information_correlation <- function(timing) {
+    timing <- as.numeric(timing)
+    k <- length(timing)
+    corr <- matrix(1, nrow = k, ncol = k)
+    if (k > 1L) {
+      for (i in seq_len(k - 1L)) {
+        for (j in seq.int(i + 1L, k)) {
+          corr[i, j] <- corr[j, i] <- sqrt(timing[i] / timing[j])
+        }
+      }
+    }
+    corr
+  }
+
+  compute_cumulative_alpha_from_z <- function(z_values, timing) {
+    corr <- build_information_correlation(timing)
+    vapply(seq_along(z_values), function(k) {
+      if (k == 1L) {
+        return(1 - stats::pnorm(z_values[[1]]))
+      }
+      1 - as.numeric(mvtnorm::pmvnorm(
+        lower = rep(-Inf, k),
+        upper = z_values[seq_len(k)],
+        corr = corr[seq_len(k), seq_len(k), drop = FALSE],
+        abseps = 1e-8,
+        maxpts = 100000
+      ))
+    }, numeric(1))
+  }
+
+  solve_custom_stage_boundary <- function(previous_z, target_stage_alpha, corr_prefix) {
+    stage_index <- length(previous_z) + 1L
+    if (!is.finite(target_stage_alpha) || target_stage_alpha <= 0) {
+      return(Inf)
+    }
+    boundary_fn <- function(z_value) {
+      as.numeric(mvtnorm::pmvnorm(
+        lower = c(rep(-Inf, stage_index - 1L), z_value),
+        upper = c(previous_z, Inf),
+        corr = corr_prefix,
+        abseps = 1e-8,
+        maxpts = 100000
+      )) - target_stage_alpha
+    }
+    lower <- -8
+    upper <- 8
+    f_lower <- boundary_fn(lower)
+    f_upper <- boundary_fn(upper)
+    while (is.finite(f_lower) && f_lower < 0 && lower > -40) {
+      lower <- lower - 4
+      f_lower <- boundary_fn(lower)
+    }
+    while (is.finite(f_upper) && f_upper > 0 && upper < 40) {
+      upper <- upper + 4
+      f_upper <- boundary_fn(upper)
+    }
+    if (!is.finite(f_lower) || !is.finite(f_upper) || f_lower * f_upper > 0) {
+      stop("Unable to solve the custom spending boundary. Please check the cumulative spending inputs.")
+    }
+    stats::uniroot(boundary_fn, interval = c(lower, upper), tol = 1e-8)$root
+  }
+
+  solve_custom_boundaries <- function(cumulative_alpha, timing) {
+    cumulative_alpha <- as.numeric(cumulative_alpha)
+    stage_alpha <- c(cumulative_alpha[[1]], diff(cumulative_alpha))
+    z_values <- numeric(length(cumulative_alpha))
+    z_values[[1]] <- stats::qnorm(1 - cumulative_alpha[[1]])
+    if (length(cumulative_alpha) > 1L) {
+      corr <- build_information_correlation(timing)
+      for (k in 2:length(cumulative_alpha)) {
+        z_values[[k]] <- solve_custom_stage_boundary(
+          previous_z = z_values[seq_len(k - 1L)],
+          target_stage_alpha = stage_alpha[[k]],
+          corr_prefix = corr[seq_len(k), seq_len(k), drop = FALSE]
+        )
+      }
+    }
+    tibble::tibble(
+      analysis = seq_along(cumulative_alpha),
+      timing = timing,
+      stage_alpha = stage_alpha,
+      cumulative_alpha_spent = cumulative_alpha,
+      z_boundary = z_values,
+      p_boundary = 1 - stats::pnorm(z_values)
+    )
+  }
+
+  compute_boundary_schedule <- function(total_alpha, spending_type, timing, spending_values = NULL) {
+    total_alpha <- as.numeric(total_alpha[[1]])
+    spending_type <- normalize_spending_rule(spending_type)
+    timing <- as.numeric(timing)
+    if (!is.finite(total_alpha) || total_alpha <= 0) {
+      return(tibble::tibble(
+        analysis = seq_along(timing),
+        timing = timing,
+        stage_alpha = NA_real_,
+        cumulative_alpha_spent = NA_real_,
+        z_boundary = NA_real_,
+        p_boundary = NA_real_
+      ))
+    }
+    if (length(timing) == 1L) {
+      z_values <- stats::qnorm(1 - total_alpha)
+      return(tibble::tibble(
+        analysis = 1L,
+        timing = timing,
+        stage_alpha = total_alpha,
+        cumulative_alpha_spent = total_alpha,
+        z_boundary = z_values,
+        p_boundary = 1 - stats::pnorm(z_values)
+      ))
+    }
+    if (identical(spending_type, "Haybittle-Peto")) {
+      hp <- HP(overall.alpha = total_alpha, timing = timing)
+      return(tibble::tibble(
+        analysis = seq_along(timing),
+        timing = timing,
+        stage_alpha = as.numeric(hp$alpha),
+        cumulative_alpha_spent = as.numeric(hp$cum.alpha),
+        z_boundary = as.numeric(hp$z),
+        p_boundary = as.numeric(hp$p)
+      ))
+    }
+    if (identical(spending_type, "Custom")) {
+      if (is.null(spending_values) || !length(spending_values)) {
+        stop("Custom cumulative spending proportions are required for the custom rule.")
+      }
+      return(solve_custom_boundaries(
+        cumulative_alpha = total_alpha * as.numeric(spending_values),
+        timing = timing
+      ))
+    }
+    gs_spending_fun <- switch(
+      spending_type,
+      "OF" = gsDesign::sfLDOF,
+      "Pocock" = gsDesign::sfLDPocock,
+      stop(sprintf("Unsupported spending rule: %s", spending_type))
+    )
+    gs_obj <- gsDesign::gsDesign(
+      k = length(timing),
+      alpha = total_alpha,
+      timing = timing,
+      sfu = gs_spending_fun,
+      test.type = 1
+    )
+    z_values <- as.numeric(gs_obj$upper$bound)
+    cumulative_alpha <- compute_cumulative_alpha_from_z(z_values, timing)
+    tibble::tibble(
+      analysis = seq_along(timing),
+      timing = timing,
+      stage_alpha = c(cumulative_alpha[[1]], diff(cumulative_alpha)),
+      cumulative_alpha_spent = cumulative_alpha,
+      z_boundary = z_values,
+      p_boundary = 1 - stats::pnorm(z_values)
+    )
+  }
+
+  resolve_gs_settings <- function(settings, notify = TRUE) {
+    if (!nrow(settings)) {
+      if (isTRUE(notify)) {
+        showNotification("Create at least one hypothesis before configuring sequential boundaries.", type = "error")
+      }
+      return(NULL)
+    }
+    allowed_rules <- c("OF", "Pocock", "Haybittle-Peto", "Custom")
+    resolved_rows <- lapply(seq_len(nrow(settings)), function(i) {
+      rule <- normalize_spending_rule(settings$alpha_spending[[i]])
+      if (!rule %in% allowed_rules) {
+        if (isTRUE(notify)) {
+          showNotification(sprintf("Unsupported spending rule for %s.", settings$hypothesis[[i]]), type = "error")
+        }
+        return(NULL)
+      }
+      planned_analyses <- suppressWarnings(as.integer(settings$planned_analyses[[i]]))
+      if (!is.finite(planned_analyses) || planned_analyses < 1L) {
+        if (isTRUE(notify)) {
+          showNotification(sprintf("Planned analyses for %s must be a positive integer.", settings$hypothesis[[i]]), type = "error")
+        }
+        return(NULL)
+      }
+      timing_info <- parse_information_timing(settings$info_timing[[i]], planned_analyses)
+      if (!isTRUE(timing_info$ok)) {
+        if (isTRUE(notify)) {
+          showNotification(sprintf("%s timing error: %s", settings$hypothesis[[i]], timing_info$message), type = "error", duration = 8)
+        }
+        return(NULL)
+      }
+      custom_values <- NULL
+      if (identical(rule, "Custom")) {
+        spend_info <- parse_spending_proportions(settings$spending_values[[i]], planned_analyses)
+        if (!isTRUE(spend_info$ok)) {
+          if (isTRUE(notify)) {
+            showNotification(sprintf("%s custom-spending error: %s", settings$hypothesis[[i]], spend_info$message), type = "error", duration = 8)
+          }
+          return(NULL)
+        }
+        custom_values <- spend_info$values
+      }
+      tibble::tibble(
+        id = settings$id[[i]],
+        hypothesis = settings$hypothesis[[i]],
+        use_override = isTRUE(settings$use_override[[i]]),
+        alpha_spending = rule,
+        planned_analyses = planned_analyses,
+        info_timing = paste(vapply(timing_info$values, format_plain_number, character(1)), collapse = ", "),
+        spending_values = if (length(custom_values)) {
+          paste(vapply(custom_values, format_plain_number, character(1)), collapse = ", ")
+        } else {
+          ""
+        },
+        timing_values = list(timing_info$values),
+        spending_proportions = list(custom_values)
+      )
+    })
+    if (any(vapply(resolved_rows, is.null, logical(1)))) {
+      return(NULL)
+    }
+    dplyr::bind_rows(resolved_rows)
+  }
+
+  build_boundary_preview <- function(settings = NULL, notify = FALSE) {
+    if (is.null(settings)) {
+      settings <- collect_gs_settings(persist = FALSE)
+    }
+    resolved <- resolve_gs_settings(settings, notify = notify)
+    if (is.null(resolved) || !nrow(resolved)) {
+      return(empty_gs_boundary_preview())
+    }
+    current_alpha <- get_current_allocations()
+    status_tbl <- build_ts_status_table()
+    preview_rows <- lapply(seq_len(nrow(resolved)), function(i) {
+      hyp <- resolved$hypothesis[[i]]
+      alpha_now <- as.numeric(current_alpha[[hyp]])
+      status_row <- if (!is.null(status_tbl) && nrow(status_tbl)) {
+        status_tbl[match(hyp, status_tbl$hypothesis), , drop = FALSE]
+      } else {
+        NULL
+      }
+      current_status <- "Ready"
+      if (!is.null(status_row) && nrow(status_row)) {
+        if (!isTRUE(status_row$in_graph[[1]])) {
+          current_status <- "Rejected"
+        } else if (!isTRUE(status_row$testable[[1]]) || !is.finite(alpha_now) || alpha_now <= 0) {
+          current_status <- "Not testable"
+        }
+      } else if (!is.finite(alpha_now) || alpha_now <= 0) {
+        current_status <- "Not testable"
+      }
+      base_rows <- tibble::tibble(
+        hypothesis = hyp,
+        alpha_spending = resolved$alpha_spending[[i]],
+        planned_analyses = resolved$planned_analyses[[i]],
+        analysis = seq_along(resolved$timing_values[[i]]),
+        timing = resolved$timing_values[[i]],
+        current_alpha = alpha_now,
+        stage_alpha = NA_real_,
+        cumulative_alpha_spent = NA_real_,
+        z_boundary = NA_real_,
+        p_boundary = NA_real_,
+        status = current_status
+      )
+      if (!identical(current_status, "Ready")) {
+        return(base_rows)
+      }
+      schedule <- tryCatch(
+        compute_boundary_schedule(
+          total_alpha = alpha_now,
+          spending_type = resolved$alpha_spending[[i]],
+          timing = resolved$timing_values[[i]],
+          spending_values = resolved$spending_proportions[[i]]
+        ),
+        error = function(e) e
+      )
+      if (inherits(schedule, "error")) {
+        base_rows$status <- paste("Error:", conditionMessage(schedule))
+        return(base_rows)
+      }
+      base_rows$stage_alpha <- schedule$stage_alpha
+      base_rows$cumulative_alpha_spent <- schedule$cumulative_alpha_spent
+      base_rows$z_boundary <- schedule$z_boundary
+      base_rows$p_boundary <- schedule$p_boundary
+      base_rows
+    })
+    dplyr::bind_rows(preview_rows)
+  }
+
+  build_preview_log <- function(preview_tbl = rv$gs_boundary_preview) {
+    if (is.null(preview_tbl) || !nrow(preview_tbl)) {
+      return("No planned boundaries are available yet.")
+    }
+    c(
+      "Refreshed one-sided rejection boundaries for the current alpha allocations.",
+      vapply(seq_len(nrow(preview_tbl)), function(i) {
+        if (!identical(preview_tbl$status[[i]], "Ready")) {
+          return(sprintf(
+            "%s analysis %s: %s.",
+            preview_tbl$hypothesis[[i]],
+            preview_tbl$analysis[[i]],
+            preview_tbl$status[[i]]
+          ))
+        }
+        sprintf(
+          "%s analysis %s (timing %s): p <= %s, z >= %s.",
+          preview_tbl$hypothesis[[i]],
+          preview_tbl$analysis[[i]],
+          format_plain_number(preview_tbl$timing[[i]]),
+          format_plain_number(preview_tbl$p_boundary[[i]]),
+          format_plain_number(preview_tbl$z_boundary[[i]])
+        )
+      }, character(1))
+    )
+  }
+
+  build_stage_apply_log <- function(stage_row) {
+    decision_text <- as.character(stage_row$decision[[1]])
+    c(
+      sprintf(
+        "Tested %s at planned analysis %s (timing %s).",
+        stage_row$hypothesis[[1]],
+        stage_row$analysis[[1]],
+        format_plain_number(stage_row$timing[[1]])
+      ),
+      sprintf(
+        "One-sided p-value=%s, rejection boundary=%s, z boundary=%s.",
+        format_plain_number(stage_row$p_value[[1]]),
+        format_plain_number(stage_row$boundary_p[[1]]),
+        format_plain_number(stage_row$boundary_z[[1]])
+      ),
+      if (identical(decision_text, "Reject")) {
+        sprintf("Decision: reject %s and recycle alpha.", stage_row$hypothesis[[1]])
+      } else {
+        sprintf("Decision: do not reject %s.", stage_row$hypothesis[[1]])
+      },
+      "Remaining hypotheses were recalculated using the updated alpha allocations.",
+      format_alpha_snapshot()
+    )
   }
 
   build_design_reject_log <- function(selected_hypothesis) {
@@ -729,35 +1354,42 @@ server <- function(input, output, session) {
     pending_source = NULL,
     ts_object = NULL,
     ts_log = "",
+    seq_test_feedback = NULL,
+    seq_skip_next_feedback_clear = FALSE,
     ts_summary = NULL,
     gs_settings = tibble::tibble(
       id = 1:3,
       hypothesis = c("H1", "H2", "H3"),
-      alpha_spending = rep("asOF", 3),
-      planned_max_info = rep(100, 3)
+      use_override = rep(FALSE, 3),
+      alpha_spending = rep("OF", 3),
+      planned_analyses = rep(2L, 3),
+      info_timing = rep("0.5, 1", 3),
+      spending_values = rep("", 3)
     ),
     gs_boundary_preview = tibble::tibble(
       hypothesis = character(),
-      order = integer(),
-      current_alpha = numeric(),
       alpha_spending = character(),
-      planned_max_info = integer(),
-      observed_info = integer(),
-      is_final = logical(),
-      stage = integer(),
-      stage_level = numeric(),
-      critical_value = numeric(),
+      planned_analyses = integer(),
+      analysis = integer(),
+      timing = numeric(),
+      current_alpha = numeric(),
+      stage_alpha = numeric(),
       cumulative_alpha_spent = numeric(),
-      decision = character()
+      z_boundary = numeric(),
+      p_boundary = numeric(),
+      status = character()
     ),
     gs_stage_history = tibble::tibble(
-      order = integer(),
-      hypotheses = character(),
-      p = numeric(),
-      info = integer(),
-      is_final = logical(),
-      max_info = integer(),
-      alpha_spent = numeric()
+      submission = integer(),
+      hypothesis = character(),
+      alpha_spending = character(),
+      analysis = integer(),
+      timing = numeric(),
+      current_alpha = numeric(),
+      p_value = numeric(),
+      boundary_p = numeric(),
+      boundary_z = numeric(),
+      decision = character()
     ),
     alpha_spending = character(0),
     planned_max_info = numeric(0),
@@ -768,6 +1400,22 @@ server <- function(input, output, session) {
     selected_choice <- if (length(choices)) choices[[1]] else character(0)
     updateSelectInput(session, "design_graph_selected", choices = choices, selected = selected_choice)
   }
+
+  update_sequential_test_choices <- function(choices = NULL) {
+    if (is.null(choices)) {
+      status_tbl <- build_ts_status_table()
+      choices <- if (!is.null(status_tbl) && nrow(status_tbl)) {
+        status_tbl$hypothesis[status_tbl$in_graph]
+      } else {
+        rv$nodes$hypothesis
+      }
+    }
+    selected_choice <- isolate(input$gs_test_hypothesis)
+    if (is.null(selected_choice) || !selected_choice %in% choices) {
+      selected_choice <- if (length(choices)) choices[[1]] else character(0)
+    }
+    updateSelectInput(session, "gs_test_hypothesis", choices = choices, selected = selected_choice)
+  }
   
   tables_tick <- reactiveVal(0)
   bump_tables <- function() tables_tick(tables_tick() + 1)
@@ -777,29 +1425,31 @@ server <- function(input, output, session) {
   empty_gs_boundary_preview <- function() {
     tibble::tibble(
       hypothesis = character(),
-      order = integer(),
-      current_alpha = numeric(),
       alpha_spending = character(),
-      planned_max_info = integer(),
-      observed_info = integer(),
-      is_final = logical(),
-      stage = integer(),
-      stage_level = numeric(),
-      critical_value = numeric(),
+      planned_analyses = integer(),
+      analysis = integer(),
+      timing = numeric(),
+      current_alpha = numeric(),
+      stage_alpha = numeric(),
       cumulative_alpha_spent = numeric(),
-      decision = character()
+      z_boundary = numeric(),
+      p_boundary = numeric(),
+      status = character()
     )
   }
   
   empty_gs_stage_history <- function() {
     tibble::tibble(
-      order = integer(),
-      hypotheses = character(),
-      p = numeric(),
-      info = integer(),
-      is_final = logical(),
-      max_info = integer(),
-      alpha_spent = numeric()
+      submission = integer(),
+      hypothesis = character(),
+      alpha_spending = character(),
+      analysis = integer(),
+      timing = numeric(),
+      current_alpha = numeric(),
+      p_value = numeric(),
+      boundary_p = numeric(),
+      boundary_z = numeric(),
+      decision = character()
     )
   }
   
@@ -809,57 +1459,90 @@ server <- function(input, output, session) {
       out <- tibble::tibble(
         id = integer(),
         hypothesis = character(),
+        use_override = logical(),
         alpha_spending = character(),
-        planned_max_info = numeric()
+        planned_analyses = integer(),
+        info_timing = character(),
+        spending_values = character()
       )
     } else {
+      shared_defaults <- current_shared_sequential_defaults()
+      override_hypotheses <- input$gs_override_hypotheses
+      if (is.null(override_hypotheses) && !is.null(existing) && nrow(existing) && "use_override" %in% names(existing)) {
+        override_hypotheses <- existing$hypothesis[which(as.logical(existing$use_override))]
+      }
+      override_hypotheses <- unique(trimws(as.character(override_hypotheses)))
+      override_hypotheses <- override_hypotheses[nzchar(override_hypotheses)]
       out <- tibble::tibble(
         id = rv$nodes$id,
         hypothesis = rv$nodes$hypothesis,
+        use_override = rv$nodes$hypothesis %in% override_hypotheses,
         alpha_spending = vapply(rv$nodes$id, function(id) {
+          hyp <- rv$nodes$hypothesis[match(id, rv$nodes$id)]
+          if (!hyp %in% override_hypotheses) {
+            return(shared_defaults$alpha_spending)
+          }
           input_val <- read_scalar_character_input(paste0("gs_asf_", id))
           if (!is.null(input_val)) {
             return(input_val)
           }
           existing_idx <- match(id, existing$id)
           if (!is.null(existing) && nrow(existing) && !is.na(existing_idx)) {
-            return(existing$alpha_spending[existing_idx])
+            return(normalize_spending_rule(existing$alpha_spending[existing_idx]))
           }
-          "asOF"
+          "OF"
         }, character(1)),
-        planned_max_info = vapply(rv$nodes$id, function(id) {
-          input_val <- read_scalar_numeric_input(paste0("gs_max_info_", id))
+        planned_analyses = vapply(rv$nodes$id, function(id) {
+          hyp <- rv$nodes$hypothesis[match(id, rv$nodes$id)]
+          if (!hyp %in% override_hypotheses) {
+            return(shared_defaults$planned_analyses)
+          }
+          input_val <- read_scalar_numeric_input(paste0("gs_k_", id))
           if (!is.na(input_val)) {
-            return(input_val)
+            return(as.integer(round(input_val)))
           }
           existing_idx <- match(id, existing$id)
           if (!is.null(existing) && nrow(existing) && !is.na(existing_idx)) {
-            return(as.numeric(existing$planned_max_info[existing_idx]))
+            return(as.integer(existing$planned_analyses[existing_idx]))
           }
-          100
-        }, numeric(1))
+          2L
+        }, integer(1)),
+        info_timing = vapply(rv$nodes$id, function(id) {
+          hyp <- rv$nodes$hypothesis[match(id, rv$nodes$id)]
+          if (!hyp %in% override_hypotheses) {
+            return(shared_defaults$info_timing)
+          }
+          input_val <- read_scalar_character_input(paste0("gs_timing_", id))
+          if (!is.null(input_val)) {
+            return(input_val)
+          }
+          existing_idx <- match(id, existing$id)
+          if (!is.null(existing) && nrow(existing) && !is.na(existing_idx) && "info_timing" %in% names(existing)) {
+            return(as.character(existing$info_timing[existing_idx]))
+          }
+          default_info_timing_string(2L)
+        }, character(1)),
+        spending_values = vapply(rv$nodes$id, function(id) {
+          hyp <- rv$nodes$hypothesis[match(id, rv$nodes$id)]
+          if (!hyp %in% override_hypotheses) {
+            return(shared_defaults$spending_values)
+          }
+          input_val <- read_scalar_character_input(paste0("gs_spend_", id))
+          if (!is.null(input_val)) {
+            return(input_val)
+          }
+          existing_idx <- match(id, existing$id)
+          if (!is.null(existing) && nrow(existing) && !is.na(existing_idx) && "spending_values" %in% names(existing)) {
+            return(as.character(existing$spending_values[existing_idx]))
+          }
+          ""
+        }, character(1))
       )
     }
     if (isTRUE(persist)) {
       rv$gs_settings <- out
     }
     out
-  }
-  
-  validate_gs_settings <- function(settings) {
-    if (!nrow(settings)) {
-      showNotification("Create at least one hypothesis before configuring group sequential design.", type = "error")
-      return(FALSE)
-    }
-    if (any(!settings$alpha_spending %in% c("asOF", "asP", "asUser"))) {
-      showNotification("Alpha-spending setting must be one of asOF, asP, or asUser.", type = "error")
-      return(FALSE)
-    }
-    if (any(!is.finite(settings$planned_max_info) | settings$planned_max_info <= 0)) {
-      showNotification("Planned maximum information must be a positive number for every hypothesis.", type = "error")
-      return(FALSE)
-    }
-    TRUE
   }
   
   get_current_allocations <- function() {
@@ -1017,6 +1700,7 @@ server <- function(input, output, session) {
     if (is.null(rv$ts_object)) {
       rv$ts_summary <- NULL
       update_manual_reject_choices(rv$nodes$hypothesis)
+      update_sequential_test_choices(rv$nodes$hypothesis)
       schedule_graph_refresh()
       return(invisible(NULL))
     }
@@ -1034,6 +1718,7 @@ server <- function(input, output, session) {
       active_hyps <- rv$nodes$hypothesis
     }
     update_manual_reject_choices(active_hyps)
+    update_sequential_test_choices(active_hyps)
     schedule_graph_refresh()
     invisible(NULL)
   }
@@ -1043,11 +1728,13 @@ server <- function(input, output, session) {
     if (isTRUE(reset_log)) {
       set_ts_log("")
     }
+    set_seq_test_feedback(NULL)
+    rv$seq_skip_next_feedback_clear <- FALSE
     rv$ts_summary <- NULL
     rv$gs_boundary_preview <- empty_gs_boundary_preview()
     rv$gs_stage_history <- empty_gs_stage_history()
-    updateNumericInput(session, "gs_current_order", value = 1L)
     update_manual_reject_choices(rv$nodes$hypothesis)
+    update_sequential_test_choices(rv$nodes$hypothesis)
     bump_ts_state()
     schedule_graph_refresh()
     invisible(NULL)
@@ -1055,11 +1742,14 @@ server <- function(input, output, session) {
   
   create_trialsimulator_objects <- function() {
     settings <- collect_gs_settings(persist = TRUE)
-    if (!validate_gs_settings(settings)) {
+    resolved_settings <- resolve_gs_settings(settings, notify = TRUE)
+    if (is.null(resolved_settings)) {
       return(FALSE)
     }
-    rv$alpha_spending <- settings$alpha_spending
-    rv$planned_max_info <- as.integer(round(settings$planned_max_info))
+    rv$gs_settings <- resolved_settings %>%
+      dplyr::select(id, hypothesis, use_override, alpha_spending, planned_analyses, info_timing, spending_values)
+    rv$alpha_spending <- rep("asOF", nrow(rv$nodes))
+    rv$planned_max_info <- rep(100L, nrow(rv$nodes))
     n <- nrow(rv$nodes)
     mat <- matrix(0, n, n)
     if (n > 0) {
@@ -1078,6 +1768,7 @@ server <- function(input, output, session) {
     if (!isTRUE(validation$valid)) {
       rv$transition <- mat
       set_ts_log(validation$message)
+      set_seq_test_feedback(validation$message, type = "error")
       rv$ts_object <- NULL
       rv$ts_summary <- NULL
       showNotification(validation$message, type = "error", duration = 8)
@@ -1085,6 +1776,13 @@ server <- function(input, output, session) {
     }
     rv$transition <- mat
     TRUE
+  }
+
+  refresh_boundary_preview <- function(notify = FALSE) {
+    settings <- collect_gs_settings(persist = TRUE)
+    preview_tbl <- build_boundary_preview(settings, notify = notify)
+    rv$gs_boundary_preview <- preview_tbl
+    invisible(preview_tbl)
   }
   
   initialize_ts_object <- function(reset_history = FALSE) {
@@ -1117,102 +1815,94 @@ server <- function(input, output, session) {
       if (isTRUE(reset_history)) {
         rv$gs_boundary_preview <- empty_gs_boundary_preview()
         rv$gs_stage_history <- empty_gs_stage_history()
-        updateNumericInput(session, "gs_current_order", value = 1L)
       }
       refresh_ts_state()
+      refresh_boundary_preview(notify = FALSE)
       set_ts_log(build_object_log())
       TRUE
     }, error = function(e) {
       set_ts_log(paste("Error during TrialSimulator setup:", e$message))
+      set_seq_test_feedback(paste("Sequential setup error:", e$message), type = "error")
       rv$ts_object <- NULL
       rv$ts_summary <- NULL
       FALSE
     })
   }
   
-  collect_stage_stats <- function(require_p_values = TRUE) {
+  collect_single_stage_test <- function() {
     if (!nrow(rv$nodes)) {
-      showNotification("Create at least one hypothesis before entering staged analyses.", type = "error")
+      set_seq_test_feedback("Create at least one hypothesis before entering sequential analyses.", type = "error")
+      showNotification("Create at least one hypothesis before entering sequential analyses.", type = "error")
       return(NULL)
     }
-    settings <- if (!is.null(rv$ts_object) &&
-                    length(rv$alpha_spending) == nrow(rv$nodes) &&
-                    length(rv$planned_max_info) == nrow(rv$nodes)) {
-      tibble::tibble(
-        id = rv$nodes$id,
-        hypothesis = rv$nodes$hypothesis,
-        alpha_spending = rv$alpha_spending,
-        planned_max_info = as.numeric(rv$planned_max_info)
+    preview_tbl <- refresh_boundary_preview(notify = TRUE)
+    if (is.null(preview_tbl) || !nrow(preview_tbl)) {
+      if (nzchar(rv$ts_log)) {
+        set_seq_test_feedback(rv$ts_log, type = "error")
+      }
+      return(NULL)
+    }
+    selected_hypothesis <- read_scalar_character_input("gs_test_hypothesis")
+    if (is.null(selected_hypothesis) || !selected_hypothesis %in% rv$nodes$hypothesis) {
+      set_seq_test_feedback("Choose a hypothesis to test.", type = "error")
+      showNotification("Choose a hypothesis to test.", type = "error")
+      return(NULL)
+    }
+    analysis_number <- read_scalar_integer_input("gs_test_analysis", default = NA_integer_)
+    if (is.na(analysis_number) || analysis_number < 1L) {
+      set_seq_test_feedback("Planned analysis number must be an integer greater than or equal to 1.", type = "error")
+      showNotification("Planned analysis number must be an integer greater than or equal to 1.", type = "error")
+      return(NULL)
+    }
+    p_value <- read_scalar_numeric_input("gs_test_p")
+    if (is.na(p_value) || p_value < 0 || p_value > 1) {
+      set_seq_test_feedback(sprintf("Enter a one-sided p-value between 0 and 1 for %s.", selected_hypothesis), type = "error")
+      showNotification(sprintf("The one-sided p-value for %s must be between 0 and 1.", selected_hypothesis), type = "error")
+      return(NULL)
+    }
+    boundary_row <- preview_tbl %>%
+      dplyr::filter(hypothesis == selected_hypothesis, analysis == analysis_number) %>%
+      dplyr::slice(1)
+    if (!nrow(boundary_row)) {
+      max_analysis <- preview_tbl %>%
+        dplyr::filter(hypothesis == selected_hypothesis) %>%
+        dplyr::summarise(max_analysis = max(analysis, na.rm = TRUE)) %>%
+        dplyr::pull(max_analysis)
+      set_seq_test_feedback(
+        sprintf("%s has %s planned analyses. Choose a value between 1 and %s.", selected_hypothesis, max_analysis, max_analysis),
+        type = "error"
       )
-    } else {
-      collect_gs_settings(persist = TRUE)
-    }
-    if (!validate_gs_settings(settings)) {
-      return(NULL)
-    }
-    selected_ids <- rv$nodes$id[vapply(rv$nodes$id, function(id) {
-      isTRUE(input[[paste0("gs_use_", id)]])
-    }, logical(1))]
-    if (!length(selected_ids)) {
-      showNotification("Select at least one hypothesis in the current analysis.", type = "error")
-      return(NULL)
-    }
-    current_order <- suppressWarnings(as.integer(input$gs_current_order))
-    if (is.na(current_order) || current_order < 1L) {
-      showNotification("Analysis order must be an integer greater than or equal to 1.", type = "error")
-      return(NULL)
-    }
-    current_alpha <- get_current_allocations()
-    stage_rows <- lapply(selected_ids, function(id) {
-      idx <- match(id, rv$nodes$id)
-      hyp <- rv$nodes$hypothesis[idx]
-      spend_type <- settings$alpha_spending[match(id, settings$id)]
-      info_val <- read_scalar_numeric_input(paste0("gs_info_", id))
-      p_val <- read_scalar_numeric_input(paste0("gs_p_", id))
-      alpha_prop <- read_scalar_numeric_input(paste0("gs_alpha_spent_", id))
-      final_flag <- isTRUE(input[[paste0("gs_final_", id)]])
-      planned_info <- as.integer(round(settings$planned_max_info[match(id, settings$id)]))
-      if (is.na(info_val) || info_val <= 0) {
-        showNotification(sprintf("Observed information for %s must be a positive number.", hyp), type = "error")
-        return(NULL)
-      }
-      if (isTRUE(require_p_values) && (is.na(p_val) || p_val < 0 || p_val > 1)) {
-        showNotification(sprintf("P-value for %s must be between 0 and 1.", hyp), type = "error")
-        return(NULL)
-      }
-      if (spend_type == "asUser") {
-        if (is.na(alpha_prop) || alpha_prop < 0 || alpha_prop > 1) {
-          showNotification(sprintf("Alpha-spent proportion for %s must be between 0 and 1 when using asUser.", hyp), type = "error")
-          return(NULL)
-        }
-      } else {
-        alpha_prop <- NA_real_
-      }
-      if (is.na(current_alpha[hyp]) || current_alpha[hyp] <= 0) {
-        showNotification(sprintf("%s is not currently testable because it has no allocated alpha.", hyp), type = "error")
-        return(NULL)
-      }
-      if (!is.null(rv$ts_object)) {
-        hid <- tryCatch(rv$ts_object$get_hid(hyp), error = function(e) NA_integer_)
-        if (!is.na(hid) && !rv$ts_object$is_in_graph(hid)) {
-          showNotification(sprintf("%s has already been rejected and cannot be tested again.", hyp), type = "error")
-          return(NULL)
-        }
-      }
-      tibble::tibble(
-        order = current_order,
-        hypotheses = hyp,
-        p = if (isTRUE(require_p_values)) p_val else NA_real_,
-        info = as.integer(round(info_val)),
-        is_final = final_flag,
-        max_info = if (isTRUE(final_flag)) as.integer(round(info_val)) else planned_info,
-        alpha_spent = alpha_prop
+      showNotification(
+        sprintf("%s has %s planned analyses. Choose a value between 1 and %s.", selected_hypothesis, max_analysis, max_analysis),
+        type = "error",
+        duration = 8
       )
-    })
-    if (any(vapply(stage_rows, is.null, logical(1)))) {
       return(NULL)
     }
-    dplyr::bind_rows(stage_rows)
+    if (!identical(boundary_row$status[[1]], "Ready")) {
+      set_seq_test_feedback(
+        sprintf("%s cannot be tested right now: %s.", selected_hypothesis, boundary_row$status[[1]]),
+        type = "error"
+      )
+      showNotification(
+        sprintf("%s cannot be tested right now: %s.", selected_hypothesis, boundary_row$status[[1]]),
+        type = "error",
+        duration = 8
+      )
+      return(NULL)
+    }
+    tibble::tibble(
+      submission = nrow(rv$gs_stage_history) + 1L,
+      hypothesis = selected_hypothesis,
+      alpha_spending = boundary_row$alpha_spending[[1]],
+      analysis = analysis_number,
+      timing = boundary_row$timing[[1]],
+      current_alpha = boundary_row$current_alpha[[1]],
+      p_value = p_value,
+      boundary_p = boundary_row$p_boundary[[1]],
+      boundary_z = boundary_row$z_boundary[[1]],
+      decision = ifelse(p_value <= boundary_row$p_boundary[[1]] + 1e-12, "Reject", "Do not reject")
+    )
   }
   
   output$graph <- renderVisNetwork({
@@ -1376,8 +2066,9 @@ server <- function(input, output, session) {
   observe({
     rv$nodes
     update_manual_reject_choices(rv$nodes$hypothesis)
+    update_sequential_test_choices(rv$nodes$hypothesis)
   })
-  
+
   observeEvent(input$toggle_panel, {
     if (isTRUE(panel_visible())) {
       shinyjs::hide("left-col")
@@ -1436,7 +2127,7 @@ server <- function(input, output, session) {
   
   output$gs_settings_ui <- renderUI({
     if (!nrow(rv$nodes)) {
-      return(tags$p("Add at least one hypothesis to configure group sequential settings."))
+      return(tags$p("Add at least one hypothesis to configure sequential boundary settings."))
     }
     settings <- rv$gs_settings
     if (!nrow(settings) ||
@@ -1445,40 +2136,147 @@ server <- function(input, output, session) {
         !identical(settings$hypothesis, rv$nodes$hypothesis)) {
       settings <- collect_gs_settings(persist = TRUE)
     }
+    shared_defaults <- current_shared_sequential_defaults()
+    override_hypotheses <- settings$hypothesis[settings$use_override]
     tagList(
-      fluidRow(
-        column(4, tags$b("Hypothesis")),
-        column(4, tags$b("Alpha spending")),
-        column(4, tags$b("Planned max info"))
+      selectizeInput(
+        "gs_override_hypotheses",
+        "Override only these hypotheses",
+        choices = settings$hypothesis,
+        selected = override_hypotheses,
+        multiple = TRUE,
+        width = "100%",
+        options = list(
+          placeholder = "Choose only exceptions",
+          plugins = list("remove_button")
+        )
       ),
-      lapply(seq_len(nrow(settings)), function(i) {
-        fluidRow(
-          style = "margin-bottom: 8px;",
-          column(4, tags$div(style = "padding-top: 8px;", tags$strong(settings$hypothesis[i]))),
-          column(
-            4,
-            selectInput(
-              inputId = paste0("gs_asf_", settings$id[i]),
-              label = NULL,
-              choices = c("asOF", "asP", "asUser"),
-              selected = settings$alpha_spending[i],
-              width = "100%"
-            )
-          ),
-          column(
-            4,
-            numericInput(
-              inputId = paste0("gs_max_info_", settings$id[i]),
-              label = NULL,
-              value = settings$planned_max_info[i],
-              min = 1,
-              step = 1,
-              width = "100%"
-            )
+      if (!length(override_hypotheses)) {
+        tags$div(
+          class = "seq-compact-note",
+          sprintf(
+            "No overrides selected. All hypotheses currently use %s with %s analysis%s at timing %s.",
+            shared_defaults$alpha_spending,
+            shared_defaults$planned_analyses,
+            ifelse(shared_defaults$planned_analyses == 1L, "", "es"),
+            shared_defaults$info_timing
           )
         )
-      })
+      } else {
+        tagList(
+          tags$div(class = "seq-compact-note", "Remove a hypothesis here anytime to return it to the shared setup."),
+          fluidRow(
+            column(2, tags$b("Hypothesis")),
+            column(3, tags$b("Rule")),
+            column(2, tags$b("Analyses")),
+            column(3, tags$b("Timing")),
+            column(2, tags$b("Custom spend"))
+          ),
+          lapply(override_hypotheses, function(hyp) {
+            i <- match(hyp, settings$hypothesis)
+            id <- settings$id[i]
+            selected_rule <- read_scalar_character_input(paste0("gs_asf_", id))
+            if (is.null(selected_rule)) {
+              selected_rule <- settings$alpha_spending[i]
+            }
+            fluidRow(
+              style = "margin-bottom: 8px;",
+              column(2, tags$div(style = "padding-top: 8px;", tags$strong(hyp))),
+              column(
+                3,
+                selectInput(
+                  inputId = paste0("gs_asf_", id),
+                  label = NULL,
+                  choices = c(
+                    "O'Brien-Fleming" = "OF",
+                    "Pocock" = "Pocock",
+                    "Haybittle-Peto" = "Haybittle-Peto",
+                    "Custom cumulative alpha" = "Custom"
+                  ),
+                  selected = settings$alpha_spending[i],
+                  width = "100%"
+                )
+              ),
+              column(
+                2,
+                numericInput(
+                  inputId = paste0("gs_k_", id),
+                  label = NULL,
+                  value = settings$planned_analyses[i],
+                  min = 1,
+                  step = 1,
+                  width = "100%"
+                )
+              ),
+              column(
+                3,
+                textInput(
+                  inputId = paste0("gs_timing_", id),
+                  label = NULL,
+                  value = settings$info_timing[i],
+                  placeholder = "e.g. 0.5, 1"
+                )
+              ),
+              column(
+                2,
+                if (identical(normalize_spending_rule(selected_rule), "Custom")) {
+                  textInput(
+                    inputId = paste0("gs_spend_", id),
+                    label = NULL,
+                    value = settings$spending_values[i],
+                    placeholder = "e.g. 0.4, 1"
+                  )
+                } else {
+                  tags$div(class = "seq-meta", style = "padding-top: 8px;", "Auto from rule")
+                }
+              )
+            )
+          })
+        )
+      }
     )
+  })
+
+  output$seq_test_context <- renderUI({
+    if (!nrow(rv$nodes)) {
+      return(NULL)
+    }
+    settings <- collect_gs_settings(persist = FALSE)
+    shared_defaults <- current_shared_sequential_defaults()
+    override_count <- sum(as.logical(settings$use_override), na.rm = TRUE)
+    message <- if (!override_count) {
+      sprintf(
+        "Current default: %s with %s analysis%s at timing %s for all hypotheses.",
+        shared_defaults$alpha_spending,
+        shared_defaults$planned_analyses,
+        ifelse(shared_defaults$planned_analyses == 1L, "", "es"),
+        shared_defaults$info_timing
+      )
+    } else {
+      sprintf(
+        "Current default: %s with %s analysis%s at timing %s, plus %s override%s in Plan.",
+        shared_defaults$alpha_spending,
+        shared_defaults$planned_analyses,
+        ifelse(shared_defaults$planned_analyses == 1L, "", "es"),
+        shared_defaults$info_timing,
+        override_count,
+        ifelse(override_count == 1L, "", "s")
+      )
+    }
+    tags$div(class = "seq-compact-note", message)
+  })
+
+  output$seq_test_feedback <- renderUI({
+    feedback <- rv$seq_test_feedback
+    if (is.null(feedback) || !length(feedback$text) || !nzchar(feedback$text[[1]])) {
+      return(NULL)
+    }
+    feedback_class <- if (identical(feedback$type, "error")) {
+      "seq-feedback seq-feedback-error"
+    } else {
+      "seq-feedback seq-feedback-success"
+    }
+    tags$div(class = feedback_class, feedback$text[[1]])
   })
   
   output$gs_stage_inputs <- renderUI({
@@ -1486,81 +2284,140 @@ server <- function(input, output, session) {
       return(tags$p("Create hypotheses in the graph first."))
     }
     settings <- collect_gs_settings(persist = FALSE)
-    current_allocations <- get_current_allocations()
-    current_or_default <- function(input_id, default = NULL) {
-      value <- isolate(input[[input_id]])
-      if (!is.null(value)) value else default
+    status_tbl <- build_ts_status_table()
+    selectable_hypotheses <- if (!is.null(status_tbl) && nrow(status_tbl)) {
+      status_tbl$hypothesis[status_tbl$in_graph]
+    } else {
+      settings$hypothesis
+    }
+    if (!length(selectable_hypotheses)) {
+      selectable_hypotheses <- settings$hypothesis
+    }
+    selected_hypothesis <- isolate(input$gs_test_hypothesis)
+    if (is.null(selected_hypothesis) || !selected_hypothesis %in% selectable_hypotheses) {
+      selected_hypothesis <- selectable_hypotheses[[1]]
+    }
+    selected_analysis <- read_scalar_integer_input("gs_test_analysis", default = 1L)
+    selected_p <- isolate(input$gs_test_p)
+    preview_tbl <- tryCatch({
+      if (nrow(rv$gs_boundary_preview)) {
+        rv$gs_boundary_preview
+      } else {
+        build_boundary_preview(settings = settings, notify = FALSE)
+      }
+    }, error = function(e) {
+      empty <- empty_gs_boundary_preview()
+      if (length(selectable_hypotheses)) {
+        empty <- tibble::tibble(
+          hypothesis = selected_hypothesis,
+          alpha_spending = character(),
+          planned_analyses = integer(),
+          analysis = integer(),
+          timing = numeric(),
+          current_alpha = numeric(),
+          stage_alpha = numeric(),
+          cumulative_alpha_spent = numeric(),
+          z_boundary = numeric(),
+          p_boundary = numeric(),
+          status = character()
+        )
+      }
+      empty
+    })
+    analysis_choices <- preview_tbl %>%
+      dplyr::filter(hypothesis == selected_hypothesis) %>%
+      dplyr::pull(analysis) %>%
+      unique()
+    if (!length(analysis_choices)) {
+      planned_lookup <- settings$planned_analyses[match(selected_hypothesis, settings$hypothesis)]
+      planned_analyses <- if (length(planned_lookup) && !is.na(planned_lookup[[1]])) {
+        as.integer(planned_lookup[[1]])
+      } else {
+        1L
+      }
+      analysis_choices <- seq_len(max(1L, planned_analyses))
+    }
+    if (!selected_analysis %in% analysis_choices) {
+      selected_analysis <- analysis_choices[[1]]
+    }
+    summary_row <- preview_tbl %>%
+      dplyr::filter(hypothesis == selected_hypothesis, analysis == selected_analysis) %>%
+      dplyr::slice(1)
+    summary_text <- NULL
+    callout <- NULL
+    if (nrow(summary_row)) {
+      if (identical(summary_row$status[[1]], "Ready")) {
+        summary_text <- sprintf(
+          "Current alpha %s | timing %s | one-sided rejection boundary p <= %s (z >= %s).",
+          format_plain_number(summary_row$current_alpha[[1]]),
+          format_plain_number(summary_row$timing[[1]]),
+          format_plain_number(summary_row$p_boundary[[1]]),
+          format_plain_number(summary_row$z_boundary[[1]])
+        )
+      } else {
+        summary_text <- sprintf(
+          "Current alpha %s | status: %s.",
+          format_plain_number(summary_row$current_alpha[[1]]),
+          summary_row$status[[1]]
+        )
+      }
+    }
+    if (!nrow(preview_tbl) || !any(preview_tbl$status == "Ready", na.rm = TRUE)) {
+      callout <- tags$div(
+        class = "seq-callout",
+        tags$strong("Nothing is testable yet. "),
+        "Allocate positive alpha in the Design tab. Boundaries will appear here automatically."
+      )
     }
     tagList(
+      callout,
       fluidRow(
-        column(4, tags$b("Hypothesis")),
-        column(1, tags$b("Use")),
-        column(2, tags$b("Observed p")),
-        column(2, tags$b("Observed info")),
-        column(1, tags$b("Final")),
-        column(2, tags$b("Alpha spent"))
-      ),
-      lapply(seq_len(nrow(settings)), function(i) {
-        hyp <- settings$hypothesis[i]
-        hid <- settings$id[i]
-        fluidRow(
-          style = "padding: 8px 0; border-top: 1px solid #f1f3f5;",
-          column(
-            4,
-            tags$div(
-              tags$strong(hyp),
-              tags$div(
-                class = "seq-meta",
-                sprintf(
-                  "alpha %s | %s | max %s",
-                  format(current_allocations[hyp], trim = TRUE, scientific = FALSE),
-                  settings$alpha_spending[i],
-                  format(settings$planned_max_info[i], trim = TRUE, scientific = FALSE)
-                )
-              )
-            )
-          ),
-          column(1, checkboxInput(paste0("gs_use_", hid), NULL, value = current_or_default(paste0("gs_use_", hid), FALSE))),
-          column(
-            2,
-            numericInput(
-              paste0("gs_p_", hid),
-              NULL,
-              value = current_or_default(paste0("gs_p_", hid), NA_real_),
-              min = 0,
-              max = 1,
-              step = 0.0001,
-              width = "100%"
-            )
-          ),
-          column(
-            2,
-            numericInput(
-              paste0("gs_info_", hid),
-              NULL,
-              value = current_or_default(paste0("gs_info_", hid), settings$planned_max_info[i]),
-              min = 1,
-              step = 1,
-              width = "100%"
-            )
-          ),
-          column(1, checkboxInput(paste0("gs_final_", hid), NULL, value = current_or_default(paste0("gs_final_", hid), FALSE))),
-          column(
-            2,
-            numericInput(
-              paste0("gs_alpha_spent_", hid),
-              NULL,
-              value = current_or_default(paste0("gs_alpha_spent_", hid), NA_real_),
-              min = 0,
-              max = 1,
-              step = 0.01,
-              width = "100%"
-            )
+        column(
+          4,
+          selectInput(
+            "gs_test_hypothesis",
+            "Hypothesis",
+            choices = selectable_hypotheses,
+            selected = selected_hypothesis,
+            width = "100%"
+          )
+        ),
+        column(
+          4,
+          selectInput(
+            "gs_test_analysis",
+            "Analysis",
+            choices = as.character(analysis_choices),
+            selected = as.character(selected_analysis),
+            width = "100%"
+          )
+        ),
+        column(
+          4,
+          numericInput(
+            "gs_test_p",
+            "One-sided p-value",
+            value = selected_p,
+            min = 0,
+            max = 1,
+            step = 0.0001,
+            width = "100%"
           )
         )
-      })
+      ),
+      if (!is.null(summary_text)) {
+        tags$div(class = "seq-meta", summary_text)
+      }
     )
   })
+
+  observeEvent(list(input$gs_test_hypothesis, input$gs_test_analysis, input$gs_test_p), {
+    if (isTRUE(rv$seq_skip_next_feedback_clear)) {
+      rv$seq_skip_next_feedback_clear <- FALSE
+      return(invisible(NULL))
+    }
+    set_seq_test_feedback(NULL)
+  }, ignoreInit = TRUE)
 
   observe({
     if (!nrow(rv$nodes)) {
@@ -1575,24 +2432,58 @@ server <- function(input, output, session) {
       rv$gs_settings <- live_settings
       return()
     }
-    settings_changed <- !identical(old_settings$alpha_spending, live_settings$alpha_spending) ||
-      !isTRUE(all.equal(
-        as.numeric(old_settings$planned_max_info),
-        as.numeric(live_settings$planned_max_info),
-        tolerance = 1e-8
-      ))
+    settings_changed <- !identical(as.logical(old_settings$use_override), as.logical(live_settings$use_override)) ||
+      !identical(old_settings$alpha_spending, live_settings$alpha_spending) ||
+      !identical(as.integer(old_settings$planned_analyses), as.integer(live_settings$planned_analyses)) ||
+      !identical(as.character(old_settings$info_timing), as.character(live_settings$info_timing)) ||
+      !identical(as.character(old_settings$spending_values), as.character(live_settings$spending_values))
     if (!settings_changed) {
       return()
     }
     for (i in seq_len(nrow(live_settings))) {
-      input_id <- paste0("gs_info_", live_settings$id[i])
-      current_info <- read_scalar_numeric_input(input_id)
-      previous_default <- as.numeric(old_settings$planned_max_info[i])
-      if (is.na(current_info) || abs(current_info - previous_default) < 1e-8) {
-        updateNumericInput(session, input_id, value = live_settings$planned_max_info[i])
+      if (!isTRUE(live_settings$use_override[i])) {
+        next
+      }
+      old_rule <- normalize_spending_rule(old_settings$alpha_spending[i])
+      new_rule <- normalize_spending_rule(live_settings$alpha_spending[i])
+      old_default_timing <- default_info_timing_string(old_settings$planned_analyses[i])
+      new_default_timing <- default_info_timing_string(live_settings$planned_analyses[i])
+      current_timing <- read_scalar_character_input(paste0("gs_timing_", live_settings$id[i]))
+      if ((!is.null(current_timing) && same_trimmed_text(current_timing, old_default_timing)) ||
+          (is.null(current_timing) && same_trimmed_text(old_settings$info_timing[i], old_default_timing))) {
+        updateTextInput(session, paste0("gs_timing_", live_settings$id[i]), value = new_default_timing)
+      }
+      old_default_spend <- if (identical(old_rule, "Custom")) {
+        default_spending_values_string(old_settings$planned_analyses[i])
+      } else {
+        ""
+      }
+      new_default_spend <- if (identical(new_rule, "Custom")) {
+        default_spending_values_string(live_settings$planned_analyses[i])
+      } else {
+        ""
+      }
+      current_spend <- read_scalar_character_input(paste0("gs_spend_", live_settings$id[i]))
+      old_saved_spend <- scalar_text_or_default(old_settings$spending_values[i])
+      if (identical(new_rule, "Custom") &&
+          ((!is.null(current_spend) && (!nzchar(scalar_text_or_default(current_spend)) || same_trimmed_text(current_spend, old_default_spend))) ||
+            (is.null(current_spend) && (!nzchar(old_saved_spend) || same_trimmed_text(old_saved_spend, old_default_spend))))) {
+        updateTextInput(session, paste0("gs_spend_", live_settings$id[i]), value = new_default_spend)
+      } else if (!identical(new_rule, "Custom") && nzchar(scalar_text_or_default(current_spend, old_saved_spend))) {
+        updateTextInput(session, paste0("gs_spend_", live_settings$id[i]), value = "")
       }
     }
     rv$gs_settings <- live_settings
+  })
+
+  observe({
+    if (!nrow(rv$nodes)) {
+      rv$gs_boundary_preview <- empty_gs_boundary_preview()
+      return()
+    }
+    ts_state_tick()
+    settings <- collect_gs_settings(persist = FALSE)
+    rv$gs_boundary_preview <- build_boundary_preview(settings = settings, notify = FALSE)
   })
   
   output$gs_boundary_table <- renderDT({
@@ -1602,11 +2493,12 @@ server <- function(input, output, session) {
         return(datatable(
           data.frame(
             Hypothesis = character(),
-            Order = integer(),
+            Rule = character(),
+            Analysis = integer(),
+            Timing = numeric(),
             Alpha = numeric(),
-            Level = numeric(),
-            Critical = numeric(),
-            Info = integer(),
+            `Boundary p` = numeric(),
+            `Boundary z` = numeric(),
             stringsAsFactors = FALSE
           ),
           rownames = FALSE,
@@ -1616,21 +2508,21 @@ server <- function(input, output, session) {
       display_df <- df %>%
         transmute(
           Hypothesis = hypothesis,
-          Order = order,
-          Stage = stage,
+          Rule = alpha_spending,
+          Analysis = analysis,
+          Timing = format(timing, trim = TRUE, scientific = FALSE),
           Alpha = format(current_alpha, trim = TRUE, scientific = FALSE),
-          Level = format(stage_level, trim = TRUE, scientific = FALSE),
-          Critical = format(critical_value, trim = TRUE, scientific = FALSE),
-          Info = observed_info,
-          Final = ifelse(is_final, "Yes", "No"),
-          Spent = format(cumulative_alpha_spent, trim = TRUE, scientific = FALSE),
-          Decision = ifelse(is.na(decision), "", decision)
+          `Stage alpha` = ifelse(is.na(stage_alpha), "", format(stage_alpha, trim = TRUE, scientific = FALSE)),
+          `Cumulative alpha` = ifelse(is.na(cumulative_alpha_spent), "", format(cumulative_alpha_spent, trim = TRUE, scientific = FALSE)),
+          `Boundary p` = ifelse(is.na(p_boundary), "", format(p_boundary, trim = TRUE, scientific = FALSE)),
+          `Boundary z` = ifelse(is.na(z_boundary), "", format(z_boundary, trim = TRUE, scientific = FALSE)),
+          Status = status
         )
       datatable(
         display_df,
         rownames = FALSE,
         class = "compact stripe hover nowrap",
-        options = list(dom = 't', pageLength = 6, lengthChange = FALSE, searching = FALSE, ordering = FALSE, info = FALSE, scrollX = TRUE, autoWidth = FALSE)
+        options = list(dom = 't', pageLength = 8, lengthChange = FALSE, searching = FALSE, ordering = FALSE, info = FALSE, scrollX = TRUE, autoWidth = FALSE)
       )
     })
   })
@@ -1641,13 +2533,12 @@ server <- function(input, output, session) {
       if (is.null(df) || !nrow(df)) {
         return(datatable(
           data.frame(
-            Order = integer(),
+            Submission = integer(),
             Hypothesis = character(),
+            Rule = character(),
+            Analysis = integer(),
             P = numeric(),
-            Info = integer(),
-            Final = character(),
-            `Max info` = integer(),
-            `Alpha spent` = numeric(),
+            `Boundary p` = numeric(),
             stringsAsFactors = FALSE
           ),
           rownames = FALSE,
@@ -1656,19 +2547,22 @@ server <- function(input, output, session) {
       }
       display_df <- df %>%
         transmute(
-          Order = order,
-          Hypothesis = hypotheses,
-          P = format(p, trim = TRUE, scientific = FALSE),
-          Info = info,
-          Final = ifelse(is_final, "Yes", "No"),
-          `Max info` = max_info,
-          `Alpha spent` = ifelse(is.na(alpha_spent), "", format(alpha_spent, trim = TRUE, scientific = FALSE))
+          Submission = submission,
+          Hypothesis = hypothesis,
+          Rule = alpha_spending,
+          Analysis = analysis,
+          Timing = format(timing, trim = TRUE, scientific = FALSE),
+          `Current alpha` = format(current_alpha, trim = TRUE, scientific = FALSE),
+          P = format(p_value, trim = TRUE, scientific = FALSE),
+          `Boundary p` = format(boundary_p, trim = TRUE, scientific = FALSE),
+          `Boundary z` = format(boundary_z, trim = TRUE, scientific = FALSE),
+          Decision = decision
         )
       datatable(
         display_df,
         rownames = FALSE,
         class = "compact stripe hover nowrap",
-        options = list(dom = 't', pageLength = 6, lengthChange = FALSE, searching = FALSE, ordering = FALSE, info = FALSE, scrollX = TRUE, autoWidth = FALSE)
+        options = list(dom = 't', pageLength = 8, lengthChange = FALSE, searching = FALSE, ordering = FALSE, info = FALSE, scrollX = TRUE, autoWidth = FALSE)
       )
     })
   })
@@ -1973,107 +2867,7 @@ server <- function(input, output, session) {
     bump_tables()
   })
   
-  # TrialSimulator integration
-  observeEvent(input$preview_gs, {
-    req(nrow(rv$nodes) > 0)
-    stage_stats <- collect_stage_stats(require_p_values = FALSE)
-    if (is.null(stage_stats)) return(invisible(NULL))
-    settings <- if (!is.null(rv$ts_object) &&
-                    length(rv$alpha_spending) == nrow(rv$nodes) &&
-                    length(rv$planned_max_info) == nrow(rv$nodes)) {
-      tibble::tibble(
-        id = rv$nodes$id,
-        hypothesis = rv$nodes$hypothesis,
-        alpha_spending = rv$alpha_spending,
-        planned_max_info = as.numeric(rv$planned_max_info)
-      )
-    } else {
-      collect_gs_settings(persist = TRUE)
-    }
-    current_alpha <- get_current_allocations()
-    preview_rows <- lapply(seq_len(nrow(stage_stats)), function(i) {
-      stage_row <- stage_stats[i, ]
-      hyp <- stage_row$hypotheses
-      setting_row <- settings[match(hyp, settings$hypothesis), , drop = FALSE]
-      gst <- GroupSequentialTest$new(
-        alpha = current_alpha[hyp],
-        alpha_spending = setting_row$alpha_spending,
-        planned_max_info = as.integer(round(setting_row$planned_max_info)),
-        name = hyp,
-        silent = TRUE
-      )
-      alpha_spent_arg <- if (identical(setting_row$alpha_spending, "asUser")) {
-        stage_row$alpha_spent * current_alpha[hyp]
-      } else {
-        NULL
-      }
-      gst$test(
-        observed_info = stage_row$info,
-        is_final = stage_row$is_final,
-        alpha_spent = alpha_spent_arg
-      )
-      traj <- gst$get_trajectory()
-      last <- traj[nrow(traj), , drop = FALSE]
-      tibble::tibble(
-        hypothesis = hyp,
-        order = stage_row$order,
-        current_alpha = current_alpha[hyp],
-        alpha_spending = setting_row$alpha_spending,
-        planned_max_info = as.integer(round(setting_row$planned_max_info)),
-        observed_info = stage_row$info,
-        is_final = stage_row$is_final,
-        stage = as.integer(last$stages),
-        stage_level = last$stageLevels,
-        critical_value = last$criticalValues,
-        cumulative_alpha_spent = last$alphaSpent,
-        decision = ifelse(is.na(last$decision), NA_character_, as.character(last$decision))
-      )
-    })
-    rv$gs_boundary_preview <- dplyr::bind_rows(preview_rows)
-    set_ts_log(build_preview_log(stage_stats, rv$gs_boundary_preview))
-    updateTabsetPanel(session, "seq_panel", selected = "Boundary Preview")
-    session$sendCustomMessage("adjust-datatables", list())
-  })
-  
-  observeEvent(input$run_stage_gs, {
-    req(nrow(rv$nodes) > 0)
-    if (is.null(rv$ts_object) && !isTRUE(initialize_ts_object(reset_history = TRUE))) {
-      return(invisible(NULL))
-    }
-    stage_stats <- collect_stage_stats(require_p_values = TRUE)
-    if (is.null(stage_stats)) return(invisible(NULL))
-    tryCatch({
-      log_message <- function(m) {
-        invokeRestart("muffleMessage")
-      }
-      withCallingHandlers(
-        rv$ts_object$test(stage_stats),
-        message = log_message
-      )
-      rv$gs_stage_history <- dplyr::bind_rows(rv$gs_stage_history, stage_stats)
-      bump_ts_state()
-      refresh_ts_state()
-      set_ts_log(build_stage_apply_log(stage_stats))
-      updateNumericInput(session, "gs_current_order", value = max(rv$gs_stage_history$order) + 1L)
-      updateTabsetPanel(session, "seq_panel", selected = "Results")
-      session$sendCustomMessage("adjust-datatables", list())
-    }, error = function(e) {
-      set_ts_log(paste("Stage analysis error:", e$message))
-    })
-  })
-  
-  observeEvent(input$reset_gs, {
-    reset_group_sequential_state()
-    collect_gs_settings(persist = TRUE)
-    showNotification("Analysis reset.", type = "message")
-  })
-  
-  observeEvent(input$run_ts, {
-    req(nrow(rv$nodes) > 0)
-    initialize_ts_object(reset_history = TRUE)
-  })
-  
-  manual_reject_hypothesis <- function(selected_hypothesis) {
+  reject_hypothesis_in_graph <- function(selected_hypothesis) {
     req(rv$ts_object, selected_hypothesis)
     tryCatch({
       log_message <- function(m) { invokeRestart("muffleMessage") }
@@ -2083,10 +2877,64 @@ server <- function(input, output, session) {
       )
       bump_ts_state()
       refresh_ts_state()
-      set_ts_log(build_design_reject_log(selected_hypothesis))
+      refresh_boundary_preview(notify = FALSE)
+      TRUE
     }, error = function(e) {
       set_ts_log(paste("Reject error:", e$message))
+      FALSE
     })
+  }
+  
+  observeEvent(input$run_stage_gs, {
+    req(nrow(rv$nodes) > 0)
+    set_seq_test_feedback(NULL)
+    if (is.null(rv$ts_object) && !isTRUE(initialize_ts_object(reset_history = TRUE))) {
+      return(invisible(NULL))
+    }
+    stage_row <- collect_single_stage_test()
+    if (is.null(stage_row)) return(invisible(NULL))
+    tryCatch({
+      if (identical(stage_row$decision[[1]], "Reject")) {
+        rejected_ok <- reject_hypothesis_in_graph(stage_row$hypothesis[[1]])
+        if (!isTRUE(rejected_ok)) {
+          return(invisible(NULL))
+        }
+      } else {
+        refresh_boundary_preview(notify = FALSE)
+      }
+      rv$gs_stage_history <- dplyr::bind_rows(rv$gs_stage_history, stage_row)
+      set_ts_log(build_stage_apply_log(stage_row))
+      set_seq_test_feedback(
+        sprintf(
+          "Saved %s analysis %s. Decision: %s. Review updates automatically in the Review tab.",
+          stage_row$hypothesis[[1]],
+          stage_row$analysis[[1]],
+          tolower(stage_row$decision[[1]])
+        ),
+        type = "success"
+      )
+      rv$seq_skip_next_feedback_clear <- TRUE
+      updateNumericInput(session, "gs_test_p", value = NA_real_)
+      session$sendCustomMessage("adjust-datatables", list())
+    }, error = function(e) {
+      set_ts_log(paste("Stage analysis error:", e$message))
+      set_seq_test_feedback(paste("Stage analysis error:", e$message), type = "error")
+    })
+  })
+  
+  observeEvent(input$reset_gs, {
+    reset_group_sequential_state()
+    collect_gs_settings(persist = TRUE)
+    updateTabsetPanel(session, "seq_workflow", selected = "Test")
+    updateTabsetPanel(session, "seq_panel", selected = "Preview")
+    showNotification("Analysis reset.", type = "message")
+  })
+  
+  manual_reject_hypothesis <- function(selected_hypothesis) {
+    rejected_ok <- reject_hypothesis_in_graph(selected_hypothesis)
+    if (isTRUE(rejected_ok)) {
+      set_ts_log(build_design_reject_log(selected_hypothesis))
+    }
   }
   
   observeEvent(input$design_reject_ts, {
@@ -2100,11 +2948,6 @@ server <- function(input, output, session) {
   
   observeEvent(input$design_clear_results, {
     reset_group_sequential_state()
-  })
-  
-  observeEvent(input$edit_mode, {
-    reset_group_sequential_state()
-    update_manual_reject_choices(rv$nodes$hypothesis)
   })
   
   output$ts_result_table <- renderDT({
@@ -2217,16 +3060,42 @@ server <- function(input, output, session) {
       }
       gs_settings[] <- lapply(gs_settings, list_to_vector)
       if (!is.null(gs_settings$id)) gs_settings$id <- as.integer(gs_settings$id)
-      if (!is.null(gs_settings$planned_max_info)) {
-        gs_settings$planned_max_info <- as.numeric(gs_settings$planned_max_info)
+      if (is.null(gs_settings$alpha_spending)) {
+        gs_settings$alpha_spending <- rep("OF", nrow(gs_settings))
       }
-      rv$gs_settings <- tibble::as_tibble(gs_settings)
+      if (is.null(gs_settings$use_override)) {
+        gs_settings$use_override <- rep(TRUE, nrow(gs_settings))
+      }
+      gs_settings$use_override <- as.logical(gs_settings$use_override)
+      gs_settings$alpha_spending <- vapply(gs_settings$alpha_spending, normalize_spending_rule, character(1))
+      if (!is.null(gs_settings$planned_max_info) && is.null(gs_settings$planned_analyses)) {
+        gs_settings$planned_analyses <- rep(2L, nrow(gs_settings))
+      }
+      if (is.null(gs_settings$planned_analyses)) {
+        gs_settings$planned_analyses <- rep(2L, nrow(gs_settings))
+      }
+      gs_settings$planned_analyses <- as.integer(gs_settings$planned_analyses)
+      if (is.null(gs_settings$info_timing)) {
+        gs_settings$info_timing <- vapply(gs_settings$planned_analyses, default_info_timing_string, character(1))
+      }
+      if (is.null(gs_settings$spending_values)) {
+        gs_settings$spending_values <- ifelse(
+          gs_settings$alpha_spending == "Custom",
+          vapply(gs_settings$planned_analyses, default_spending_values_string, character(1)),
+          ""
+        )
+      }
+      rv$gs_settings <- tibble::as_tibble(gs_settings) %>%
+        dplyr::select(id, hypothesis, use_override, alpha_spending, planned_analyses, info_timing, spending_values)
     } else {
       rv$gs_settings <- tibble::tibble(
         id = rv$nodes$id,
         hypothesis = rv$nodes$hypothesis,
-        alpha_spending = rep("asOF", nrow(rv$nodes)),
-        planned_max_info = rep(100, nrow(rv$nodes))
+        use_override = rep(FALSE, nrow(rv$nodes)),
+        alpha_spending = rep("OF", nrow(rv$nodes)),
+        planned_analyses = rep(2L, nrow(rv$nodes)),
+        info_timing = rep("0.5, 1", nrow(rv$nodes)),
+        spending_values = rep("", nrow(rv$nodes))
       )
     }
     collect_gs_settings(persist = TRUE)

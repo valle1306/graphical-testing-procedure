@@ -24,7 +24,9 @@ required_packages <- c(
   "jsonlite",
   "bslib",
   "tibble",
-  "TrialSimulator"
+  "TrialSimulator",
+  "gsDesign",
+  "mvtnorm"
 )
 
 missing_packages <- required_packages[
