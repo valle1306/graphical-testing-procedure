@@ -27,9 +27,9 @@ output$gs_hypothesis_plan_ui <- renderUI({
       tags$thead(
         tags$tr(
           tags$th("Hypothesis"),
-          tags$th("Planned Looks (K)"),
+          tags$th("Planned Analyses (K)"),
           tags$th("Alpha Spending Function"),
-          tags$th("Cumulative Alpha by Look")
+          tags$th("Custom Cumulative Alpha")
         )
       ),
       tags$tbody(
@@ -105,7 +105,7 @@ output$gs_analysis_schedule_ui <- renderUI({
           tags$tr(
             tags$th("Global Round"),
             tags$th("Hypothesis"),
-            tags$th("Look j of K"),
+            tags$th("Hypothesis Stage"),
             tags$th("Information Fraction")
           )
         ),
@@ -126,7 +126,7 @@ output$gs_analysis_schedule_ui <- renderUI({
               tags$td(tags$strong(schedule_tbl$hypothesis[[i]])),
               tags$td(
                 sprintf(
-                  "Look %s of %s%s",
+                  "%s of %s%s",
                   schedule_tbl$hypothesis_stage[[i]],
                   schedule_tbl$planned_analyses[[i]],
                   ifelse(isTRUE(schedule_tbl$is_final[[i]]), " (final)", "")
@@ -404,4 +404,38 @@ output$gs_analysis_status_table <- renderDT({
       options = list(dom = "t", pageLength = 12, lengthChange = FALSE, searching = FALSE, ordering = FALSE, info = FALSE, scrollX = TRUE, autoWidth = FALSE)
     )
   })
+})
+
+output$gs_analysis_design_summary <- renderUI({
+  if (!isTRUE(rv$gs_design_finalized)) {
+    return(
+      div(
+        class = "gs-card",
+        style = "border-color:#fbbf24; background:linear-gradient(180deg, #fffbeb 0%, #fefce8 100%);",
+        tags$h4(class = "gs-section-title", style = "color:#92400e;", "No finalized design"),
+        tags$p(
+          style = "color:#78350f; margin:0;",
+          "Go to the Group Sequential Design tab and click ",
+          tags$strong("Finalize Design"),
+          " before submitting analysis rounds."
+        )
+      )
+    )
+  }
+  plan_tbl <- collect_gs_hypothesis_plan(persist = FALSE)
+  schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = FALSE)
+  round_values <- gs_round_choice_values(schedule_tbl)
+  div(
+    class = "gs-card",
+    style = "border-color:#86efac; background:linear-gradient(180deg, #f0fdf4 0%, #f8fff8 100%);",
+    tags$h4(class = "gs-section-title", style = "color:#166534;", "Locked design"),
+    tags$p(
+      style = "color:#14532d; margin:0;",
+      sprintf(
+        "Hypotheses: %s. Global rounds: %s. Design signature applied.",
+        format_hypothesis_list(rv$nodes$hypothesis),
+        length(round_values)
+      )
+    )
+  )
 })

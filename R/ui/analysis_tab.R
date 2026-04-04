@@ -5,6 +5,12 @@ build_analysis_tab <- function() {
       fluidRow(
         column(
           12,
+          uiOutput("gs_analysis_design_summary")
+        )
+      ),
+      fluidRow(
+        column(
+          12,
           div(
             class = "gs-card",
             div(
@@ -14,7 +20,7 @@ build_analysis_tab <- function() {
                 tags$h3(class = "gs-title", "Analysis"),
                 tags$p(
                   class = "gs-help",
-                  "Submit one full analysis round at a time. Enter one-sided p-values for every hypothesis scheduled at that round and let the app update the graph and alpha recycling together."
+                  "Submit one full analysis round at a time. Enter one-sided p-values for every hypothesis scheduled at that round and the app will update the graph and alpha recycling together."
                 )
               ),
               div(
@@ -48,9 +54,9 @@ build_analysis_tab <- function() {
             tags$h4(class = "gs-section-title", "Submit One Analysis Round"),
             tags$p(
               class = "gs-table-note",
-              "Choose the global analysis round, then enter one-sided p-values for every active hypothesis scheduled at that look."
+              "Choose a global analysis round, then enter one-sided p-values for every active hypothesis scheduled at that look."
             ),
-            selectInput("gs_analysis_round", "Analysis Round", choices = character(0), width = "100%"),
+            selectInput("gs_analysis_round", "Global Analysis Round", choices = character(0), width = "100%"),
             uiOutput("gs_round_entry_ui"),
             div(
               class = "gs-actions",
