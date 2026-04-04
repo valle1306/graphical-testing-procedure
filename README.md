@@ -110,6 +110,10 @@ You can test the import feature with:
 - [scripts/](scripts): install and verification scripts.
 - [examples/](examples): sample input files.
 
+## Contributing
+
+Use [CONTRIBUTING.md](CONTRIBUTING.md) for the expected workflow around feature branches, commit hygiene, code comments, UI-change discussion, and pre-commit verification.
+
 ## Authors And Contributors
 
 - Phan Nguyen Huong Le

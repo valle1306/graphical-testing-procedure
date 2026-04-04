@@ -1350,7 +1350,7 @@ server <- function(input, output, session) {
       id = integer(), from = integer(), to = integer(), weight = numeric()
     ),
     ctx = list(node = NULL, edge = NULL, canvas = c(0,0), 
-               edit_node_id = NULL, edit_edge_id = NULL),
+               edit_node_id = NULL, edit_edge_id = NULL, pending_delete_edge_id = NULL),
     pending_source = NULL,
     ts_object = NULL,
     ts_log = "",
@@ -2820,12 +2820,45 @@ server <- function(input, output, session) {
   observeEvent(input$ctx_del_edge, {
     runjs("document.getElementById('ctx-menu').style.display='none';")
     eid <- rv$ctx$edge
-    if (!is.null(eid) && nrow(rv$edges) > 0 && eid %in% rv$edges$id) {
-      rv$edges <- dplyr::filter(rv$edges, id != eid) %>%
-        sanitize_edges_tbl()
-      reset_group_sequential_state()
-      bump_tables()
+    if (is.null(eid) || !nrow(rv$edges) || !eid %in% rv$edges$id) {
+      return(invisible(NULL))
     }
+    ed <- rv$edges %>% dplyr::filter(id == eid) %>% dplyr::slice(1)
+    from_hyp <- rv$nodes$hypothesis[match(ed$from[[1]], rv$nodes$id)]
+    to_hyp <- rv$nodes$hypothesis[match(ed$to[[1]], rv$nodes$id)]
+    edge_label <- if (!is.na(from_hyp) && !is.na(to_hyp)) {
+      sprintf("%s \u2192 %s", from_hyp, to_hyp)
+    } else {
+      sprintf("%s \u2192 %s", ed$from[[1]], ed$to[[1]])
+    }
+    rv$ctx$pending_delete_edge_id <- eid
+    showModal(modalDialog(
+      title = sprintf("Delete edge: %s", edge_label),
+      sprintf("Delete the edge %s? This will reset the current sequential state.", edge_label),
+      easyClose = FALSE,
+      footer = tagList(
+        actionButton("cancel_delete_edge", "Cancel"),
+        actionButton("confirm_delete_edge", "Delete", class = "btn-danger")
+      )
+    ))
+  })
+  
+  observeEvent(input$cancel_delete_edge, {
+    rv$ctx$pending_delete_edge_id <- NULL
+    removeModal()
+  })
+  
+  observeEvent(input$confirm_delete_edge, {
+    eid <- rv$ctx$pending_delete_edge_id
+    rv$ctx$pending_delete_edge_id <- NULL
+    removeModal()
+    if (is.null(eid) || !nrow(rv$edges) || !eid %in% rv$edges$id) {
+      return(invisible(NULL))
+    }
+    rv$edges <- dplyr::filter(rv$edges, id != eid) %>%
+      sanitize_edges_tbl()
+    reset_group_sequential_state()
+    bump_tables()
   })
   
   # Edit edge
