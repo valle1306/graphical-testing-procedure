@@ -29,7 +29,7 @@ output$gs_hypothesis_plan_ui <- renderUI({
           tags$th("Hypothesis"),
           tags$th("Planned Analyses (K)"),
           tags$th("Alpha Spending Function"),
-          tags$th("Custom Cumulative Alpha")
+          tags$th("Rule Parameters")
         )
       ),
       tags$tbody(
@@ -51,6 +51,7 @@ output$gs_hypothesis_plan_ui <- renderUI({
           if (planned_analyses == 1L) {
             rule_input <- shinyjs::disabled(rule_input)
           }
+          hsd_gamma_val <- if ("hsd_gamma" %in% names(plan_tbl)) plan_tbl$hsd_gamma[[i]] else -4
           tags$tr(
             tags$td(tags$strong(plan_tbl$hypothesis[[i]])),
             tags$td(
@@ -73,6 +74,14 @@ output$gs_hypothesis_plan_ui <- renderUI({
                   label = NULL,
                   value = plan_tbl$custom_cumulative_alpha[[i]],
                   placeholder = "e.g. 0.5, 1"
+                )
+              } else if (identical(selected_rule, "HSD")) {
+                numericInput(
+                  inputId = paste0("gs_plan_gamma_", id),
+                  label = NULL,
+                  value = hsd_gamma_val,
+                  step = 0.5,
+                  width = "100%"
                 )
               } else {
                 tags$div(class = "gs-muted", "Auto from selected rule")

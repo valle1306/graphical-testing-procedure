@@ -93,12 +93,15 @@ build_gs_boundary_schedule <- function(
       spending_values <- spend_info$values
     }
 
+    hsd_gamma_val <- if ("hsd_gamma" %in% names(plan_tbl)) plan_tbl$hsd_gamma[[i]] else -4
+
     boundary_tbl <- tryCatch(
       compute_boundary_schedule(
         total_alpha = alpha_now,
         spending_type = plan_tbl$alpha_spending[[i]],
         timing = hypothesis_rows$information_fraction,
-        spending_values = spending_values
+        spending_values = spending_values,
+        hsd_gamma = hsd_gamma_val
       ),
       error = function(e) e
     )

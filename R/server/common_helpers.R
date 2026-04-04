@@ -37,7 +37,8 @@ empty_gs_hypothesis_plan <- function() {
     hypothesis = character(),
     planned_analyses = integer(),
     alpha_spending = character(),
-    custom_cumulative_alpha = character()
+    custom_cumulative_alpha = character(),
+    hsd_gamma = numeric()
   )
 }
 
@@ -122,8 +123,13 @@ sanitize_gs_hypothesis_plan_tbl <- function(df) {
     out$custom_cumulative_alpha <- rep("", nrow(out))
   }
   out$custom_cumulative_alpha <- as.character(out$custom_cumulative_alpha)
+  if (!"hsd_gamma" %in% names(out)) {
+    out$hsd_gamma <- rep(-4, nrow(out))
+  }
+  out$hsd_gamma <- suppressWarnings(as.numeric(out$hsd_gamma))
+  out$hsd_gamma[is.na(out$hsd_gamma)] <- -4
   out %>%
-    dplyr::select(id, hypothesis, planned_analyses, alpha_spending, custom_cumulative_alpha)
+    dplyr::select(id, hypothesis, planned_analyses, alpha_spending, custom_cumulative_alpha, hsd_gamma)
 }
 
 sanitize_gs_analysis_schedule_tbl <- function(df) {
@@ -205,6 +211,7 @@ gs_rule_choices <- function(include_custom = TRUE) {
   choices <- c(
     "O'Brien-Fleming" = "OF",
     "Pocock" = "Pocock",
+    "Hwang-Shih-DeCani" = "HSD",
     "Haybittle-Peto" = "Haybittle-Peto"
   )
   if (isTRUE(include_custom)) {
@@ -261,6 +268,7 @@ gs_current_design_signature <- function(
         plan_tbl$planned_analyses,
         plan_tbl$alpha_spending,
         trimws(plan_tbl$custom_cumulative_alpha),
+        format_plain_number(plan_tbl$hsd_gamma),
         sep = ":"
       ),
       collapse = "|"
@@ -387,6 +395,8 @@ normalize_spending_rule <- function(x) {
     identical(value, "asUser") ~ "Custom",
     identical(value, "O'Brien-Fleming") ~ "OF",
     identical(value, "Lan-DeMets O'Brien-Fleming") ~ "OF",
+    identical(value, "Hwang-Shih-DeCani") ~ "HSD",
+    identical(value, "Lan-DeMets Hwang-Shih-DeCani") ~ "HSD",
     identical(value, "Custom cumulative alpha") ~ "Custom",
     TRUE ~ value
   )
@@ -543,7 +553,7 @@ solve_custom_boundaries <- function(cumulative_alpha, timing) {
   )
 }
 
-compute_boundary_schedule <- function(total_alpha, spending_type, timing, spending_values = NULL) {
+compute_boundary_schedule <- function(total_alpha, spending_type, timing, spending_values = NULL, hsd_gamma = -4) {
   total_alpha <- as.numeric(total_alpha[[1]])
   spending_type <- normalize_spending_rule(spending_type)
   timing <- as.numeric(timing)
@@ -592,13 +602,20 @@ compute_boundary_schedule <- function(total_alpha, spending_type, timing, spendi
     spending_type,
     "OF" = gsDesign::sfLDOF,
     "Pocock" = gsDesign::sfLDPocock,
+    "HSD" = gsDesign::sfHSD,
     stop(sprintf("Unsupported spending rule: %s", spending_type))
   )
+  gs_sfpar <- if (identical(spending_type, "HSD")) {
+    suppressWarnings(as.numeric(hsd_gamma[[1]]))
+  } else {
+    NULL
+  }
   gs_obj <- gsDesign::gsDesign(
     k = length(timing),
     alpha = total_alpha,
     timing = timing,
     sfu = gs_spending_fun,
+    sfupar = if (!is.null(gs_sfpar) && is.finite(gs_sfpar)) gs_sfpar else NULL,
     test.type = 1
   )
   z_values <- as.numeric(gs_obj$upper$bound)

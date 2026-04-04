@@ -24,6 +24,12 @@ build_default_gs_hypothesis_plan <- function(
     } else {
       ""
     }
+    hsd_gamma_value <- if (!is.na(existing_idx) && "hsd_gamma" %in% names(existing_tbl)) {
+      as.numeric(existing_tbl$hsd_gamma[[existing_idx]])
+    } else {
+      -4
+    }
+    if (is.na(hsd_gamma_value)) hsd_gamma_value <- -4
     if (planned_analyses == 1L) {
       alpha_spending <- "OF"
       custom_value <- ""
@@ -33,7 +39,8 @@ build_default_gs_hypothesis_plan <- function(
       hypothesis = as.character(nodes_tbl$hypothesis[[i]]),
       planned_analyses = planned_analyses,
       alpha_spending = alpha_spending,
-      custom_cumulative_alpha = custom_value
+      custom_cumulative_alpha = custom_value,
+      hsd_gamma = hsd_gamma_value
     )
   })
   sanitize_gs_hypothesis_plan_tbl(dplyr::bind_rows(rows))
@@ -62,6 +69,10 @@ collect_gs_hypothesis_plan <- function(persist = FALSE) {
     if (is.null(custom_value)) {
       custom_value <- plan_tbl$custom_cumulative_alpha[[i]]
     }
+    hsd_gamma_value <- read_scalar_numeric_input(paste0("gs_plan_gamma_", id))
+    if (is.na(hsd_gamma_value)) {
+      hsd_gamma_value <- if ("hsd_gamma" %in% names(plan_tbl)) plan_tbl$hsd_gamma[[i]] else -4
+    }
     if (planned_analyses == 1L) {
       rule <- "OF"
       custom_value <- ""
@@ -71,7 +82,8 @@ collect_gs_hypothesis_plan <- function(persist = FALSE) {
       hypothesis = plan_tbl$hypothesis[[i]],
       planned_analyses = as.integer(planned_analyses),
       alpha_spending = rule,
-      custom_cumulative_alpha = if (identical(rule, "Custom")) custom_value else ""
+      custom_cumulative_alpha = if (identical(rule, "Custom")) custom_value else "",
+      hsd_gamma = hsd_gamma_value
     )
   })
   out <- sanitize_gs_hypothesis_plan_tbl(dplyr::bind_rows(rows))
