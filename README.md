@@ -91,16 +91,19 @@ Use the `Design` tab for the classic graphical multiple-testing procedure.
 
 Use the `Group Sequential Design` tab to prepare the study design.
 
-- Use `Hypothesis Setup` to define the planned analyses for each hypothesis.
-- Choose the alpha spending function only for hypotheses with more than one planned analysis.
-- Adjust the generated `Analysis Schedule` when the default global rounds or information fractions need to change.
-- Review the derived one-sided boundary schedule before running analysis.
+- Use `Step 1. Hypothesis Plan` to set the planned looks (K) for each hypothesis.
+- Choose the alpha spending function only for hypotheses with more than one planned look.
+- Adjust the generated `Step 2. Analysis Timing` when the default global rounds or information fractions need to change.
+- Review the derived one-sided boundaries in `Step 3. Boundary Review (read-only)`.
+- Click `Finalize Design` to lock the design and enable the Analysis tab.
+- Use `Reset Design Defaults` to rebuild the tables from the current graph.
 
 ### 4. Analysis
 
 Use the `Analysis` tab to submit actual interim results.
 
-- Choose one analysis round.
+- A design summary card at the top confirms whether the design has been finalized.
+- Choose a global analysis round.
 - Enter one-sided p-values for every hypothesis being tested at that look.
 - Submit the full round together so the app can update alpha recycling and history in one step.
 - Use the live graph, status table, and activity log to review what changed after the submission.
@@ -113,15 +116,12 @@ You can test the import feature with:
 
 ## Repository Layout
 
-- [app.R](app.R): main app entrypoint.
-- [R/ui/](R/ui): extracted UI builders for the group sequential workflow.
-- [R/server/](R/server): extracted server helpers, state, outputs, and event handlers.
+- [app.R](app.R): main app entrypoint (shared foundation and module loader).
+- [R/ui/](R/ui): UI builders for Home, Design, Group Sequential Design, and Analysis tabs.
+- [R/server/](R/server): server modules — graph events, common helpers, sequential settings/boundaries/state/outputs/events.
 - [www/](www): app media assets.
-- [scripts/](scripts): install and verification scripts.
+- [scripts/](scripts): install, debug runner, and verification scripts.
 - [examples/](examples): sample input files.
-- `scripts/verify_group_sequential_design_case.R`: design-schedule verification scaffold.
-- `scripts/verify_group_sequential_batch_analysis_case.R`: batch-analysis verification scaffold.
-- `scripts/verify_group_sequential_legacy_import_case.R`: legacy import compatibility scaffold.
 
 ## Contributing
 
