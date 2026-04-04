@@ -309,3 +309,239 @@ gs_round_choice_values <- function(schedule_tbl = rv$gs_analysis_schedule) {
   schedule_tbl <- sanitize_gs_analysis_schedule_tbl(schedule_tbl)
   sort(unique(schedule_tbl$analysis_round[is.finite(schedule_tbl$analysis_round) & !is.na(schedule_tbl$analysis_round)]))
 }
+
+# Boundary computation helpers (moved from app.R server closure)
+
+normalize_spending_rule <- function(x) {
+  value <- trimws(as.character(x[[1]]))
+  dplyr::case_when(
+    identical(value, "asOF") ~ "OF",
+    identical(value, "asP") ~ "Pocock",
+    identical(value, "asUser") ~ "Custom",
+    identical(value, "O'Brien-Fleming") ~ "OF",
+    identical(value, "Lan-DeMets O'Brien-Fleming") ~ "OF",
+    identical(value, "Custom cumulative alpha") ~ "Custom",
+    TRUE ~ value
+  )
+}
+
+parse_numeric_sequence <- function(text_value) {
+  if (is.null(text_value) || !length(text_value)) {
+    return(numeric(0))
+  }
+  normalized <- gsub("[\r\n\t]", " ", as.character(text_value[[1]]))
+  pieces <- unlist(strsplit(normalized, "[,;[:space:]]+"))
+  pieces <- pieces[nzchar(pieces)]
+  if (!length(pieces)) {
+    return(numeric(0))
+  }
+  suppressWarnings(as.numeric(pieces))
+}
+
+parse_information_timing <- function(text_value, planned_analyses) {
+  planned_analyses <- suppressWarnings(as.integer(planned_analyses[[1]]))
+  if (is.na(planned_analyses) || planned_analyses < 1L) {
+    return(list(ok = FALSE, message = "Planned analyses must be a positive integer."))
+  }
+  values <- parse_numeric_sequence(text_value)
+  if (length(values) != planned_analyses) {
+    return(list(
+      ok = FALSE,
+      message = sprintf("Enter %d cumulative information values.", planned_analyses)
+    ))
+  }
+  if (any(!is.finite(values)) || any(values <= 0)) {
+    return(list(ok = FALSE, message = "Information timing values must be positive numbers."))
+  }
+  if (any(diff(values) <= 0)) {
+    return(list(ok = FALSE, message = "Information timing values must increase from one analysis to the next."))
+  }
+  if (max(values) > 1 + 1e-8) {
+    values <- values / max(values)
+  }
+  if (abs(tail(values, 1) - 1) > 1e-8) {
+    return(list(ok = FALSE, message = "The final cumulative information value must be 1, or the final raw information count."))
+  }
+  list(ok = TRUE, values = values)
+}
+
+parse_spending_proportions <- function(text_value, planned_analyses) {
+  planned_analyses <- suppressWarnings(as.integer(planned_analyses[[1]]))
+  if (is.na(planned_analyses) || planned_analyses < 1L) {
+    return(list(ok = FALSE, message = "Planned analyses must be a positive integer."))
+  }
+  values <- parse_numeric_sequence(text_value)
+  if (length(values) != planned_analyses) {
+    return(list(
+      ok = FALSE,
+      message = sprintf("Enter %d cumulative spending proportions.", planned_analyses)
+    ))
+  }
+  if (any(!is.finite(values)) || any(values < 0) || any(values > 1)) {
+    return(list(ok = FALSE, message = "Cumulative spending proportions must stay between 0 and 1."))
+  }
+  if (any(diff(values) < 0)) {
+    return(list(ok = FALSE, message = "Cumulative spending proportions must be non-decreasing."))
+  }
+  if (abs(tail(values, 1) - 1) > 1e-8) {
+    return(list(ok = FALSE, message = "The final cumulative spending proportion must be 1."))
+  }
+  list(ok = TRUE, values = values)
+}
+
+build_information_correlation <- function(timing) {
+  timing <- as.numeric(timing)
+  k <- length(timing)
+  corr <- matrix(1, nrow = k, ncol = k)
+  if (k > 1L) {
+    for (i in seq_len(k - 1L)) {
+      for (j in seq.int(i + 1L, k)) {
+        corr[i, j] <- corr[j, i] <- sqrt(timing[i] / timing[j])
+      }
+    }
+  }
+  corr
+}
+
+compute_cumulative_alpha_from_z <- function(z_values, timing) {
+  corr <- build_information_correlation(timing)
+  vapply(seq_along(z_values), function(k) {
+    if (k == 1L) {
+      return(1 - stats::pnorm(z_values[[1]]))
+    }
+    1 - as.numeric(mvtnorm::pmvnorm(
+      lower = rep(-Inf, k),
+      upper = z_values[seq_len(k)],
+      corr = corr[seq_len(k), seq_len(k), drop = FALSE],
+      abseps = 1e-8,
+      maxpts = 100000
+    ))
+  }, numeric(1))
+}
+
+solve_custom_stage_boundary <- function(previous_z, target_stage_alpha, corr_prefix) {
+  stage_index <- length(previous_z) + 1L
+  if (!is.finite(target_stage_alpha) || target_stage_alpha <= 0) {
+    return(Inf)
+  }
+  boundary_fn <- function(z_value) {
+    as.numeric(mvtnorm::pmvnorm(
+      lower = c(rep(-Inf, stage_index - 1L), z_value),
+      upper = c(previous_z, Inf),
+      corr = corr_prefix,
+      abseps = 1e-8,
+      maxpts = 100000
+    )) - target_stage_alpha
+  }
+  lower <- -8
+  upper <- 8
+  f_lower <- boundary_fn(lower)
+  f_upper <- boundary_fn(upper)
+  while (is.finite(f_lower) && f_lower < 0 && lower > -40) {
+    lower <- lower - 4
+    f_lower <- boundary_fn(lower)
+  }
+  while (is.finite(f_upper) && f_upper > 0 && upper < 40) {
+    upper <- upper + 4
+    f_upper <- boundary_fn(upper)
+  }
+  if (!is.finite(f_lower) || !is.finite(f_upper) || f_lower * f_upper > 0) {
+    stop("Unable to solve the custom spending boundary. Please check the cumulative spending inputs.")
+  }
+  stats::uniroot(boundary_fn, interval = c(lower, upper), tol = 1e-8)$root
+}
+
+solve_custom_boundaries <- function(cumulative_alpha, timing) {
+  cumulative_alpha <- as.numeric(cumulative_alpha)
+  stage_alpha <- c(cumulative_alpha[[1]], diff(cumulative_alpha))
+  z_values <- numeric(length(cumulative_alpha))
+  z_values[[1]] <- stats::qnorm(1 - cumulative_alpha[[1]])
+  if (length(cumulative_alpha) > 1L) {
+    corr <- build_information_correlation(timing)
+    for (k in 2:length(cumulative_alpha)) {
+      z_values[[k]] <- solve_custom_stage_boundary(
+        previous_z = z_values[seq_len(k - 1L)],
+        target_stage_alpha = stage_alpha[[k]],
+        corr_prefix = corr[seq_len(k), seq_len(k), drop = FALSE]
+      )
+    }
+  }
+  tibble::tibble(
+    analysis = seq_along(cumulative_alpha),
+    timing = timing,
+    stage_alpha = stage_alpha,
+    cumulative_alpha_spent = cumulative_alpha,
+    z_boundary = z_values,
+    p_boundary = 1 - stats::pnorm(z_values)
+  )
+}
+
+compute_boundary_schedule <- function(total_alpha, spending_type, timing, spending_values = NULL) {
+  total_alpha <- as.numeric(total_alpha[[1]])
+  spending_type <- normalize_spending_rule(spending_type)
+  timing <- as.numeric(timing)
+  if (!is.finite(total_alpha) || total_alpha <= 0) {
+    return(tibble::tibble(
+      analysis = seq_along(timing),
+      timing = timing,
+      stage_alpha = NA_real_,
+      cumulative_alpha_spent = NA_real_,
+      z_boundary = NA_real_,
+      p_boundary = NA_real_
+    ))
+  }
+  if (length(timing) == 1L) {
+    z_values <- stats::qnorm(1 - total_alpha)
+    return(tibble::tibble(
+      analysis = 1L,
+      timing = timing,
+      stage_alpha = total_alpha,
+      cumulative_alpha_spent = total_alpha,
+      z_boundary = z_values,
+      p_boundary = 1 - stats::pnorm(z_values)
+    ))
+  }
+  if (identical(spending_type, "Haybittle-Peto")) {
+    hp <- HP(overall.alpha = total_alpha, timing = timing)
+    return(tibble::tibble(
+      analysis = seq_along(timing),
+      timing = timing,
+      stage_alpha = as.numeric(hp$alpha),
+      cumulative_alpha_spent = as.numeric(hp$cum.alpha),
+      z_boundary = as.numeric(hp$z),
+      p_boundary = as.numeric(hp$p)
+    ))
+  }
+  if (identical(spending_type, "Custom")) {
+    if (is.null(spending_values) || !length(spending_values)) {
+      stop("Custom cumulative spending proportions are required for the custom rule.")
+    }
+    return(solve_custom_boundaries(
+      cumulative_alpha = total_alpha * as.numeric(spending_values),
+      timing = timing
+    ))
+  }
+  gs_spending_fun <- switch(
+    spending_type,
+    "OF" = gsDesign::sfLDOF,
+    "Pocock" = gsDesign::sfLDPocock,
+    stop(sprintf("Unsupported spending rule: %s", spending_type))
+  )
+  gs_obj <- gsDesign::gsDesign(
+    k = length(timing),
+    alpha = total_alpha,
+    timing = timing,
+    sfu = gs_spending_fun,
+    test.type = 1
+  )
+  z_values <- as.numeric(gs_obj$upper$bound)
+  cumulative_alpha <- compute_cumulative_alpha_from_z(z_values, timing)
+  tibble::tibble(
+    analysis = seq_along(timing),
+    timing = timing,
+    stage_alpha = c(cumulative_alpha[[1]], diff(cumulative_alpha)),
+    cumulative_alpha_spent = cumulative_alpha,
+    z_boundary = z_values,
+    p_boundary = 1 - stats::pnorm(z_values)
+  )
+}
