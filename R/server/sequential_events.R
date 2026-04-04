@@ -89,7 +89,18 @@ observeEvent(input$gs_finalize_design, {
     showNotification(paste("Cannot finalize:", validation$message), type = "error", duration = 8)
     return(invisible(NULL))
   }
-  boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
+  boundary_preview <- tryCatch(
+    build_gs_boundary_schedule(notify = FALSE),
+    error = function(e) e
+  )
+  if (inherits(boundary_preview, "error")) {
+    rv$gs_finalize_feedback <- list(
+      text = paste("Cannot finalize:", conditionMessage(boundary_preview)),
+      type = "error"
+    )
+    showNotification(paste("Cannot finalize:", conditionMessage(boundary_preview)), type = "error", duration = 8)
+    return(invisible(NULL))
+  }
   if (is.null(boundary_preview) || !nrow(boundary_preview)) {
     rv$gs_finalize_feedback <- list(
       text = "Cannot finalize: boundary schedule is empty. Check that hypotheses have alpha > 0.",
