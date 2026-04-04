@@ -13,6 +13,16 @@ for (helper_file in c("alpha_spending_function.r", "Haybittle-Peto.r")) {
   }
 }
 
+for (ui_module in c(
+  file.path("R", "ui", "group_sequential_design_tab.R"),
+  file.path("R", "ui", "analysis_tab.R")
+)) {
+  ui_module_path <- file.path(getwd(), ui_module)
+  if (file.exists(ui_module_path)) {
+    sys.source(ui_module_path, envir = globalenv())
+  }
+}
+
 is_named_vector_jsonlite_warning <- function(message) {
   grepl("keep_vec_names=TRUE", message, fixed = TRUE) ||
     grepl("named vectors will be translated into arrays", message, fixed = TRUE) ||
@@ -260,7 +270,7 @@ ui <- navbarPage(
         selectInput("design_graph_selected", "Hypothesis", choices = NULL, width = "220px"),
         actionButton("design_reject_ts", "Reject Selected", class = "btn btn-outline-warning"),
         actionButton("design_clear_results", "Clear Results", class = "btn btn-info"),
-        tags$span(class = "design-note", "Use these controls for classic graphical testing. Open Sequential only for interim analyses.")
+        tags$span(class = "design-note", "Use these controls for classic graphical testing. Open Group Sequential Design to plan interim analyses, and Analysis to submit one-sided results by round.")
       ),
       
       fluidRow(
@@ -297,7 +307,7 @@ ui <- navbarPage(
             class = "design-output-card",
             tags$p(
               style = "color:#6c757d; margin-bottom: 12px;",
-              "Build the graph here. The Sequential tab adds staged analyses, boundary preview, and analysis history."
+              "Build the graph here. Group Sequential Design adds the study-design tables and boundary schedule. Analysis submits one-sided results one round at a time."
             ),
             tags$div(style = "font-weight: 600; margin-bottom: 8px;", "Output"),
             div(class = "design-output-log", verbatimTextOutput("design_ts_log"))
@@ -306,360 +316,8 @@ ui <- navbarPage(
       )
     )
   ),
-  
-  tabPanel(
-    "Sequential",
-    fluidPage(
-      tags$head(
-        tags$style(HTML("
-          .seq-card {
-            border: 1px solid #dee2e6;
-            border-radius: 14px;
-            background: #ffffff;
-            padding: 16px;
-            margin-bottom: 16px;
-            box-shadow: 0 8px 24px rgba(15, 23, 42, 0.05);
-          }
-          .seq-title {
-            margin: 0 0 4px 0;
-            font-weight: 600;
-          }
-          .seq-help {
-            margin: 0 0 16px 0;
-            color: #6c757d;
-            font-size: 0.94rem;
-          }
-          .seq-grid {
-            display: grid;
-            gap: 16px;
-          }
-          .seq-subtle {
-            color: #64748b;
-            font-size: 0.85rem;
-          }
-          .seq-actions {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-            margin-bottom: 16px;
-          }
-          .seq-topbar {
-            display: flex;
-            justify-content: space-between;
-            gap: 16px;
-            align-items: flex-start;
-            flex-wrap: wrap;
-          }
-          .seq-title-block {
-            min-width: 0;
-            flex: 1 1 320px;
-          }
-          .seq-quick-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 12px;
-            align-items: end;
-            margin-bottom: 12px;
-          }
-          .seq-callout {
-            margin: 12px 0 0 0;
-            padding: 10px 12px;
-            border-radius: 10px;
-            border: 1px solid #dbeafe;
-            background: #eff6ff;
-            color: #1e3a8a;
-          }
-          .seq-feedback {
-            margin-top: 12px;
-            padding: 10px 12px;
-            border-radius: 10px;
-            border: 1px solid transparent;
-            font-size: 0.9rem;
-          }
-          .seq-feedback-success {
-            border-color: #bbf7d0;
-            background: #f0fdf4;
-            color: #166534;
-          }
-          .seq-feedback-error {
-            border-color: #fecaca;
-            background: #fef2f2;
-            color: #991b1b;
-          }
-          .seq-advanced-accordion {
-            margin-top: 12px;
-          }
-          .seq-compact-note {
-            color: #475569;
-            font-size: 0.88rem;
-            margin-top: 6px;
-          }
-          .seq-advanced {
-            margin-top: 16px;
-            padding-top: 12px;
-            border-top: 1px solid #eef2f7;
-          }
-          .seq-advanced summary {
-            cursor: pointer;
-            color: #0f766e;
-            font-weight: 600;
-            margin-bottom: 12px;
-          }
-          .seq-section {
-            margin-top: 12px;
-            margin-bottom: 10px;
-            font-weight: 600;
-          }
-          .seq-meta {
-            color: #6c757d;
-            font-size: 0.84rem;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-          }
-          .seq-empty {
-            min-height: 420px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border: 1px dashed #cbd5e1;
-            border-radius: 12px;
-            color: #64748b;
-            background: linear-gradient(135deg, rgba(240,249,255,0.9), rgba(248,250,252,0.9));
-          }
-          .seq-tabset .nav-tabs {
-            margin-bottom: 16px;
-          }
-          .seq-main-tabs {
-            margin-top: 16px;
-          }
-          .seq-overview {
-            margin-top: 8px;
-            margin-bottom: 12px;
-          }
-          .seq-overview .nav-tabs {
-            margin-top: 12px;
-            margin-bottom: 12px;
-          }
-          .seq-table {
-            overflow-x: auto;
-          }
-          .seq-table table.dataTable th,
-          .seq-table table.dataTable td {
-            white-space: nowrap;
-            vertical-align: top;
-          }
-          .seq-graph {
-            border: 1px solid #e2e8f0;
-            border-radius: 12px;
-            overflow: hidden;
-            background: linear-gradient(180deg, #f8fbfd 0%, #ffffff 100%);
-          }
-          .seq-log {
-            min-height: 420px;
-            max-height: 560px;
-            overflow-y: auto;
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            border-radius: 10px;
-            padding: 10px 12px;
-            margin-bottom: 14px;
-          }
-          .seq-log pre {
-            margin: 0;
-            white-space: pre-wrap;
-            word-break: break-word;
-            background: transparent;
-            border: 0;
-            padding: 0;
-          }
-          .seq-details summary {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            cursor: pointer;
-            font-weight: 600;
-            color: #0f172a;
-            list-style: none;
-            padding: 12px 16px;
-            border-radius: 12px;
-            border: 1px solid #bfdbfe;
-            background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%);
-            box-shadow: 0 6px 18px rgba(59, 130, 246, 0.08);
-            transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
-          }
-          .seq-details summary:hover {
-            border-color: #60a5fa;
-            box-shadow: 0 8px 22px rgba(59, 130, 246, 0.12);
-            background: linear-gradient(180deg, #e0f2fe 0%, #f8fbff 100%);
-          }
-          .seq-details summary::-webkit-details-marker {
-            display: none;
-          }
-          .seq-details summary::after {
-            content: 'Show';
-            color: #0f766e;
-            font-weight: 500;
-            font-size: 0.84rem;
-            letter-spacing: 0.01em;
-            border: 1px solid #99f6e4;
-            background: #f0fdfa;
-            border-radius: 999px;
-            padding: 4px 10px;
-          }
-          .seq-details[open] summary::after {
-            content: 'Hide';
-          }
-          .seq-details .seq-log {
-            min-height: 220px;
-            max-height: 360px;
-            margin-top: 12px;
-            margin-bottom: 0;
-          }
-          .seq-overview .seq-log {
-            min-height: 200px;
-            max-height: 300px;
-          }
-          .seq-tabset .nav > li > a,
-          .seq-tabset .nav > li > button {
-            color: #0f766e;
-          }
-          @media (max-width: 992px) {
-            .seq-meta {
-              white-space: normal;
-            }
-            .seq-quick-grid {
-              grid-template-columns: 1fr;
-            }
-          }
-        ")),
-        tags$script(HTML("
-          function adjustVisibleDataTables() {
-            if (window.jQuery && $.fn.dataTable) {
-              setTimeout(function() {
-                $.fn.dataTable.tables({visible: true, api: true}).columns.adjust();
-              }, 60);
-            }
-          }
-          $(document).on('shown.bs.tab', 'a[data-toggle=\"tab\"], a[data-bs-toggle=\"tab\"], button[data-bs-toggle=\"tab\"]', function() {
-            adjustVisibleDataTables();
-          });
-          Shiny.addCustomMessageHandler('adjust-datatables', function() {
-            adjustVisibleDataTables();
-          });
-        "))
-      ),
-      fluidRow(
-        column(
-          12,
-          div(
-            class = "seq-card",
-            div(
-              class = "seq-topbar",
-              div(
-                class = "seq-title-block",
-                tags$h3(class = "seq-title", "Sequential Analysis"),
-                tags$p(class = "seq-help", "Use the Test tab for the common case. Open Plan only if you need a different sequential rule or timing.")
-              ),
-              div(
-                class = "seq-actions",
-                actionButton("reset_gs", "Reset Sequential", class = "btn btn-secondary")
-              )
-            ),
-            tags$details(
-              class = "seq-details seq-overview",
-              tags$summary("Open graph, status, and activity"),
-              div(
-                class = "seq-tabset",
-                tabsetPanel(
-                  id = "seq_overview_panel",
-                  selected = "Graph",
-                  tabPanel("Graph", div(class = "seq-graph", visNetworkOutput("seq_graph", height = "360px"))),
-                  tabPanel("Status", div(class = "seq-table", DTOutput("ts_status_table"))),
-                  tabPanel("Activity", div(class = "seq-log", verbatimTextOutput("ts_log")))
-                )
-              )
-            ),
-            div(
-              class = "seq-tabset seq-main-tabs",
-              tabsetPanel(
-                id = "seq_workflow",
-                selected = "Test",
-                tabPanel(
-                  "Test",
-                  tags$p(class = "seq-subtle", "Use the shared defaults unless you need an exception. The app updates boundaries automatically."),
-                  uiOutput("seq_test_context"),
-                  uiOutput("gs_stage_inputs"),
-                  div(
-                    class = "seq-actions",
-                    actionButton("run_stage_gs", "Apply Test", class = "btn btn-warning")
-                  ),
-                  uiOutput("seq_test_feedback")
-                ),
-                tabPanel(
-                  "Plan",
-                  tags$div(class = "seq-section", "Quick Setup"),
-                  tags$p(class = "seq-subtle", "Set one shared rule and timing plan. Most users can stop here."),
-                  div(
-                    class = "seq-quick-grid",
-                    div(
-                      selectInput(
-                        "seq_quick_rule",
-                        "Shared rule",
-                        choices = c(
-                          "O'Brien-Fleming" = "OF",
-                          "Pocock" = "Pocock",
-                          "Haybittle-Peto" = "Haybittle-Peto"
-                        ),
-                        selected = "OF",
-                        width = "100%"
-                      )
-                    ),
-                    div(
-                      selectInput(
-                        "seq_quick_plan",
-                        "Timing template",
-                        choices = c(
-                          "Final only" = "final_only",
-                          "Recommended: one interim (50%, 100%)" = "one_interim",
-                          "Two interims (33%, 67%, 100%)" = "two_interims",
-                          "Three interims (25%, 50%, 75%, 100%)" = "three_interims"
-                        ),
-                        selected = "one_interim",
-                        width = "100%"
-                      )
-                    )
-                  ),
-                  tags$div(class = "seq-section", "Advanced Overrides"),
-                  tags$p(class = "seq-subtle", "Pick only the hypotheses that should differ from the shared setup."),
-                  bslib::accordion(
-                    class = "seq-advanced-accordion",
-                    bslib::accordion_panel(
-                      title = "Advanced: customize individual hypotheses",
-                      uiOutput("gs_settings_ui")
-                    )
-                  )
-                ),
-                tabPanel(
-                  "Review",
-                  tags$p(class = "seq-subtle", "Preview updates automatically. History records each submitted one-sided analysis."),
-                  div(
-                    class = "seq-tabset",
-                    tabsetPanel(
-                      id = "seq_panel",
-                      selected = "Preview",
-                      tabPanel("Preview", div(class = "seq-table", DTOutput("gs_boundary_table"))),
-                      tabPanel("History", div(class = "seq-table", DTOutput("gs_history_table")))
-                    )
-                  )
-                )
-              )
-            )
-          )
-        )
-      )
-    )
-  )
+  build_group_sequential_design_tab(),
+  build_analysis_tab()
 )
 
 server <- function(input, output, session) {
@@ -819,7 +477,7 @@ server <- function(input, output, session) {
   build_object_log <- function() {
     c(
       sprintf("Created test object for %d hypotheses.", nrow(rv$nodes)),
-      "Sequential boundaries use one-sided alpha and one-sided p-values.",
+      "One-sided boundaries use one-sided alpha and one-sided p-values.",
       format_alpha_snapshot()
     )
   }
@@ -1391,6 +1049,43 @@ server <- function(input, output, session) {
       boundary_z = numeric(),
       decision = character()
     ),
+    gs_hypothesis_plan = tibble::tibble(
+      id = integer(),
+      hypothesis = character(),
+      planned_analyses = integer(),
+      alpha_spending = character(),
+      custom_cumulative_alpha = character()
+    ),
+    gs_analysis_schedule = tibble::tibble(
+      schedule_key = character(),
+      analysis_round = integer(),
+      hypothesis = character(),
+      hypothesis_id = integer(),
+      hypothesis_stage = integer(),
+      planned_analyses = integer(),
+      information_fraction = numeric(),
+      is_final = logical()
+    ),
+    gs_analysis_history = tibble::tibble(
+      submission = integer(),
+      schedule_key = character(),
+      analysis_round = integer(),
+      hypothesis = character(),
+      hypothesis_stage = integer(),
+      alpha_spending = character(),
+      runtime_spending_code = character(),
+      information_fraction = numeric(),
+      current_alpha = numeric(),
+      cumulative_alpha_spent = numeric(),
+      p_value = numeric(),
+      boundary_p = numeric(),
+      boundary_z = numeric(),
+      decision = character(),
+      is_final = logical(),
+      max_info = numeric()
+    ),
+    gs_round_feedback = NULL,
+    gs_applied_design_signature = "",
     alpha_spending = character(0),
     planned_max_info = numeric(0),
     transition = matrix(0, 0, 0)
@@ -1733,6 +1428,9 @@ server <- function(input, output, session) {
     rv$ts_summary <- NULL
     rv$gs_boundary_preview <- empty_gs_boundary_preview()
     rv$gs_stage_history <- empty_gs_stage_history()
+    rv$gs_analysis_history <- rv$gs_analysis_history[0, ]
+    rv$gs_round_feedback <- NULL
+    rv$gs_applied_design_signature <- ""
     update_manual_reject_choices(rv$nodes$hypothesis)
     update_sequential_test_choices(rv$nodes$hypothesis)
     bump_ts_state()
@@ -1822,7 +1520,7 @@ server <- function(input, output, session) {
       TRUE
     }, error = function(e) {
       set_ts_log(paste("Error during TrialSimulator setup:", e$message))
-      set_seq_test_feedback(paste("Sequential setup error:", e$message), type = "error")
+      set_seq_test_feedback(paste("Group sequential setup error:", e$message), type = "error")
       rv$ts_object <- NULL
       rv$ts_summary <- NULL
       FALSE
@@ -2939,7 +2637,7 @@ server <- function(input, output, session) {
       set_ts_log(build_stage_apply_log(stage_row))
       set_seq_test_feedback(
         sprintf(
-          "Saved %s analysis %s. Decision: %s. Review updates automatically in the Review tab.",
+          "Saved %s analysis %s. Decision: %s. Review updates automatically in Analysis.",
           stage_row$hypothesis[[1]],
           stage_row$analysis[[1]],
           tolower(stage_row$decision[[1]])
@@ -3015,43 +2713,46 @@ server <- function(input, output, session) {
   output$ts_log <- renderText({
     rv$ts_log
   })
+
+  for (server_module in c(
+    file.path("R", "server", "common_helpers.R"),
+    file.path("R", "server", "sequential_settings.R"),
+    file.path("R", "server", "sequential_boundaries.R"),
+    file.path("R", "server", "sequential_state.R"),
+    file.path("R", "server", "sequential_outputs.R"),
+    file.path("R", "server", "sequential_events.R")
+  )) {
+    server_module_path <- file.path(getwd(), server_module)
+    if (file.exists(server_module_path)) {
+      source(server_module_path, local = TRUE)
+    }
+  }
   
   ##### ---- IMPORT/EXPORT HANDLERS ---- #####
   # ==== EXPORT HANDLER ====
   output$download_graph <- downloadHandler(
     filename = function() paste0("graph-", Sys.Date(), ".json"),
     content = function(file) {
-      settings_out <- collect_gs_settings(persist = TRUE)
-      # Convert to data frames and ensure no named vectors
-      nodes_out <- as.data.frame(rv$nodes, stringsAsFactors = FALSE)
-      edges_out <- as.data.frame(rv$edges, stringsAsFactors = FALSE)
-      settings_out <- as.data.frame(settings_out, stringsAsFactors = FALSE)
-      
-      # Remove names from all columns to prevent jsonlite warnings
-      for (col in names(nodes_out)) {
-        if (is.vector(nodes_out[[col]])) {
-          names(nodes_out[[col]]) <- NULL
+      strip_vector_names <- function(df) {
+        if (is.null(df) || !is.data.frame(df)) {
+          return(df)
         }
-      }
-      for (col in names(edges_out)) {
-        if (is.vector(edges_out[[col]])) {
-          names(edges_out[[col]]) <- NULL
+        for (col in names(df)) {
+          if (is.vector(df[[col]])) {
+            names(df[[col]]) <- NULL
+          }
         }
+        df
       }
-      for (col in names(settings_out)) {
-        if (is.vector(settings_out[[col]])) {
-          names(settings_out[[col]]) <- NULL
-        }
-      }
-      
-      # Create the export data
-      export_data <- list(
-        nodes = nodes_out,
-        edges = edges_out,
-        gs_settings = settings_out
+
+      export_data <- c(
+        list(
+          nodes = strip_vector_names(as.data.frame(rv$nodes, stringsAsFactors = FALSE)),
+          edges = strip_vector_names(as.data.frame(rv$edges, stringsAsFactors = FALSE))
+        ),
+        lapply(serialize_group_sequential_export(), strip_vector_names)
       )
-      
-      # Use write_json with explicit parameters to avoid warnings
+
       write_json(
         export_data, 
         file, 
@@ -3065,77 +2766,39 @@ server <- function(input, output, session) {
   # ==== IMPORT HANDLER ====
   observeEvent(input$upload_graph, {
     req(input$upload_graph)
-    dat <- fromJSON(input$upload_graph$datapath, simplifyDataFrame=TRUE)
-    
-    # Defensive: if data are weird or come as lists:
-    nodes <- dat$nodes
-    edges <- dat$edges
-    gs_settings <- dat$gs_settings
-    
-    # If nodes/edges is a list: convert to data.frame
-    if (is.list(nodes) && !is.data.frame(nodes)) nodes <- as.data.frame(nodes, stringsAsFactors=FALSE)
-    if (is.list(edges) && !is.data.frame(edges)) edges <- as.data.frame(edges, stringsAsFactors=FALSE)
-    
-    # If imported columns are lists (not atomic): unlist
-    list_to_vector <- function(x) if(is.list(x)) unlist(x) else x
-    nodes[] <- lapply(nodes, list_to_vector)
-    edges[] <- lapply(edges, list_to_vector)
-    
-    # Ensure correct types:
-    if(!is.null(nodes$id)) nodes$id <- as.integer(nodes$id)
-    if(!is.null(edges$id)) edges$id <- as.integer(edges$id)
-    
+    dat <- fromJSON(input$upload_graph$datapath, simplifyDataFrame = TRUE)
+
+    coerce_import_df <- function(x) {
+      if (is.null(x)) {
+        return(NULL)
+      }
+      if (is.list(x) && !is.data.frame(x)) {
+        x <- as.data.frame(x, stringsAsFactors = FALSE)
+      }
+      if (is.data.frame(x)) {
+        x[] <- lapply(x, function(col) {
+          if (is.list(col)) {
+            unlist(col, recursive = TRUE, use.names = FALSE)
+          } else {
+            col
+          }
+        })
+      }
+      x
+    }
+
+    nodes <- coerce_import_df(dat$nodes)
+    edges <- coerce_import_df(dat$edges)
+
+    if (!is.null(nodes$id)) nodes$id <- as.integer(nodes$id)
+    if (!is.null(edges$id)) edges$id <- as.integer(edges$id)
+
     rv$nodes <- sanitize_nodes_tbl(nodes)
     rv$edges <- sanitize_edges_tbl(edges)
-    if (!is.null(gs_settings)) {
-      if (is.list(gs_settings) && !is.data.frame(gs_settings)) {
-        gs_settings <- as.data.frame(gs_settings, stringsAsFactors = FALSE)
-      }
-      gs_settings[] <- lapply(gs_settings, list_to_vector)
-      if (!is.null(gs_settings$id)) gs_settings$id <- as.integer(gs_settings$id)
-      if (is.null(gs_settings$alpha_spending)) {
-        gs_settings$alpha_spending <- rep("OF", nrow(gs_settings))
-      }
-      if (is.null(gs_settings$use_override)) {
-        gs_settings$use_override <- rep(TRUE, nrow(gs_settings))
-      }
-      gs_settings$use_override <- as.logical(gs_settings$use_override)
-      gs_settings$alpha_spending <- vapply(gs_settings$alpha_spending, normalize_spending_rule, character(1))
-      if (!is.null(gs_settings$planned_max_info) && is.null(gs_settings$planned_analyses)) {
-        gs_settings$planned_analyses <- rep(2L, nrow(gs_settings))
-      }
-      if (is.null(gs_settings$planned_analyses)) {
-        gs_settings$planned_analyses <- rep(2L, nrow(gs_settings))
-      }
-      gs_settings$planned_analyses <- as.integer(gs_settings$planned_analyses)
-      if (is.null(gs_settings$info_timing)) {
-        gs_settings$info_timing <- vapply(gs_settings$planned_analyses, default_info_timing_string, character(1))
-      }
-      if (is.null(gs_settings$spending_values)) {
-        gs_settings$spending_values <- ifelse(
-          gs_settings$alpha_spending == "Custom",
-          vapply(gs_settings$planned_analyses, default_spending_values_string, character(1)),
-          ""
-        )
-      }
-      rv$gs_settings <- tibble::as_tibble(gs_settings) %>%
-        dplyr::select(id, hypothesis, use_override, alpha_spending, planned_analyses, info_timing, spending_values)
-    } else {
-      rv$gs_settings <- tibble::tibble(
-        id = rv$nodes$id,
-        hypothesis = rv$nodes$hypothesis,
-        use_override = rep(FALSE, nrow(rv$nodes)),
-        alpha_spending = rep("OF", nrow(rv$nodes)),
-        planned_analyses = rep(2L, nrow(rv$nodes)),
-        info_timing = rep("0.5, 1", nrow(rv$nodes)),
-        spending_values = rep("", nrow(rv$nodes))
-      )
-    }
-    collect_gs_settings(persist = TRUE)
+
+    load_group_sequential_design_from_import(dat)
     bump_tables()
-    
     update_manual_reject_choices(rv$nodes$hypothesis)
-    reset_group_sequential_state()
   })
 }
 
