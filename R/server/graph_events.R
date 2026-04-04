@@ -841,8 +841,85 @@ observeEvent(input$upload_graph, {
   nodes <- coerce_import_df(dat$nodes)
   edges <- coerce_import_df(dat$edges)
 
-  if (!is.null(nodes$id)) nodes$id <- as.integer(nodes$id)
-  if (!is.null(edges$id)) edges$id <- as.integer(edges$id)
+  if (is.null(nodes) || !nrow(nodes)) {
+    showNotification("Imported file contains no nodes.", type = "error", duration = 8)
+    return(invisible(NULL))
+  }
+
+  # --- Normalize nodes: accept both app-export and lightweight vis-network schemas ---
+  # Map 'label' -> 'hypothesis' when hypothesis column is absent
+  if (is.null(nodes$hypothesis) && !is.null(nodes$label)) {
+    nodes$hypothesis <- as.character(nodes$label)
+  }
+  if (is.null(nodes$hypothesis)) {
+    nodes$hypothesis <- paste0("H", seq_len(nrow(nodes)))
+  }
+  # Generate sequential IDs when missing
+  if (is.null(nodes$id)) {
+    nodes$id <- seq_len(nrow(nodes))
+  } else {
+    nodes$id <- as.integer(nodes$id)
+  }
+  # Ensure alpha is numeric
+  if (!is.null(nodes$alpha)) {
+    nodes$alpha <- as.numeric(nodes$alpha)
+  } else {
+    nodes$alpha <- rep(0, nrow(nodes))
+  }
+  # Generate default positions when missing
+  if (is.null(nodes$x) || is.null(nodes$y)) {
+    n <- nrow(nodes)
+    angles <- seq(0, 2 * pi, length.out = n + 1)[seq_len(n)]
+    radius <- 120
+    if (is.null(nodes$x)) nodes$x <- round(radius * cos(angles))
+    if (is.null(nodes$y)) nodes$y <- round(radius * sin(angles))
+  }
+  # Keep only the columns the app expects
+  nodes <- nodes[, intersect(c("id", "x", "y", "hypothesis", "alpha"), names(nodes)), drop = FALSE]
+
+  # --- Normalize edges: resolve label-based from/to to numeric IDs ---
+  if (!is.null(edges) && nrow(edges)) {
+    # Build lookup from hypothesis label to node id
+    label_to_id <- stats::setNames(nodes$id, nodes$hypothesis)
+
+    if (is.character(edges$from)) {
+      edges$from <- as.integer(label_to_id[edges$from])
+    } else {
+      edges$from <- as.integer(edges$from)
+    }
+    if (is.character(edges$to)) {
+      edges$to <- as.integer(label_to_id[edges$to])
+    } else {
+      edges$to <- as.integer(edges$to)
+    }
+    if (!is.null(edges$weight)) {
+      edges$weight <- as.numeric(edges$weight)
+    } else if (!is.null(edges$label)) {
+      edges$weight <- suppressWarnings(as.numeric(edges$label))
+    }
+    if (is.null(edges$weight)) {
+      edges$weight <- rep(0, nrow(edges))
+    }
+    # Generate edge IDs when missing
+    if (is.null(edges$id)) {
+      edges$id <- seq_len(nrow(edges))
+    } else {
+      edges$id <- as.integer(edges$id)
+    }
+    # Drop edges with unresolved endpoints
+    valid_edges <- !is.na(edges$from) & !is.na(edges$to)
+    if (any(!valid_edges)) {
+      showNotification(
+        sprintf("Dropped %d edge(s) with unrecognized endpoints.", sum(!valid_edges)),
+        type = "warning", duration = 6
+      )
+    }
+    edges <- edges[valid_edges, , drop = FALSE]
+    # Keep only the columns the app expects
+    edges <- edges[, intersect(c("id", "from", "to", "weight"), names(edges)), drop = FALSE]
+  } else {
+    edges <- tibble::tibble(id = integer(), from = integer(), to = integer(), weight = numeric())
+  }
 
   rv$nodes <- sanitize_nodes_tbl(nodes)
   rv$edges <- sanitize_edges_tbl(edges)

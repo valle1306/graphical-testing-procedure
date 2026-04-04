@@ -1,0 +1,17 @@
+{
+  "nodes": [
+    { "label": "H1", "alpha": 0.01 },
+    { "label": "H2", "alpha": 0.04 },
+    { "label": "H3", "alpha": 0 },
+    { "label": "H4", "alpha": 0 }
+  ],
+  "edges": [
+    { "from": "H1", "to": "H2", "weight": 0.25 },
+    { "from": "H1", "to": "H3", "weight": 0.75 },
+    { "from": "H2", "to": "H1", "weight": 0.25 },
+    { "from": "H2", "to": "H4", "weight": 0.75 },
+    { "from": "H3", "to": "H2", "weight": 0.5 },
+    { "from": "H3", "to": "H4", "weight": 0.5 },
+    { "from": "H4", "to": "H2", "weight": 1 }
+  ]
+}
