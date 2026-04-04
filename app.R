@@ -316,6 +316,8 @@ server <- function(input, output, session) {
       max_info = numeric()
     ),
     gs_round_feedback = NULL,
+    gs_finalize_feedback = NULL,
+    gs_design_finalized = FALSE,
     gs_applied_design_signature = "",
     alpha_spending = character(0),
     planned_max_info = numeric(0),

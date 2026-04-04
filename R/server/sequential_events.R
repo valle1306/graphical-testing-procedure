@@ -70,6 +70,41 @@ observeEvent(input$gs_reset_design_defaults, {
   rv$gs_settings <- legacy_settings_from_group_sequential_design(rv$gs_hypothesis_plan, rv$gs_analysis_schedule)
   reset_group_sequential_state()
   rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
+  rv$gs_design_finalized <- FALSE
+  rv$gs_finalize_feedback <- NULL
   set_gs_round_feedback(NULL)
   showNotification("Group sequential design reset to defaults generated from the graph.", type = "message")
+})
+
+observeEvent(input$gs_finalize_design, {
+  rv$gs_finalize_feedback <- NULL
+  plan_tbl <- collect_gs_hypothesis_plan(persist = TRUE)
+  schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = TRUE)
+  validation <- validate_gs_analysis_schedule(schedule_tbl = schedule_tbl, plan_tbl = plan_tbl, notify = FALSE)
+  if (!isTRUE(validation$ok)) {
+    rv$gs_finalize_feedback <- list(
+      text = paste("Cannot finalize:", validation$message),
+      type = "error"
+    )
+    showNotification(paste("Cannot finalize:", validation$message), type = "error", duration = 8)
+    return(invisible(NULL))
+  }
+  boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
+  if (is.null(boundary_preview) || !nrow(boundary_preview)) {
+    rv$gs_finalize_feedback <- list(
+      text = "Cannot finalize: boundary schedule is empty. Check that hypotheses have alpha > 0.",
+      type = "error"
+    )
+    showNotification("Cannot finalize: boundary schedule is empty.", type = "error", duration = 8)
+    return(invisible(NULL))
+  }
+  rv$gs_boundary_preview <- boundary_preview
+  sig <- gs_current_design_signature()
+  rv$gs_applied_design_signature <- sig
+  rv$gs_design_finalized <- TRUE
+  rv$gs_finalize_feedback <- list(
+    text = "Design finalized. You can now proceed to the Analysis tab to submit results.",
+    type = "success"
+  )
+  showNotification("Design finalized successfully.", type = "message", duration = 5)
 })

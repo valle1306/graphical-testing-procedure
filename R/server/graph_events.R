@@ -138,6 +138,8 @@ reset_group_sequential_state <- function(reset_log = TRUE) {
   rv$gs_stage_history <- empty_gs_stage_history()
   rv$gs_analysis_history <- rv$gs_analysis_history[0, ]
   rv$gs_round_feedback <- NULL
+  rv$gs_finalize_feedback <- NULL
+  rv$gs_design_finalized <- FALSE
   rv$gs_applied_design_signature <- ""
   update_manual_reject_choices(rv$nodes$hypothesis)
   update_sequential_test_choices(rv$nodes$hypothesis)

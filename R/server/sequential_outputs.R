@@ -27,9 +27,9 @@ output$gs_hypothesis_plan_ui <- renderUI({
       tags$thead(
         tags$tr(
           tags$th("Hypothesis"),
-          tags$th("Planned Analyses"),
+          tags$th("Planned Looks (K)"),
           tags$th("Alpha Spending Function"),
-          tags$th("Custom Cumulative Alpha")
+          tags$th("Cumulative Alpha by Look")
         )
       ),
       tags$tbody(
@@ -103,9 +103,9 @@ output$gs_analysis_schedule_ui <- renderUI({
         class = "gs-input-table",
         tags$thead(
           tags$tr(
-            tags$th("Analysis Round"),
+            tags$th("Global Round"),
             tags$th("Hypothesis"),
-            tags$th("Hypothesis Stage"),
+            tags$th("Look j of K"),
             tags$th("Information Fraction")
           )
         ),
@@ -126,7 +126,7 @@ output$gs_analysis_schedule_ui <- renderUI({
               tags$td(tags$strong(schedule_tbl$hypothesis[[i]])),
               tags$td(
                 sprintf(
-                  "%s of %s%s",
+                  "Look %s of %s%s",
                   schedule_tbl$hypothesis_stage[[i]],
                   schedule_tbl$planned_analyses[[i]],
                   ifelse(isTRUE(schedule_tbl$is_final[[i]]), " (final)", "")
@@ -188,6 +188,15 @@ output$gs_boundary_schedule_table <- renderDT({
       options = list(dom = "t", pageLength = 12, lengthChange = FALSE, searching = FALSE, ordering = FALSE, info = FALSE, scrollX = TRUE, autoWidth = FALSE)
     )
   })
+})
+
+output$gs_finalize_feedback <- renderUI({
+  feedback <- rv$gs_finalize_feedback
+  if (is.null(feedback) || !length(feedback$text) || !nzchar(feedback$text[[1]])) {
+    return(NULL)
+  }
+  alert_class <- if (identical(feedback$type, "error")) "alert-danger" else "alert-success"
+  tags$div(class = paste("alert", alert_class), style = "margin-top: 12px; margin-bottom: 0;", feedback$text[[1]])
 })
 
 observe({

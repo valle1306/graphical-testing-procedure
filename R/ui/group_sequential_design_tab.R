@@ -112,7 +112,7 @@ build_group_sequential_design_tab <- function() {
             tags$h3(class = "gs-title", "Group Sequential Design"),
             tags$p(
               class = "gs-help",
-              "Define per-hypothesis group sequential plans first, then review the generated global analysis schedule and one-sided boundary schedule before moving to Analysis."
+              "Define the study design here. Set how many interim looks each hypothesis receives, choose alpha spending functions, review the derived boundary schedule, then finalize the design before moving to the Analysis tab."
             ),
             div(class = "gs-overview-note", uiOutput("gs_design_context"))
           )
@@ -123,10 +123,10 @@ build_group_sequential_design_tab <- function() {
           12,
           div(
             class = "gs-card",
-            tags$h4(class = "gs-section-title", "Step 1. Hypothesis Setup"),
+            tags$h4(class = "gs-section-title", "Step 1. Hypothesis Plan"),
             tags$p(
               class = "gs-table-note",
-              "Each row comes from the Design graph. Set the total planned analyses for that hypothesis, choose the alpha spending function, and enter custom cumulative alpha only when needed."
+              "Each row comes from the Design graph. Set the planned looks (K) for that hypothesis, choose the alpha spending function, and enter cumulative alpha by look only when using a custom spending rule."
             ),
             uiOutput("gs_hypothesis_plan_ui"),
             div(
@@ -141,10 +141,10 @@ build_group_sequential_design_tab <- function() {
           12,
           div(
             class = "gs-card",
-            tags$h4(class = "gs-section-title", "Step 2. Analysis Schedule"),
+            tags$h4(class = "gs-section-title", "Step 2. Analysis Timing"),
             tags$p(
               class = "gs-table-note",
-              "The schedule is generated from the hypothesis setup. Adjust the global analysis round or information fraction when a hypothesis needs a different study design."
+              "The schedule is generated from the hypothesis plan above. Adjust the global analysis round or information fraction when a hypothesis needs a different timing."
             ),
             uiOutput("gs_analysis_schedule_ui")
           )
@@ -155,12 +155,17 @@ build_group_sequential_design_tab <- function() {
           12,
           div(
             class = "gs-card",
-            tags$h4(class = "gs-section-title", "Boundary Schedule"),
+            tags$h4(class = "gs-section-title", "Step 3. Boundary Review (read-only)"),
             tags$p(
               class = "gs-table-note",
-              "This review table is read-only. It shows the current one-sided boundary schedule implied by the graph, the design tables, and any alpha already recycled in the live graph."
+              "This table is read-only. It shows the design-time one-sided boundaries derived from the hypothesis plan, analysis timing, and current alpha allocations in the graph."
             ),
-            div(class = "gs-table-shell", DTOutput("gs_boundary_schedule_table"))
+            div(class = "gs-table-shell", DTOutput("gs_boundary_schedule_table")),
+            div(
+              class = "gs-actions",
+              actionButton("gs_finalize_design", "Finalize Design", class = "btn btn-primary"),
+              uiOutput("gs_finalize_feedback")
+            )
           )
         )
       )
