@@ -134,7 +134,12 @@ collect_round_submission <- function() {
       is_final = isTRUE(ready_rows$is_final[[i]]),
       max_info = as.integer(ready_rows$max_info[[i]]),
       alpha_spent = if (identical(runtime_code, "asUser")) {
-        as.numeric(ready_rows$cumulative_alpha_spent[[i]])
+        if (isTRUE(ready_rows$is_final[[i]])) {
+          1.0
+        } else {
+          hyp_alpha <- as.numeric(ready_rows$current_alpha[[i]])
+          if (!is.finite(hyp_alpha) || hyp_alpha <= 0) 0 else as.numeric(ready_rows$cumulative_alpha_spent[[i]]) / hyp_alpha
+        }
       } else {
         NA_real_
       }
@@ -190,7 +195,12 @@ replay_group_sequential_history <- function(history_tbl) {
       info = as.integer(round(100 * batch_rows$information_fraction)),
       is_final = as.logical(batch_rows$is_final),
       max_info = as.integer(round(batch_rows$max_info)),
-      alpha_spent = ifelse(batch_rows$runtime_spending_code == "asUser", batch_rows$cumulative_alpha_spent, NA_real_)
+      alpha_spent = ifelse(
+        batch_rows$runtime_spending_code == "asUser",
+        ifelse(as.logical(batch_rows$is_final), 1.0,
+               as.numeric(batch_rows$cumulative_alpha_spent) / pmax(as.numeric(batch_rows$current_alpha), 1e-15)),
+        NA_real_
+      )
     )
     invisible(rv$ts_object$test(as.data.frame(batch_df, stringsAsFactors = FALSE)))
     bump_ts_state()
