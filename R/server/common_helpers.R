@@ -1,3 +1,36 @@
+# ── Shared empty-table constructors ─────────────────────────────────────────
+
+empty_gs_boundary_preview <- function() {
+  tibble::tibble(
+    hypothesis = character(),
+    alpha_spending = character(),
+    planned_analyses = integer(),
+    analysis = integer(),
+    timing = numeric(),
+    current_alpha = numeric(),
+    stage_alpha = numeric(),
+    cumulative_alpha_spent = numeric(),
+    z_boundary = numeric(),
+    p_boundary = numeric(),
+    status = character()
+  )
+}
+
+empty_gs_stage_history <- function() {
+  tibble::tibble(
+    submission = integer(),
+    hypothesis = character(),
+    alpha_spending = character(),
+    analysis = integer(),
+    timing = numeric(),
+    current_alpha = numeric(),
+    p_value = numeric(),
+    boundary_p = numeric(),
+    boundary_z = numeric(),
+    decision = character()
+  )
+}
+
 empty_gs_hypothesis_plan <- function() {
   tibble::tibble(
     id = integer(),
@@ -5,6 +38,40 @@ empty_gs_hypothesis_plan <- function() {
     planned_analyses = integer(),
     alpha_spending = character(),
     custom_cumulative_alpha = character()
+  )
+}
+
+# ── Shared display helpers ──────────────────────────────────────────────────
+
+format_hypothesis_list <- function(x) {
+  values <- unique(trimws(as.character(x)))
+  values <- values[nzchar(values)]
+  if (!length(values)) {
+    return("none")
+  }
+  paste(values, collapse = ", ")
+}
+
+default_info_timing_string <- function(k = 2L) {
+  k <- suppressWarnings(as.integer(k[[1]]))
+  if (is.na(k) || k < 1L) {
+    k <- 1L
+  }
+  if (k == 1L) {
+    return("1")
+  }
+  paste(vapply(seq_len(k), function(i) format_plain_number(i / k), character(1)), collapse = ", ")
+}
+
+format_alpha_snapshot <- function(allocations = get_current_allocations()) {
+  if (is.null(allocations) || !length(allocations)) {
+    return("Current alpha: none.")
+  }
+  values <- vapply(as.numeric(allocations), format_plain_number, character(1))
+  paste(
+    "Current alpha:",
+    paste(sprintf("%s=%s", names(allocations), values), collapse = ", "),
+    sep = " "
   )
 }
 
