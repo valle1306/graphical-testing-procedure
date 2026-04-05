@@ -5,7 +5,7 @@ build_gs_boundary_schedule <- function(
 ) {
   validation <- validate_gs_analysis_schedule(schedule_tbl = schedule_tbl, plan_tbl = plan_tbl, notify = notify)
   if (!isTRUE(validation$ok)) {
-    schedule_tbl <- sanitize_gs_analysis_schedule_tbl(schedule_tbl)
+    schedule_tbl <- arrange_gs_analysis_schedule_display(schedule_tbl)
     if (!nrow(schedule_tbl)) {
       return(empty_gs_boundary_preview())
     }
@@ -27,7 +27,8 @@ build_gs_boundary_schedule <- function(
         schedule_key = schedule_key,
         is_final = is_final,
         max_info = rep(100, n())
-      ))
+      ) %>%
+      dplyr::arrange(analysis_round, hypothesis, hypothesis_stage))
   }
 
   schedule_tbl <- validation$schedule

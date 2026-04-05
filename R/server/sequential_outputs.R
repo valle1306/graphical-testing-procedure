@@ -30,8 +30,8 @@ output$gs_design_context <- renderUI({
   if (!nrow(rv$nodes)) {
     return(tags$span("Create hypotheses in the Design tab first. The group sequential design tables will appear here automatically."))
   }
-  plan_tbl <- collect_gs_hypothesis_plan(persist = FALSE)
-  schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = FALSE)
+  plan_tbl <- sanitize_gs_hypothesis_plan_tbl(rv$gs_hypothesis_plan)
+  schedule_tbl <- arrange_gs_analysis_schedule_display(rv$gs_analysis_schedule)
   round_values <- gs_round_choice_values(schedule_tbl)
   tags$span(
     sprintf(
@@ -119,11 +119,11 @@ output$gs_hypothesis_plan_ui <- renderUI({
 })
 
 output$gs_analysis_schedule_ui <- renderUI({
-  plan_tbl <- collect_gs_hypothesis_plan(persist = FALSE)
+  plan_tbl <- sanitize_gs_hypothesis_plan_tbl(rv$gs_hypothesis_plan)
   if (!nrow(plan_tbl)) {
     return(tags$p("Define the hypothesis setup first."))
   }
-  schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = FALSE)
+  schedule_tbl <- arrange_gs_analysis_schedule_display(rv$gs_analysis_schedule)
   validation <- validate_gs_analysis_schedule(schedule_tbl = schedule_tbl, plan_tbl = plan_tbl, notify = FALSE)
   schedule_tbl <- validation$schedule
   tagList(
@@ -240,6 +240,12 @@ observe({
     integer()
   }
   selected_round <- read_scalar_integer_input("gs_analysis_round", default = NA_integer_)
+  new_choices <- as.character(round_values)
+  old_choices <- isolate(rv$.gs_round_choices)
+  if (identical(new_choices, old_choices) && !is.na(selected_round) && selected_round %in% round_values) {
+    return()
+  }
+  rv$.gs_round_choices <- new_choices
   if (!length(round_values)) {
     updateSelectInput(session, "gs_analysis_round", choices = character(0), selected = character(0))
   } else {
