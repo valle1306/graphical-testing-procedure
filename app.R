@@ -320,6 +320,8 @@ server <- function(input, output, session) {
     gs_design_finalized = FALSE,
     gs_applied_design_signature = "",
     gs_wizard_step = 1L,
+    gs_suppress_plan_rebuild = FALSE,
+    .gs_round_choices = character(0),
     alpha_spending = character(0),
     planned_max_info = numeric(0),
     transition = matrix(0, 0, 0)

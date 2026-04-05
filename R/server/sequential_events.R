@@ -5,6 +5,11 @@ observeEvent(input$gs_wizard_next_1, {
 })
 
 observeEvent(input$gs_wizard_next_2, {
+  plan_tbl <- collect_gs_hypothesis_plan(persist = FALSE)
+  schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = FALSE)
+  rv$gs_hypothesis_plan <- plan_tbl
+  rv$gs_analysis_schedule <- sanitize_gs_analysis_schedule_tbl(schedule_tbl)
+  rv$gs_settings <- legacy_settings_from_group_sequential_design(rv$gs_hypothesis_plan, rv$gs_analysis_schedule)
   rv$gs_wizard_step <- 3L
   updateTabsetPanel(session, "gs_wizard_tabs", selected = "step3")
 })
@@ -60,7 +65,6 @@ observeEvent(input$gs_submit_round, {
     rv$gs_stage_history <- gs_history_to_legacy_stage_history(rv$gs_analysis_history)
     bump_ts_state()
     refresh_ts_state()
-    rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
     set_ts_log(build_round_submit_log(submission$history_rows))
     set_gs_round_feedback(
       sprintf(
@@ -81,7 +85,6 @@ observeEvent(input$gs_submit_round, {
 
 observeEvent(input$gs_reset_analysis_state, {
   reset_group_sequential_state()
-  rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
   set_gs_round_feedback(NULL)
   showNotification("Analysis state reset. The group sequential design tables were kept.", type = "message")
 })
@@ -91,7 +94,6 @@ observeEvent(input$gs_reset_design_defaults, {
   rv$gs_analysis_schedule <- build_default_gs_analysis_schedule(rv$gs_hypothesis_plan)
   rv$gs_settings <- legacy_settings_from_group_sequential_design(rv$gs_hypothesis_plan, rv$gs_analysis_schedule)
   reset_group_sequential_state()
-  rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
   rv$gs_design_finalized <- FALSE
   rv$gs_finalize_feedback <- NULL
   rv$gs_wizard_step <- 1L
@@ -102,8 +104,8 @@ observeEvent(input$gs_reset_design_defaults, {
 
 observeEvent(input$gs_finalize_design, {
   rv$gs_finalize_feedback <- NULL
-  plan_tbl <- collect_gs_hypothesis_plan(persist = TRUE)
-  schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = TRUE)
+  plan_tbl <- collect_gs_hypothesis_plan(persist = FALSE)
+  schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = FALSE)
   validation <- validate_gs_analysis_schedule(schedule_tbl = schedule_tbl, plan_tbl = plan_tbl, notify = FALSE)
   if (!isTRUE(validation$ok)) {
     rv$gs_finalize_feedback <- list(
@@ -113,8 +115,11 @@ observeEvent(input$gs_finalize_design, {
     showNotification(paste("Cannot finalize:", validation$message), type = "error", duration = 8)
     return(invisible(NULL))
   }
+  rv$gs_hypothesis_plan <- plan_tbl
+  rv$gs_analysis_schedule <- validation$schedule
+  rv$gs_settings <- legacy_settings_from_group_sequential_design(plan_tbl, validation$schedule)
   boundary_preview <- tryCatch(
-    build_gs_boundary_schedule(notify = FALSE),
+    build_gs_boundary_schedule(plan_tbl = plan_tbl, schedule_tbl = validation$schedule, notify = FALSE),
     error = function(e) e
   )
   if (inherits(boundary_preview, "error")) {
