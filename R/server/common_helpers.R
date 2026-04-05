@@ -629,3 +629,51 @@ compute_boundary_schedule <- function(total_alpha, spending_type, timing, spendi
     p_boundary = 1 - stats::pnorm(z_values)
   )
 }
+
+# ── Auto-layout helper ──────────────────────────────────────────────────────
+
+auto_layout_nodes <- function(nodes_tbl) {
+  if (!nrow(nodes_tbl)) return(nodes_tbl)
+  n <- nrow(nodes_tbl)
+  alpha <- as.numeric(nodes_tbl$alpha)
+  alpha[is.na(alpha)] <- 0
+
+  primary <- which(alpha > 0)
+  secondary <- which(alpha == 0)
+
+  if (!length(primary)) {
+    primary <- seq_len(n)
+    secondary <- integer(0)
+  }
+  if (!length(secondary)) {
+    primary <- seq_len(n)
+    secondary <- integer(0)
+  }
+
+  h_spacing <- 180
+  v_spacing <- 200
+
+  assign_row <- function(indices) {
+    k <- length(indices)
+    total_width <- (k - 1) * h_spacing
+    start_x <- -total_width / 2
+    x_vals <- start_x + (seq_len(k) - 1) * h_spacing
+    x_vals
+  }
+
+  nodes_tbl$x <- 0
+  nodes_tbl$y <- 0
+
+  if (length(primary)) {
+    nodes_tbl$x[primary] <- assign_row(primary)
+    nodes_tbl$y[primary] <- 0
+  }
+  if (length(secondary)) {
+    nodes_tbl$x[secondary] <- assign_row(secondary)
+    nodes_tbl$y[secondary] <- v_spacing
+  }
+
+  nodes_tbl$x <- round(nodes_tbl$x)
+  nodes_tbl$y <- round(nodes_tbl$y)
+  nodes_tbl
+}

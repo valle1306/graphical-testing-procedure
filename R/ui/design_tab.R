@@ -72,6 +72,7 @@ build_design_tab <- function() {
         selectInput("design_graph_selected", "Hypothesis", choices = NULL, width = "220px"),
         actionButton("design_reject_ts", "Reject Selected", class = "btn btn-outline-warning"),
         actionButton("design_clear_results", "Clear Results", class = "btn btn-info"),
+        actionButton("design_auto_layout", "Auto Layout", class = "btn btn-outline-secondary"),
         tags$span(class = "design-note", "Use these controls for classic graphical testing. Open Group Sequential Design to plan interim analyses, and Analysis to submit one-sided results by round.")
       ),
       
