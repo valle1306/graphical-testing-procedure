@@ -266,6 +266,25 @@ validate_gs_analysis_schedule <- function(
       }
       return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
     }
+    if (expected_analyses > 1L) {
+      non_final_rows <- hypothesis_rows %>% dplyr::filter(!is_final)
+      invalid_idx <- which(
+        non_final_rows$information_fraction <= 0 |
+          non_final_rows$information_fraction >= 1
+      )
+      if (length(invalid_idx)) {
+        invalid_stage <- non_final_rows$hypothesis_stage[[invalid_idx[[1]]]]
+        msg <- sprintf(
+          "%s stage %s information fraction must be strictly between 0 and 1 for non-final analyses.",
+          plan_tbl$hypothesis[[i]],
+          invalid_stage
+        )
+        if (isTRUE(notify)) {
+          showNotification(msg, type = "error", duration = 8)
+        }
+        return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
+      }
+    }
     if (any(diff(hypothesis_rows$information_fraction) <= 0)) {
       msg <- "Information fractions for interim analyses must be in (0, 1) and incremental."
       if (isTRUE(notify)) {
