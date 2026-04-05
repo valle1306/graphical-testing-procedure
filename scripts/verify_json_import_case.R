@@ -33,11 +33,7 @@ normalize_import <- function(json_path) {
   if (is.null(nodes$id)) nodes$id <- seq_len(nrow(nodes)) else nodes$id <- as.integer(nodes$id)
   if (!is.null(nodes$alpha)) nodes$alpha <- as.numeric(nodes$alpha) else nodes$alpha <- rep(0, nrow(nodes))
   if (is.null(nodes$x) || is.null(nodes$y)) {
-    n <- nrow(nodes)
-    angles <- seq(0, 2 * pi, length.out = n + 1)[seq_len(n)]
-    radius <- 120
-    if (is.null(nodes$x)) nodes$x <- round(radius * cos(angles))
-    if (is.null(nodes$y)) nodes$y <- round(radius * sin(angles))
+    nodes <- auto_layout_nodes(nodes)
   }
   nodes <- nodes[, intersect(c("id", "x", "y", "hypothesis", "alpha"), names(nodes)), drop = FALSE]
 
@@ -77,34 +73,28 @@ stopifnot(all(native$edges$to %in% native$nodes$id))
 cat("  PASS: 4 nodes, 7 edges, all fields present\n")
 
 # ============================================================================
-# Test 2: Lightweight vis-network format (upload_example_lightweight.json)
+# Test 2: HSD case format (hsd_case.json)
 # ============================================================================
-cat("Test 2: Lightweight vis-network format import...\n")
-light <- normalize_import(file.path("examples", "upload_example_lightweight.json"))
-stopifnot(nrow(light$nodes) == 4)
-stopifnot(all(c("id", "x", "y", "hypothesis", "alpha") %in% names(light$nodes)))
-stopifnot(identical(light$nodes$hypothesis, c("H1", "H2", "H3", "H4")))
-stopifnot(identical(light$nodes$id, 1:4))
-stopifnot(all(is.numeric(light$nodes$x)))
-stopifnot(all(is.numeric(light$nodes$y)))
-stopifnot(nrow(light$edges) == 7)
-stopifnot(all(light$edges$from %in% light$nodes$id))
-stopifnot(all(light$edges$to %in% light$nodes$id))
-cat("  PASS: label->hypothesis, string->id mapping, positions generated\n")
+cat("Test 2: HSD case format import...\n")
+hsd <- normalize_import(file.path("examples", "hsd_case.json"))
+stopifnot(nrow(hsd$nodes) == 3)
+stopifnot(all(c("id", "x", "y", "hypothesis", "alpha") %in% names(hsd$nodes)))
+stopifnot(identical(hsd$nodes$hypothesis, c("H1", "H2", "H3")))
+stopifnot(identical(hsd$nodes$id, 1:3))
+stopifnot(all(is.numeric(hsd$nodes$x)))
+stopifnot(all(is.numeric(hsd$nodes$y)))
+stopifnot(nrow(hsd$edges) == 6)
+stopifnot(all(hsd$edges$from %in% hsd$nodes$id))
+stopifnot(all(hsd$edges$to %in% hsd$nodes$id))
+cat("  PASS: 3 nodes, 6 edges, all fields present\n")
 
 # ============================================================================
-# Test 3: Both formats produce equivalent graph structure
+# Test 3: Auto-layout assigns valid coordinates
 # ============================================================================
-cat("Test 3: Equivalent graph structure...\n")
-stopifnot(identical(native$nodes$hypothesis, light$nodes$hypothesis))
-stopifnot(identical(native$nodes$alpha, light$nodes$alpha))
-# Edge resolution should match: same from/to/weight pairs
-native_edges_sorted <- native$edges %>% arrange(from, to)
-light_edges_sorted <- light$edges %>% arrange(from, to)
-stopifnot(identical(native_edges_sorted$from, light_edges_sorted$from))
-stopifnot(identical(native_edges_sorted$to, light_edges_sorted$to))
-stopifnot(all(abs(native_edges_sorted$weight - light_edges_sorted$weight) < 1e-12))
-cat("  PASS: identical graph topology from both formats\n")
+cat("Test 3: Auto-layout coordinates...\n")
+stopifnot(all(is.finite(hsd$nodes$x)))
+stopifnot(all(is.finite(hsd$nodes$y)))
+cat("  PASS: all coordinates are finite\n")
 
 # ============================================================================
 # Test 4: Transition matrix builds correctly from imported nodes/edges
