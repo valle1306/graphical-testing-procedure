@@ -90,9 +90,17 @@ output$gs_hypothesis_plan_ui <- renderUI({
                 width = "100%"
               )
             ),
-            tags$td(rule_input),
             tags$td(
-              if (identical(selected_rule, "Custom")) {
+              if (planned_analyses <= 1L) {
+                tags$div(class = "gs-muted", "Not Applicable")
+              } else {
+                rule_input
+              }
+            ),
+            tags$td(
+              if (planned_analyses <= 1L) {
+                tags$div(class = "gs-muted", "N/A")
+              } else if (identical(selected_rule, "Custom")) {
                 textInput(
                   inputId = paste0("gs_plan_custom_", id),
                   label = NULL,
@@ -108,7 +116,7 @@ output$gs_hypothesis_plan_ui <- renderUI({
                   width = "100%"
                 )
               } else {
-                tags$div(class = "gs-muted", "Auto from selected rule")
+                tags$div(class = "gs-muted", "N/A")
               }
             )
           )
