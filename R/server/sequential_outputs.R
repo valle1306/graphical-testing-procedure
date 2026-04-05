@@ -1,3 +1,31 @@
+output$gs_stepper_indicator <- renderUI({
+  step <- rv$gs_wizard_step
+  finalized <- isTRUE(rv$gs_design_finalized)
+  labels <- c("Hypothesis Plan", "Analysis Timing", "Boundary Review")
+  step_tags <- lapply(seq_along(labels), function(i) {
+    cls <- if (finalized || i < step) {
+      "gs-step completed"
+    } else if (i == step) {
+      "gs-step active"
+    } else {
+      "gs-step"
+    }
+    circle_content <- if (finalized || i < step) "\u2713" else as.character(i)
+    tag <- tags$div(
+      class = cls,
+      tags$div(class = "gs-step-circle", circle_content),
+      tags$span(class = "gs-step-label", labels[[i]])
+    )
+    if (i < length(labels)) {
+      conn_cls <- if (finalized || i < step) "gs-step-connector done" else "gs-step-connector"
+      tagList(tag, tags$div(class = conn_cls))
+    } else {
+      tag
+    }
+  })
+  tags$div(class = "gs-stepper", step_tags)
+})
+
 output$gs_design_context <- renderUI({
   if (!nrow(rv$nodes)) {
     return(tags$span("Create hypotheses in the Design tab first. The group sequential design tables will appear here automatically."))
@@ -48,9 +76,7 @@ output$gs_hypothesis_plan_ui <- renderUI({
             selected = selected_rule,
             width = "100%"
           )
-          if (planned_analyses == 1L) {
-            rule_input <- shinyjs::disabled(rule_input)
-          }
+
           hsd_gamma_val <- if ("hsd_gamma" %in% names(plan_tbl)) plan_tbl$hsd_gamma[[i]] else -4
           tags$tr(
             tags$td(tags$strong(plan_tbl$hypothesis[[i]])),
@@ -66,9 +92,7 @@ output$gs_hypothesis_plan_ui <- renderUI({
             ),
             tags$td(rule_input),
             tags$td(
-              if (planned_analyses == 1L) {
-                tags$div(class = "gs-muted", "Final-only: the full alpha is used at the final analysis.")
-              } else if (identical(selected_rule, "Custom")) {
+              if (identical(selected_rule, "Custom")) {
                 textInput(
                   inputId = paste0("gs_plan_custom_", id),
                   label = NULL,
@@ -431,6 +455,7 @@ output$gs_analysis_design_summary <- renderUI({
       )
     )
   }
+  has_submissions <- nrow(rv$gs_analysis_history) > 0
   plan_tbl <- collect_gs_hypothesis_plan(persist = FALSE)
   schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = FALSE)
   round_values <- gs_round_choice_values(schedule_tbl)
@@ -445,6 +470,12 @@ output$gs_analysis_design_summary <- renderUI({
         format_hypothesis_list(rv$nodes$hypothesis),
         length(round_values)
       )
-    )
+    ),
+    if (!has_submissions) {
+      div(
+        style = "margin-top: 10px;",
+        actionButton("gs_edit_design", "Edit Design", class = "btn btn-outline-secondary btn-sm")
+      )
+    }
   )
 })

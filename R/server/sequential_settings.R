@@ -30,10 +30,6 @@ build_default_gs_hypothesis_plan <- function(
       -4
     }
     if (is.na(hsd_gamma_value)) hsd_gamma_value <- -4
-    if (planned_analyses == 1L) {
-      alpha_spending <- "OF"
-      custom_value <- ""
-    }
     tibble::tibble(
       id = as.integer(nodes_tbl$id[[i]]),
       hypothesis = as.character(nodes_tbl$hypothesis[[i]]),
@@ -72,10 +68,6 @@ collect_gs_hypothesis_plan <- function(persist = FALSE) {
     hsd_gamma_value <- read_scalar_numeric_input(paste0("gs_plan_gamma_", id))
     if (is.na(hsd_gamma_value)) {
       hsd_gamma_value <- if ("hsd_gamma" %in% names(plan_tbl)) plan_tbl$hsd_gamma[[i]] else -4
-    }
-    if (planned_analyses == 1L) {
-      rule <- "OF"
-      custom_value <- ""
     }
     tibble::tibble(
       id = id,
