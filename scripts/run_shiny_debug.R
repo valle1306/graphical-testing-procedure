@@ -61,6 +61,40 @@ err_handler <- function(e) {
   quit(status = 1)
 }
 
+port_is_in_use <- function(port, host = "127.0.0.1") {
+  con <- try(
+    socketConnection(host = host, port = port, open = "r+", blocking = TRUE, timeout = 1),
+    silent = TRUE
+  )
+  if (inherits(con, "try-error")) {
+    return(FALSE)
+  }
+  close(con)
+  TRUE
+}
+
+find_available_port <- function(start_port, host = "127.0.0.1", attempts = 25L) {
+  for (candidate in seq.int(start_port, length.out = attempts)) {
+    if (!isTRUE(port_is_in_use(candidate, host = host))) {
+      return(candidate)
+    }
+  }
+  stop(sprintf("No available port found in range %s-%s.", start_port, start_port + attempts - 1L))
+}
+
+host <- Sys.getenv("SHINY_HOST", unset = "127.0.0.1")
+requested_port <- suppressWarnings(as.integer(Sys.getenv("SHINY_PORT", unset = "4567")))
+if (is.na(requested_port) || requested_port < 1L) {
+  requested_port <- 4567L
+}
+selected_port <- find_available_port(requested_port, host = host)
+
+if (!identical(selected_port, requested_port)) {
+  cat(sprintf("Requested port %s is already in use. Falling back to %s.\n", requested_port, selected_port))
+}
+
+cat(sprintf("Launching app at http://%s:%s\n", host, selected_port))
+
 tryCatch({
-  shiny::runApp(project_root, port = 4567, launch.browser = FALSE, host = "127.0.0.1")
+  shiny::runApp(project_root, port = selected_port, launch.browser = FALSE, host = host)
 }, error = err_handler)
