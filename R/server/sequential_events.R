@@ -1,3 +1,25 @@
+# ---- Wizard navigation ----
+observeEvent(input$gs_wizard_next_1, {
+  rv$gs_wizard_step <- 2L
+  updateTabsetPanel(session, "gs_wizard_tabs", selected = "step2")
+})
+
+observeEvent(input$gs_wizard_next_2, {
+  rv$gs_wizard_step <- 3L
+  updateTabsetPanel(session, "gs_wizard_tabs", selected = "step3")
+})
+
+observeEvent(input$gs_wizard_back_2, {
+  rv$gs_wizard_step <- 1L
+  updateTabsetPanel(session, "gs_wizard_tabs", selected = "step1")
+})
+
+observeEvent(input$gs_wizard_back_3, {
+  rv$gs_wizard_step <- 2L
+  updateTabsetPanel(session, "gs_wizard_tabs", selected = "step2")
+})
+
+# ---- Analysis round observers ----
 observeEvent(input$gs_analysis_round, {
   set_gs_round_feedback(NULL)
 }, ignoreInit = TRUE)
@@ -72,6 +94,8 @@ observeEvent(input$gs_reset_design_defaults, {
   rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
   rv$gs_design_finalized <- FALSE
   rv$gs_finalize_feedback <- NULL
+  rv$gs_wizard_step <- 1L
+  updateTabsetPanel(session, "gs_wizard_tabs", selected = "step1")
   set_gs_round_feedback(NULL)
   showNotification("Group sequential design reset to defaults generated from the graph.", type = "message")
 })
@@ -118,4 +142,19 @@ observeEvent(input$gs_finalize_design, {
     type = "success"
   )
   showNotification("Design finalized successfully.", type = "message", duration = 5)
+})
+
+observeEvent(input$gs_edit_design, {
+  if (nrow(rv$gs_analysis_history)) {
+    showNotification(
+      "Cannot edit design after submitting analysis rounds. Reset analysis state first.",
+      type = "error", duration = 8
+    )
+    return(invisible(NULL))
+  }
+  rv$gs_design_finalized <- FALSE
+  rv$gs_applied_design_signature <- ""
+  rv$gs_finalize_feedback <- NULL
+  rv$gs_wizard_step <- 1L
+  showNotification("Design unlocked for editing. Return to the Group Sequential Design tab.", type = "message", duration = 5)
 })

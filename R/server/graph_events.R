@@ -141,6 +141,7 @@ reset_group_sequential_state <- function(reset_log = TRUE) {
   rv$gs_finalize_feedback <- NULL
   rv$gs_design_finalized <- FALSE
   rv$gs_applied_design_signature <- ""
+  rv$gs_wizard_step <- 1L
   update_manual_reject_choices(rv$nodes$hypothesis)
   update_sequential_test_choices(rv$nodes$hypothesis)
   bump_ts_state()
@@ -745,6 +746,14 @@ observeEvent(input$design_clear_results, {
   reset_group_sequential_state()
 })
 
+observeEvent(input$design_auto_layout, {
+  if (nrow(rv$nodes)) {
+    rv$nodes <- auto_layout_nodes(rv$nodes)
+    update_graph_views()
+    showNotification("Graph re-laid out.", type = "message", duration = 3)
+  }
+})
+
 # ---- Sequential result outputs ----
 
 output$ts_result_table <- renderDT({
@@ -868,11 +877,7 @@ observeEvent(input$upload_graph, {
   }
   # Generate default positions when missing
   if (is.null(nodes$x) || is.null(nodes$y)) {
-    n <- nrow(nodes)
-    angles <- seq(0, 2 * pi, length.out = n + 1)[seq_len(n)]
-    radius <- 120
-    if (is.null(nodes$x)) nodes$x <- round(radius * cos(angles))
-    if (is.null(nodes$y)) nodes$y <- round(radius * sin(angles))
+    nodes <- auto_layout_nodes(nodes)
   }
   # Keep only the columns the app expects
   nodes <- nodes[, intersect(c("id", "x", "y", "hypothesis", "alpha"), names(nodes)), drop = FALSE]

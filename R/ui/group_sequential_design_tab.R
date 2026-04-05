@@ -85,6 +85,77 @@ build_group_sequential_design_tab <- function() {
               font-size: 0.88rem;
               padding-top: 8px;
             }
+            /* Stepper indicator */
+            .gs-stepper {
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              gap: 0;
+              margin-bottom: 20px;
+              padding: 0 16px;
+            }
+            .gs-step {
+              display: flex;
+              align-items: center;
+              gap: 8px;
+              cursor: default;
+            }
+            .gs-step-circle {
+              width: 32px;
+              height: 32px;
+              border-radius: 50%;
+              display: flex;
+              align-items: center;
+              justify-content: center;
+              font-weight: 700;
+              font-size: 0.9rem;
+              border: 2px solid #cbd5e1;
+              background: #ffffff;
+              color: #64748b;
+              transition: all 0.2s ease;
+            }
+            .gs-step.active .gs-step-circle {
+              border-color: #0f4c68;
+              background: #0f4c68;
+              color: #ffffff;
+            }
+            .gs-step.completed .gs-step-circle {
+              border-color: #16a34a;
+              background: #16a34a;
+              color: #ffffff;
+            }
+            .gs-step-label {
+              font-size: 0.88rem;
+              font-weight: 500;
+              color: #94a3b8;
+              transition: color 0.2s ease;
+            }
+            .gs-step.active .gs-step-label {
+              color: #0f172a;
+              font-weight: 600;
+            }
+            .gs-step.completed .gs-step-label {
+              color: #16a34a;
+            }
+            .gs-step-connector {
+              flex: 1;
+              height: 2px;
+              background: #e2e8f0;
+              margin: 0 12px;
+              min-width: 40px;
+              transition: background 0.2s ease;
+            }
+            .gs-step-connector.done {
+              background: #16a34a;
+            }
+            .gs-wizard-nav {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 12px 0 0;
+              margin-top: 8px;
+              border-top: 1px solid #e2e8f0;
+            }
             @media (max-width: 992px) {
               .gs-input-table,
               .gs-input-table thead,
@@ -100,6 +171,9 @@ build_group_sequential_design_tab <- function() {
               .gs-input-table tbody td {
                 border-top: 0;
               }
+              .gs-step-label {
+                display: none;
+              }
             }
           ")
         )
@@ -112,7 +186,7 @@ build_group_sequential_design_tab <- function() {
             tags$h3(class = "gs-title", "Group Sequential Design"),
             tags$p(
               class = "gs-help",
-              "Define the study design here. Set how many interim looks each hypothesis receives, choose alpha spending functions, review the derived boundary schedule, then finalize the design before moving to the Analysis tab."
+              "Walk through each step to define the group sequential design. You can go back to any previous step before finalizing."
             ),
             div(class = "gs-overview-note", uiOutput("gs_design_context"))
           )
@@ -121,19 +195,7 @@ build_group_sequential_design_tab <- function() {
       fluidRow(
         column(
           12,
-          div(
-            class = "gs-card",
-            tags$h4(class = "gs-section-title", "Step 1. Hypothesis Plan"),
-            tags$p(
-              class = "gs-table-note",
-              "Each row comes from the Design graph. Set the planned looks (K) for that hypothesis, choose the alpha spending function, and enter cumulative alpha by look only when using a custom spending rule."
-            ),
-            uiOutput("gs_hypothesis_plan_ui"),
-            div(
-              class = "gs-actions",
-              actionButton("gs_reset_design_defaults", "Reset Design Defaults", class = "btn btn-secondary")
-            )
-          )
+          uiOutput("gs_stepper_indicator")
         )
       ),
       fluidRow(
@@ -141,30 +203,52 @@ build_group_sequential_design_tab <- function() {
           12,
           div(
             class = "gs-card",
-            tags$h4(class = "gs-section-title", "Step 2. Analysis Timing"),
-            tags$p(
-              class = "gs-table-note",
-              "The schedule is generated from the hypothesis plan above. Adjust the global analysis round or information fraction when a hypothesis needs a different timing."
-            ),
-            uiOutput("gs_analysis_schedule_ui")
-          )
-        )
-      ),
-      fluidRow(
-        column(
-          12,
-          div(
-            class = "gs-card",
-            tags$h4(class = "gs-section-title", "Step 3. Boundary Review (read-only)"),
-            tags$p(
-              class = "gs-table-note",
-              "This table is read-only. It shows the design-time one-sided boundaries derived from the hypothesis plan, analysis timing, and current alpha allocations in the graph."
-            ),
-            div(class = "gs-table-shell", DTOutput("gs_boundary_schedule_table")),
-            div(
-              class = "gs-actions",
-              actionButton("gs_finalize_design", "Finalize Design", class = "btn btn-primary"),
-              uiOutput("gs_finalize_feedback")
+            tabsetPanel(
+              id = "gs_wizard_tabs",
+              type = "hidden",
+              tabPanelBody(
+                "step1",
+                tags$h4(class = "gs-section-title", "Step 1. Hypothesis Plan"),
+                tags$p(
+                  class = "gs-table-note",
+                  "Each row comes from the Design graph. Set the planned looks (K) for that hypothesis, choose the alpha spending function, and enter parameters when needed."
+                ),
+                uiOutput("gs_hypothesis_plan_ui"),
+                div(
+                  class = "gs-wizard-nav",
+                  actionButton("gs_reset_design_defaults", "Reset Defaults", class = "btn btn-secondary btn-sm"),
+                  actionButton("gs_wizard_next_1", "Next: Analysis Timing \u2192", class = "btn btn-primary")
+                )
+              ),
+              tabPanelBody(
+                "step2",
+                tags$h4(class = "gs-section-title", "Step 2. Analysis Timing"),
+                tags$p(
+                  class = "gs-table-note",
+                  "The schedule is generated from the hypothesis plan. Adjust the global analysis round or information fraction when a hypothesis needs a different timing."
+                ),
+                uiOutput("gs_analysis_schedule_ui"),
+                div(
+                  class = "gs-wizard-nav",
+                  actionButton("gs_wizard_back_2", "\u2190 Back: Hypothesis Plan", class = "btn btn-outline-secondary"),
+                  actionButton("gs_wizard_next_2", "Next: Boundary Review \u2192", class = "btn btn-primary")
+                )
+              ),
+              tabPanelBody(
+                "step3",
+                tags$h4(class = "gs-section-title", "Step 3. Boundary Review"),
+                tags$p(
+                  class = "gs-table-note",
+                  "Review the design-time one-sided boundaries. When everything looks correct, finalize the design to proceed to the Analysis tab."
+                ),
+                div(class = "gs-table-shell", DTOutput("gs_boundary_schedule_table")),
+                uiOutput("gs_finalize_feedback"),
+                div(
+                  class = "gs-wizard-nav",
+                  actionButton("gs_wizard_back_3", "\u2190 Back: Analysis Timing", class = "btn btn-outline-secondary"),
+                  actionButton("gs_finalize_design", "Finalize Design", class = "btn btn-primary")
+                )
+              )
             )
           )
         )

@@ -319,6 +319,7 @@ server <- function(input, output, session) {
     gs_finalize_feedback = NULL,
     gs_design_finalized = FALSE,
     gs_applied_design_signature = "",
+    gs_wizard_step = 1L,
     alpha_spending = character(0),
     planned_max_info = numeric(0),
     transition = matrix(0, 0, 0)
