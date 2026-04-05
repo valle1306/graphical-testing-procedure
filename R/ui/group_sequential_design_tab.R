@@ -227,6 +227,7 @@ build_group_sequential_design_tab <- function() {
                   class = "gs-table-note",
                   "The schedule is generated from the hypothesis plan. Adjust the global analysis round or information fraction when a hypothesis needs a different timing."
                 ),
+                uiOutput("gs_schedule_validation_ui"),
                 uiOutput("gs_analysis_schedule_ui"),
                 div(
                   class = "gs-wizard-nav",
