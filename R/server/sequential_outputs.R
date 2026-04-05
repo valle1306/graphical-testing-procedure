@@ -55,9 +55,9 @@ output$gs_hypothesis_plan_ui <- renderUI({
       tags$thead(
         tags$tr(
           tags$th("Hypothesis"),
-          tags$th("Planned Analyses (K)"),
+          tags$th("Total Number of Planned Analyses"),
           tags$th("Alpha Spending Function"),
-          tags$th("Rule Parameters")
+          tags$th("Parameter for Alpha Spending Function")
         )
       ),
       tags$tbody(
@@ -136,9 +136,9 @@ output$gs_analysis_schedule_ui <- renderUI({
         class = "gs-input-table",
         tags$thead(
           tags$tr(
-            tags$th("Global Round"),
+            tags$th("Analysis Time"),
             tags$th("Hypothesis"),
-            tags$th("Hypothesis Stage"),
+            tags$th("Stage"),
             tags$th("Information Fraction")
           )
         ),
@@ -187,7 +187,7 @@ output$gs_boundary_schedule_table <- renderDT({
     if (is.null(preview_tbl) || !nrow(preview_tbl)) {
       return(datatable(
         data.frame(
-          Round = integer(),
+          Analysis = integer(),
           Hypothesis = character(),
           Stage = integer(),
           `Info Fraction` = numeric(),
@@ -201,12 +201,12 @@ output$gs_boundary_schedule_table <- renderDT({
     }
     display_tbl <- preview_tbl %>%
       dplyr::transmute(
-        Round = analysis_round,
+        Analysis = analysis_round,
         Hypothesis = hypothesis,
         Stage = hypothesis_stage,
-        `Planned Analyses` = planned_analyses,
+        `Total Analyses` = planned_analyses,
         `Info Fraction` = format(timing, trim = TRUE, scientific = FALSE),
-        Rule = alpha_spending,
+        `Alpha Spending` = alpha_spending,
         `Current Alpha` = ifelse(is.na(current_alpha), "", format(current_alpha, trim = TRUE, scientific = FALSE)),
         `Stage Alpha` = ifelse(is.na(stage_alpha), "", format(stage_alpha, trim = TRUE, scientific = FALSE)),
         `Cumulative Alpha` = ifelse(is.na(cumulative_alpha_spent), "", format(cumulative_alpha_spent, trim = TRUE, scientific = FALSE)),

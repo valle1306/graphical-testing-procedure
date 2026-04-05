@@ -208,7 +208,7 @@ build_group_sequential_design_tab <- function() {
               type = "hidden",
               tabPanelBody(
                 "step1",
-                tags$h4(class = "gs-section-title", "Step 1. Hypothesis Plan"),
+                tags$h4(class = "gs-section-title", "Step 1. Hypotheses and Alpha Spending Functions"),
                 tags$p(
                   class = "gs-table-note",
                   "Each row comes from the Design graph. Set the planned looks (K) for that hypothesis, choose the alpha spending function, and enter parameters when needed."
@@ -222,7 +222,7 @@ build_group_sequential_design_tab <- function() {
               ),
               tabPanelBody(
                 "step2",
-                tags$h4(class = "gs-section-title", "Step 2. Analysis Timing"),
+                tags$h4(class = "gs-section-title", "Step 2. Planned Analysis Times for Entire Study"),
                 tags$p(
                   class = "gs-table-note",
                   "The schedule is generated from the hypothesis plan. Adjust the global analysis round or information fraction when a hypothesis needs a different timing."
