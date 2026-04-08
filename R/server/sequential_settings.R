@@ -97,7 +97,7 @@ build_default_gs_analysis_schedule <- function(plan_tbl = rv$gs_hypothesis_plan)
     if (planned_analyses == 1L) {
       fractions <- 1
     } else {
-      fractions <- seq_len(planned_analyses) / planned_analyses
+      fractions <- rep(0.5, planned_analyses)
     }
     tibble::tibble(
       schedule_key = vapply(seq_len(planned_analyses), function(stage) {
