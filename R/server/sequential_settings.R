@@ -232,7 +232,7 @@ validate_gs_analysis_schedule <- function(
       return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
     }
     if (any(diff(hypothesis_rows$information_fraction) <= 0)) {
-      msg <- sprintf("%s information fractions must increase from one stage to the next.", plan_tbl$hypothesis[[i]])
+      msg <- "Information fractions for interim analyses must be in (0, 1) and incremental."
       if (isTRUE(notify)) {
         showNotification(msg, type = "error", duration = 8)
       }
