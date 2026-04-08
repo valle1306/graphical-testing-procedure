@@ -77,7 +77,7 @@ output$gs_hypothesis_plan_ui <- renderUI({
             width = "100%"
           )
 
-          hsd_gamma_val <- if ("hsd_gamma" %in% names(plan_tbl)) plan_tbl$hsd_gamma[[i]] else -4
+          hsd_gamma_val <- if ("hsd_gamma" %in% names(plan_tbl) && !is.na(plan_tbl$hsd_gamma[[i]]) && plan_tbl$hsd_gamma[[i]] != -4) plan_tbl$hsd_gamma[[i]] else ""
           tags$tr(
             tags$td(tags$strong(plan_tbl$hypothesis[[i]])),
             tags$td(
@@ -108,11 +108,10 @@ output$gs_hypothesis_plan_ui <- renderUI({
                   placeholder = "e.g. 0.5, 1"
                 )
               } else if (identical(selected_rule, "HSD")) {
-                numericInput(
+                textInput(
                   inputId = paste0("gs_plan_gamma_", id),
                   label = NULL,
                   value = hsd_gamma_val,
-                  step = 0.5,
                   width = "100%"
                 )
               } else {
