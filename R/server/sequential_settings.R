@@ -30,13 +30,20 @@ build_default_gs_hypothesis_plan <- function(
       -4
     }
     if (is.na(hsd_gamma_value)) hsd_gamma_value <- -4
+    haybittle_p1_value <- if (!is.na(existing_idx) && "haybittle_p1" %in% names(existing_tbl)) {
+      as.numeric(existing_tbl$haybittle_p1[[existing_idx]])
+    } else {
+      3e-04
+    }
+    if (is.na(haybittle_p1_value)) haybittle_p1_value <- 3e-04
     tibble::tibble(
       id = as.integer(nodes_tbl$id[[i]]),
       hypothesis = as.character(nodes_tbl$hypothesis[[i]]),
       planned_analyses = planned_analyses,
       alpha_spending = alpha_spending,
       custom_cumulative_alpha = custom_value,
-      hsd_gamma = hsd_gamma_value
+      hsd_gamma = hsd_gamma_value,
+      haybittle_p1 = haybittle_p1_value
     )
   })
   sanitize_gs_hypothesis_plan_tbl(dplyr::bind_rows(rows))
@@ -61,21 +68,26 @@ collect_gs_hypothesis_plan <- function(persist = FALSE) {
       rule <- plan_tbl$alpha_spending[[i]]
     }
     rule <- normalize_spending_rule(rule)
-    custom_value <- read_scalar_character_input(paste0("gs_plan_custom_", id))
+    custom_value <- read_scalar_character_input(paste0("gs_plan_custom_", id), reactive = FALSE)
     if (is.null(custom_value)) {
       custom_value <- plan_tbl$custom_cumulative_alpha[[i]]
     }
-    hsd_gamma_value <- read_scalar_numeric_input(paste0("gs_plan_gamma_", id))
+    hsd_gamma_value <- read_scalar_numeric_input(paste0("gs_plan_gamma_", id), reactive = FALSE)
     if (is.na(hsd_gamma_value)) {
       hsd_gamma_value <- if ("hsd_gamma" %in% names(plan_tbl)) plan_tbl$hsd_gamma[[i]] else -4
+    }
+    haybittle_p1_value <- read_scalar_numeric_input(paste0("gs_plan_haybittle_p1_", id), reactive = FALSE)
+    if (is.na(haybittle_p1_value)) {
+      haybittle_p1_value <- if ("haybittle_p1" %in% names(plan_tbl)) plan_tbl$haybittle_p1[[i]] else 3e-04
     }
     tibble::tibble(
       id = id,
       hypothesis = plan_tbl$hypothesis[[i]],
       planned_analyses = as.integer(planned_analyses),
       alpha_spending = rule,
-      custom_cumulative_alpha = if (identical(rule, "Custom")) custom_value else "",
-      hsd_gamma = hsd_gamma_value
+      custom_cumulative_alpha = custom_value,
+      hsd_gamma = hsd_gamma_value,
+      haybittle_p1 = haybittle_p1_value
     )
   })
   out <- sanitize_gs_hypothesis_plan_tbl(dplyr::bind_rows(rows))
@@ -97,7 +109,7 @@ build_default_gs_analysis_schedule <- function(plan_tbl = rv$gs_hypothesis_plan)
     if (planned_analyses == 1L) {
       fractions <- 1
     } else {
-      fractions <- rep(0.5, planned_analyses)
+      fractions <- seq_len(planned_analyses) / planned_analyses
     }
     tibble::tibble(
       schedule_key = vapply(seq_len(planned_analyses), function(stage) {
@@ -150,12 +162,13 @@ collect_gs_analysis_schedule <- function(plan_tbl = collect_gs_hypothesis_plan(p
     key <- default_tbl$schedule_key[[i]]
     analysis_round <- read_scalar_integer_input(
       paste0("gs_schedule_round_", key),
-      default = default_tbl$analysis_round[[i]]
+      default = default_tbl$analysis_round[[i]],
+      reactive = FALSE
     )
     if (is.na(analysis_round) || analysis_round < 1L) {
       analysis_round <- default_tbl$analysis_round[[i]]
     }
-    info_fraction <- read_scalar_numeric_input(paste0("gs_schedule_info_", key))
+    info_fraction <- read_scalar_numeric_input(paste0("gs_schedule_info_", key), reactive = FALSE)
     if (is.na(info_fraction)) {
       info_fraction <- default_tbl$information_fraction[[i]]
     }
@@ -180,10 +193,13 @@ collect_gs_analysis_schedule <- function(plan_tbl = collect_gs_hypothesis_plan(p
 validate_gs_analysis_schedule <- function(
   schedule_tbl = collect_gs_analysis_schedule(persist = FALSE),
   plan_tbl = collect_gs_hypothesis_plan(persist = FALSE),
+  current_alpha = get_current_allocations(),
+  allow_custom_alpha_mismatch = FALSE,
   notify = FALSE
 ) {
   schedule_tbl <- sanitize_gs_analysis_schedule_tbl(schedule_tbl)
   plan_tbl <- sanitize_gs_hypothesis_plan_tbl(plan_tbl)
+  current_alpha <- stats::setNames(as.numeric(current_alpha), names(current_alpha))
   if (!nrow(plan_tbl)) {
     msg <- "Create hypotheses in the Design tab before defining a group sequential schedule."
     if (isTRUE(notify)) {
@@ -246,13 +262,22 @@ validate_gs_analysis_schedule <- function(
       return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
     }
     if (identical(plan_tbl$alpha_spending[[i]], "Custom")) {
-      spend_info <- parse_spending_proportions(plan_tbl$custom_cumulative_alpha[[i]], expected_analyses)
-      if (!isTRUE(spend_info$ok)) {
-        msg <- sprintf("%s custom cumulative alpha error: %s", plan_tbl$hypothesis[[i]], spend_info$message)
-        if (isTRUE(notify)) {
-          showNotification(msg, type = "error", duration = 8)
+      alpha_now <- as.numeric(current_alpha[[plan_tbl$hypothesis[[i]]]])
+      if (length(alpha_now) == 1L && is.finite(alpha_now) && alpha_now > 0) {
+        spend_info <- parse_custom_cumulative_alpha(
+          plan_tbl$custom_cumulative_alpha[[i]],
+          expected_analyses,
+          total_alpha = alpha_now,
+          allow_legacy_proportions = FALSE,
+          allow_total_mismatch = isTRUE(allow_custom_alpha_mismatch)
+        )
+        if (!isTRUE(spend_info$ok)) {
+          msg <- sprintf("%s custom cumulative alpha error: %s", plan_tbl$hypothesis[[i]], spend_info$message)
+          if (isTRUE(notify)) {
+            showNotification(msg, type = "error", duration = 8)
+          }
+          return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
         }
-        return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
       }
     }
   }
@@ -284,23 +309,41 @@ observe({
     return()
   }
   plan_tbl <- collect_gs_hypothesis_plan(persist = FALSE)
-  rv$gs_hypothesis_plan <- plan_tbl
-  rv$gs_analysis_schedule <- merge_gs_schedule_with_existing(
+  schedule_tbl <- merge_gs_schedule_with_existing(
     build_default_gs_analysis_schedule(plan_tbl),
     isolate(rv$gs_analysis_schedule)
   )
-  rv$gs_settings <- legacy_settings_from_group_sequential_design(rv$gs_hypothesis_plan, rv$gs_analysis_schedule)
+  plan_changed <- !same_gs_hypothesis_plan_tbl(plan_tbl, isolate(rv$gs_hypothesis_plan))
+  schedule_changed <- !same_gs_analysis_schedule_tbl(schedule_tbl, isolate(rv$gs_analysis_schedule))
+  if (!plan_changed && !schedule_changed) {
+    return()
+  }
+  rv$gs_hypothesis_plan <- plan_tbl
+  rv$gs_analysis_schedule <- schedule_tbl
+  rv$gs_settings <- legacy_settings_from_group_sequential_design(plan_tbl, schedule_tbl)
 })
 
 observe({
   if (!nrow(rv$gs_hypothesis_plan)) {
-    rv$gs_analysis_schedule <- empty_gs_analysis_schedule()
-    rv$gs_settings <- legacy_settings_from_group_sequential_design()
+    empty_schedule <- empty_gs_analysis_schedule()
+    current_settings <- isolate(rv$gs_settings)
+    has_settings_rows <- !is.null(current_settings) && nrow(current_settings) > 0
+    schedule_changed <- !same_gs_analysis_schedule_tbl(empty_schedule, isolate(rv$gs_analysis_schedule))
+    if (schedule_changed) {
+      rv$gs_analysis_schedule <- empty_schedule
+    }
+    if (schedule_changed || has_settings_rows) {
+      rv$gs_settings <- legacy_settings_from_group_sequential_design()
+    }
     return()
   }
-  rv$gs_analysis_schedule <- collect_gs_analysis_schedule(
+  schedule_tbl <- collect_gs_analysis_schedule(
     plan_tbl = isolate(rv$gs_hypothesis_plan),
     persist = FALSE
   )
-  rv$gs_settings <- legacy_settings_from_group_sequential_design(rv$gs_hypothesis_plan, rv$gs_analysis_schedule)
+  if (same_gs_analysis_schedule_tbl(schedule_tbl, isolate(rv$gs_analysis_schedule))) {
+    return()
+  }
+  rv$gs_analysis_schedule <- schedule_tbl
+  rv$gs_settings <- legacy_settings_from_group_sequential_design(rv$gs_hypothesis_plan, schedule_tbl)
 })

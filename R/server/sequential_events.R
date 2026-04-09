@@ -1,10 +1,12 @@
 # ---- Wizard navigation ----
 observeEvent(input$gs_wizard_next_1, {
+  persist_group_sequential_design_state(update_boundary = FALSE)
   rv$gs_wizard_step <- 2L
   updateTabsetPanel(session, "gs_wizard_tabs", selected = "step2")
 })
 
 observeEvent(input$gs_wizard_next_2, {
+  persist_group_sequential_design_state(update_boundary = TRUE)
   rv$gs_wizard_step <- 3L
   updateTabsetPanel(session, "gs_wizard_tabs", selected = "step3")
 })
@@ -91,6 +93,7 @@ observeEvent(input$gs_reset_design_defaults, {
   rv$gs_analysis_schedule <- build_default_gs_analysis_schedule(rv$gs_hypothesis_plan)
   rv$gs_settings <- legacy_settings_from_group_sequential_design(rv$gs_hypothesis_plan, rv$gs_analysis_schedule)
   reset_group_sequential_state()
+  sync_group_sequential_inputs(rv$gs_hypothesis_plan, rv$gs_analysis_schedule)
   rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
   rv$gs_design_finalized <- FALSE
   rv$gs_finalize_feedback <- NULL
@@ -102,9 +105,15 @@ observeEvent(input$gs_reset_design_defaults, {
 
 observeEvent(input$gs_finalize_design, {
   rv$gs_finalize_feedback <- NULL
-  plan_tbl <- collect_gs_hypothesis_plan(persist = TRUE)
-  schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = TRUE)
-  validation <- validate_gs_analysis_schedule(schedule_tbl = schedule_tbl, plan_tbl = plan_tbl, notify = FALSE)
+  design_state <- persist_group_sequential_design_state(update_boundary = FALSE)
+  plan_tbl <- design_state$plan
+  schedule_tbl <- design_state$schedule
+  validation <- validate_gs_analysis_schedule(
+    schedule_tbl = schedule_tbl,
+    plan_tbl = plan_tbl,
+    allow_custom_alpha_mismatch = FALSE,
+    notify = FALSE
+  )
   if (!isTRUE(validation$ok)) {
     rv$gs_finalize_feedback <- list(
       text = paste("Cannot finalize:", validation$message),

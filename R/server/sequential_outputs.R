@@ -30,8 +30,7 @@ output$gs_design_context <- renderUI({
   if (!nrow(rv$nodes)) {
     return(tags$span("Create hypotheses in the Design tab first. The group sequential design tables will appear here automatically."))
   }
-  plan_tbl <- collect_gs_hypothesis_plan(persist = FALSE)
-  schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = FALSE)
+  schedule_tbl <- sanitize_gs_analysis_schedule_tbl(rv$gs_analysis_schedule)
   round_values <- gs_round_choice_values(schedule_tbl)
   tags$span(
     sprintf(
@@ -47,9 +46,16 @@ output$gs_hypothesis_plan_ui <- renderUI({
   if (!nrow(rv$nodes)) {
     return(tags$p("Add at least one hypothesis in the Design tab before building the group sequential design."))
   }
-  plan_tbl <- collect_gs_hypothesis_plan(persist = FALSE)
+  plan_tbl <- sanitize_gs_hypothesis_plan_tbl(rv$gs_hypothesis_plan)
+  if (!nrow(plan_tbl)) {
+    return(tags$p("Define the hypothesis setup first."))
+  }
   tags$div(
     class = "gs-table-shell",
+    tags$div(
+      class = "gs-inline-note",
+      "Custom cumulative alpha uses cumulative alpha amounts, not proportions. Enter increasing values like 0.001, 0.025 for two analyses and make the final value equal the hypothesis alpha."
+    ),
     tags$table(
       class = "gs-input-table",
       tags$thead(
@@ -57,18 +63,14 @@ output$gs_hypothesis_plan_ui <- renderUI({
           tags$th("Hypothesis"),
           tags$th("Total Number of Planned Analyses"),
           tags$th("Alpha Spending Function"),
-          tags$th("Parameter for Alpha Spending Function")
+          tags$th("Rule Parameters")
         )
       ),
       tags$tbody(
         lapply(seq_len(nrow(plan_tbl)), function(i) {
           id <- plan_tbl$id[[i]]
           planned_analyses <- max(1L, as.integer(plan_tbl$planned_analyses[[i]]))
-          selected_rule <- read_scalar_character_input(paste0("gs_plan_rule_", id))
-          if (is.null(selected_rule)) {
-            selected_rule <- plan_tbl$alpha_spending[[i]]
-          }
-          selected_rule <- normalize_spending_rule(selected_rule)
+          selected_rule <- normalize_spending_rule(plan_tbl$alpha_spending[[i]])
           rule_input <- selectInput(
             inputId = paste0("gs_plan_rule_", id),
             label = NULL,
@@ -78,6 +80,7 @@ output$gs_hypothesis_plan_ui <- renderUI({
           )
 
           hsd_gamma_val <- if ("hsd_gamma" %in% names(plan_tbl) && !is.na(plan_tbl$hsd_gamma[[i]]) && plan_tbl$hsd_gamma[[i]] != -4) plan_tbl$hsd_gamma[[i]] else ""
+          haybittle_p1_val <- if ("haybittle_p1" %in% names(plan_tbl) && is.finite(plan_tbl$haybittle_p1[[i]])) format_plain_number(plan_tbl$haybittle_p1[[i]]) else "0.0003"
           tags$tr(
             tags$td(tags$strong(plan_tbl$hypothesis[[i]])),
             tags$td(
@@ -105,14 +108,23 @@ output$gs_hypothesis_plan_ui <- renderUI({
                   inputId = paste0("gs_plan_custom_", id),
                   label = NULL,
                   value = plan_tbl$custom_cumulative_alpha[[i]],
-                  placeholder = "e.g. 0.5, 1"
+                  placeholder = sprintf("e.g. 0.001, 0.025 for %s analyses", planned_analyses)
                 )
               } else if (identical(selected_rule, "HSD")) {
                 textInput(
                   inputId = paste0("gs_plan_gamma_", id),
                   label = NULL,
                   value = hsd_gamma_val,
-                  width = "100%"
+                  width = "100%",
+                  placeholder = "e.g. -4"
+                )
+              } else if (identical(selected_rule, "Haybittle-Peto")) {
+                textInput(
+                  inputId = paste0("gs_plan_haybittle_p1_", id),
+                  label = NULL,
+                  value = haybittle_p1_val,
+                  width = "100%",
+                  placeholder = "e.g. 0.0003"
                 )
               } else {
                 tags$div(class = "gs-muted", "N/A")
@@ -126,12 +138,17 @@ output$gs_hypothesis_plan_ui <- renderUI({
 })
 
 output$gs_analysis_schedule_ui <- renderUI({
-  plan_tbl <- collect_gs_hypothesis_plan(persist = FALSE)
+  plan_tbl <- sanitize_gs_hypothesis_plan_tbl(rv$gs_hypothesis_plan)
   if (!nrow(plan_tbl)) {
     return(tags$p("Define the hypothesis setup first."))
   }
-  schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = FALSE)
-  validation <- validate_gs_analysis_schedule(schedule_tbl = schedule_tbl, plan_tbl = plan_tbl, notify = FALSE)
+  schedule_tbl <- sanitize_gs_analysis_schedule_tbl(rv$gs_analysis_schedule)
+  validation <- validate_gs_analysis_schedule(
+    schedule_tbl = schedule_tbl,
+    plan_tbl = plan_tbl,
+    allow_custom_alpha_mismatch = isTRUE(rv$gs_design_finalized),
+    notify = FALSE
+  )
   schedule_tbl <- validation$schedule
   tagList(
     if (!isTRUE(validation$ok)) {
@@ -463,8 +480,7 @@ output$gs_analysis_design_summary <- renderUI({
     )
   }
   has_submissions <- nrow(rv$gs_analysis_history) > 0
-  plan_tbl <- collect_gs_hypothesis_plan(persist = FALSE)
-  schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = FALSE)
+  schedule_tbl <- sanitize_gs_analysis_schedule_tbl(rv$gs_analysis_schedule)
   round_values <- gs_round_choice_values(schedule_tbl)
   div(
     class = "gs-card",

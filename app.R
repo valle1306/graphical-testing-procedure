@@ -67,16 +67,16 @@ server <- function(input, output, session) {
     format(as.numeric(x), trim = TRUE, scientific = FALSE)
   }
   
-  read_scalar_character_input <- function(input_id) {
-    value <- input[[input_id]]
+  read_scalar_character_input <- function(input_id, reactive = TRUE) {
+    value <- if (isTRUE(reactive)) input[[input_id]] else isolate(input[[input_id]])
     if (is.null(value) || length(value) != 1 || is.na(value) || !nzchar(value)) {
       return(NULL)
     }
     as.character(value)
   }
   
-  read_scalar_numeric_input <- function(input_id) {
-    raw_value <- input[[input_id]]
+  read_scalar_numeric_input <- function(input_id, reactive = TRUE) {
+    raw_value <- if (isTRUE(reactive)) input[[input_id]] else isolate(input[[input_id]])
     if (is.null(raw_value) || length(raw_value) != 1) {
       return(NA_real_)
     }
@@ -87,8 +87,8 @@ server <- function(input, output, session) {
     value
   }
 
-  read_scalar_integer_input <- function(input_id, default = NA_integer_) {
-    raw_value <- input[[input_id]]
+  read_scalar_integer_input <- function(input_id, default = NA_integer_, reactive = TRUE) {
+    raw_value <- if (isTRUE(reactive)) input[[input_id]] else isolate(input[[input_id]])
     if (is.null(raw_value) || length(raw_value) < 1) {
       return(default)
     }
@@ -108,6 +108,106 @@ server <- function(input, output, session) {
 
   same_trimmed_text <- function(left, right) {
     identical(trimws(scalar_text_or_default(left)), trimws(scalar_text_or_default(right)))
+  }
+
+  same_sanitized_table <- function(left, right, sanitizer_name = NULL) {
+    if (!is.null(sanitizer_name) && exists(sanitizer_name, mode = "function")) {
+      sanitizer <- get(sanitizer_name, mode = "function")
+      left <- sanitizer(left)
+      right <- sanitizer(right)
+    }
+    left <- as.data.frame(left, stringsAsFactors = FALSE)
+    right <- as.data.frame(right, stringsAsFactors = FALSE)
+    isTRUE(all.equal(left, right, check.attributes = FALSE))
+  }
+
+  same_gs_hypothesis_plan_tbl <- function(left, right) {
+    same_sanitized_table(left, right, sanitizer_name = "sanitize_gs_hypothesis_plan_tbl")
+  }
+
+  same_gs_analysis_schedule_tbl <- function(left, right) {
+    same_sanitized_table(left, right, sanitizer_name = "sanitize_gs_analysis_schedule_tbl")
+  }
+
+  sync_group_sequential_inputs <- function(
+    plan_tbl = rv$gs_hypothesis_plan,
+    schedule_tbl = rv$gs_analysis_schedule
+  ) {
+    if (!exists("sanitize_gs_hypothesis_plan_tbl", mode = "function")) {
+      return(invisible(NULL))
+    }
+    plan_tbl <- sanitize_gs_hypothesis_plan_tbl(plan_tbl)
+    schedule_tbl <- sanitize_gs_analysis_schedule_tbl(schedule_tbl)
+
+    if (nrow(plan_tbl)) {
+      for (i in seq_len(nrow(plan_tbl))) {
+        id <- plan_tbl$id[[i]]
+        planned_analyses <- max(1L, as.integer(plan_tbl$planned_analyses[[i]]))
+        rule <- normalize_spending_rule(plan_tbl$alpha_spending[[i]])
+
+        updateNumericInput(
+          session,
+          paste0("gs_plan_k_", id),
+          value = planned_analyses
+        )
+        updateSelectInput(
+          session,
+          paste0("gs_plan_rule_", id),
+          selected = rule
+        )
+        updateTextInput(
+          session,
+          paste0("gs_plan_custom_", id),
+          value = scalar_text_or_default(plan_tbl$custom_cumulative_alpha[[i]]),
+          placeholder = sprintf("e.g. 0.001, 0.025 for %s analyses", planned_analyses)
+        )
+        updateTextInput(
+          session,
+          paste0("gs_plan_gamma_", id),
+          value = if (is.finite(plan_tbl$hsd_gamma[[i]]) && plan_tbl$hsd_gamma[[i]] != -4) format_plain_number(plan_tbl$hsd_gamma[[i]]) else "",
+          placeholder = "e.g. -4"
+        )
+        updateTextInput(
+          session,
+          paste0("gs_plan_haybittle_p1_", id),
+          value = if (is.finite(plan_tbl$haybittle_p1[[i]])) format_plain_number(plan_tbl$haybittle_p1[[i]]) else "0.0003",
+          placeholder = "e.g. 0.0003"
+        )
+      }
+    }
+
+    if (nrow(schedule_tbl)) {
+      for (i in seq_len(nrow(schedule_tbl))) {
+        key <- schedule_tbl$schedule_key[[i]]
+        updateNumericInput(
+          session,
+          paste0("gs_schedule_round_", key),
+          value = schedule_tbl$analysis_round[[i]]
+        )
+        updateTextInput(
+          session,
+          paste0("gs_schedule_info_", key),
+          value = format_plain_number(schedule_tbl$information_fraction[[i]]),
+          placeholder = "e.g. 0.5"
+        )
+      }
+    }
+
+    invisible(NULL)
+  }
+
+  persist_group_sequential_design_state <- function(update_boundary = FALSE) {
+    plan_tbl <- collect_gs_hypothesis_plan(persist = TRUE)
+    schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = TRUE)
+    rv$gs_settings <- legacy_settings_from_group_sequential_design(plan_tbl, schedule_tbl)
+    if (isTRUE(update_boundary)) {
+      rv$gs_boundary_preview <- build_gs_boundary_schedule(
+        plan_tbl = plan_tbl,
+        schedule_tbl = schedule_tbl,
+        notify = FALSE
+      )
+    }
+    invisible(list(plan = plan_tbl, schedule = schedule_tbl))
   }
   
   quiet_jsonlite_warning <- function(expr) {
@@ -253,7 +353,8 @@ server <- function(input, output, session) {
       alpha_spending = rep("OF", 3),
       planned_analyses = rep(2L, 3),
       info_timing = rep("0.5, 1", 3),
-      spending_values = rep("", 3)
+      spending_values = rep("", 3),
+      haybittle_p1 = rep(0.0003, 3)
     ),
     gs_boundary_preview = tibble::tibble(
       hypothesis = character(),
@@ -285,7 +386,9 @@ server <- function(input, output, session) {
       hypothesis = character(),
       planned_analyses = integer(),
       alpha_spending = character(),
-      custom_cumulative_alpha = character()
+      custom_cumulative_alpha = character(),
+      hsd_gamma = numeric(),
+      haybittle_p1 = numeric()
     ),
     gs_analysis_schedule = tibble::tibble(
       schedule_key = character(),

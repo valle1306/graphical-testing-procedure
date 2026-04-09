@@ -3,7 +3,12 @@ build_gs_boundary_schedule <- function(
   schedule_tbl = collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = FALSE),
   notify = FALSE
 ) {
-  validation <- validate_gs_analysis_schedule(schedule_tbl = schedule_tbl, plan_tbl = plan_tbl, notify = notify)
+  validation <- validate_gs_analysis_schedule(
+    schedule_tbl = schedule_tbl,
+    plan_tbl = plan_tbl,
+    allow_custom_alpha_mismatch = TRUE,
+    notify = notify
+  )
   if (!isTRUE(validation$ok)) {
     schedule_tbl <- sanitize_gs_analysis_schedule_tbl(schedule_tbl)
     if (!nrow(schedule_tbl)) {
@@ -82,18 +87,24 @@ build_gs_boundary_schedule <- function(
 
     spending_values <- NULL
     if (identical(plan_tbl$alpha_spending[[i]], "Custom")) {
-      spend_info <- parse_spending_proportions(
-        plan_tbl$custom_cumulative_alpha[[i]],
-        plan_tbl$planned_analyses[[i]]
-      )
-      if (!isTRUE(spend_info$ok)) {
-        output_rows$status <- paste("Error:", spend_info$message)
-        return(output_rows)
+      if (length(alpha_now) == 1L && is.finite(alpha_now) && alpha_now > 0) {
+        spend_info <- parse_custom_cumulative_alpha(
+          plan_tbl$custom_cumulative_alpha[[i]],
+          plan_tbl$planned_analyses[[i]],
+          total_alpha = alpha_now,
+          allow_legacy_proportions = FALSE,
+          allow_total_mismatch = TRUE
+        )
+        if (!isTRUE(spend_info$ok)) {
+          output_rows$status <- paste("Error:", spend_info$message)
+          return(output_rows)
+        }
+        spending_values <- spend_info$proportions
       }
-      spending_values <- spend_info$values
     }
 
     hsd_gamma_val <- if ("hsd_gamma" %in% names(plan_tbl)) plan_tbl$hsd_gamma[[i]] else -4
+    haybittle_p1_val <- if ("haybittle_p1" %in% names(plan_tbl)) plan_tbl$haybittle_p1[[i]] else 3e-04
 
     boundary_tbl <- tryCatch(
       compute_boundary_schedule(
@@ -101,7 +112,8 @@ build_gs_boundary_schedule <- function(
         spending_type = plan_tbl$alpha_spending[[i]],
         timing = hypothesis_rows$information_fraction,
         spending_values = spending_values,
-        hsd_gamma = hsd_gamma_val
+        hsd_gamma = hsd_gamma_val,
+        haybittle_p1 = haybittle_p1_val
       ),
       error = function(e) e
     )

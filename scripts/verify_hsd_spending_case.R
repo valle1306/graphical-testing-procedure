@@ -77,22 +77,29 @@ plan <- tibble::tibble(
   planned_analyses = c(3L, 1L),
   alpha_spending = c("HSD", "OF"),
   custom_cumulative_alpha = c("", ""),
-  hsd_gamma = c(-4, -4)
+  hsd_gamma = c(-4, -4),
+  haybittle_p1 = c(0.0003, 0.0003)
 )
 sanitized <- sanitize_gs_hypothesis_plan_tbl(plan)
 stopifnot("hsd_gamma" %in% names(sanitized))
+stopifnot("haybittle_p1" %in% names(sanitized))
 stopifnot(sanitized$hsd_gamma[1] == -4)
 stopifnot(sanitized$hsd_gamma[2] == -4)
+stopifnot(abs(sanitized$haybittle_p1[1] - 0.0003) < 1e-12)
 
 # Test with missing hsd_gamma column
 plan_no_gamma <- plan %>% select(-hsd_gamma)
 sanitized2 <- sanitize_gs_hypothesis_plan_tbl(plan_no_gamma)
 stopifnot("hsd_gamma" %in% names(sanitized2))
 stopifnot(sanitized2$hsd_gamma[1] == -4)  # default
+plan_no_p1 <- plan %>% select(-haybittle_p1)
+sanitized3 <- sanitize_gs_hypothesis_plan_tbl(plan_no_p1)
+stopifnot("haybittle_p1" %in% names(sanitized3))
+stopifnot(abs(sanitized3$haybittle_p1[1] - 0.0003) < 1e-12)
 cat("  PASS: hsd_gamma persists and defaults correctly\n")
 
-# Test 6: Design signature includes hsd_gamma
-cat("Test 6: Design signature includes hsd_gamma...\n")
+# Test 6: Design signature includes hsd_gamma and haybittle_p1
+cat("Test 6: Design signature includes hsd_gamma and haybittle_p1...\n")
 schedule <- tibble::tibble(
   schedule_key = c("1__1", "1__2", "1__3", "2__1"),
   analysis_round = c(1L, 2L, 3L, 3L),
@@ -108,10 +115,39 @@ plan2 <- plan
 plan2$hsd_gamma[1] <- -2
 sig2 <- gs_current_design_signature(plan2, schedule)
 stopifnot(sig1 != sig2)
-cat("  PASS: changing gamma changes signature\n")
+plan3 <- plan
+plan3$haybittle_p1[1] <- 0.001
+sig3 <- gs_current_design_signature(plan3, schedule)
+stopifnot(sig1 != sig3)
+cat("  PASS: changing gamma or p1 changes signature\n")
 
-# Test 7: Mixed-rule design with HSD + graphical rejection and reallocation
-cat("Test 7: Mixed-rule graphical testing with rejection and weight reallocation...\n")
+# Test 7: Haybittle-Peto boundary computation matches helper function
+cat("Test 7: Haybittle-Peto boundary computation...\n")
+hp_our <- compute_boundary_schedule(
+  total_alpha = 0.025,
+  spending_type = "Haybittle-Peto",
+  timing = c(0.5, 1.0),
+  haybittle_p1 = 0.0003
+)
+hp_ref <- HP(p1 = 0.0003, overall.alpha = 0.025, timing = c(0.5, 1.0))
+stopifnot(all(abs(hp_our$z_boundary - hp_ref$z) < 1e-4))
+stopifnot(all(abs(hp_our$p_boundary - hp_ref$p) < 1e-4))
+cat("  PASS: Haybittle-Peto boundaries match helper\n")
+
+# Test 8: Custom cumulative alpha parsing uses absolute values
+cat("Test 8: Custom cumulative alpha parsing...\n")
+custom_ok <- parse_custom_cumulative_alpha("0.001, 0.025", planned_analyses = 2, total_alpha = 0.025)
+stopifnot(isTRUE(custom_ok$ok))
+stopifnot(abs(custom_ok$absolute_values[1] - 0.001) < 1e-12)
+stopifnot(abs(custom_ok$absolute_values[2] - 0.025) < 1e-12)
+stopifnot(abs(custom_ok$proportions[1] - 0.04) < 1e-8)
+stopifnot(abs(custom_ok$proportions[2] - 1.0) < 1e-8)
+custom_bad <- parse_custom_cumulative_alpha("0.5, 1", planned_analyses = 2, total_alpha = 0.025)
+stopifnot(!isTRUE(custom_bad$ok))
+cat("  PASS: custom cumulative alpha is validated as absolute values\n")
+
+# Test 9: Mixed-rule design with HSD + graphical rejection and reallocation
+cat("Test 9: Mixed-rule graphical testing with rejection and weight reallocation...\n")
 
 # 3-hypothesis graph: H1 (alpha=0.01, HSD), H2 (alpha=0.04, OF), H3 (alpha=0, Pocock)
 # Transition: H1->H2=0.5, H1->H3=0.5, H2->H1=0.5, H2->H3=0.5, H3->H1=0.5, H3->H2=0.5
@@ -207,8 +243,8 @@ stopifnot(abs(total_remaining - 0.05) < 1e-8)
 
 cat("  PASS: HSD rejection triggers correct alpha reallocation\n")
 
-# Test 8: Single-look HSD behaves like final analysis
-cat("Test 8: Single-look HSD...\n")
+# Test 10: Single-look HSD behaves like final analysis
+cat("Test 10: Single-look HSD...\n")
 single <- compute_boundary_schedule(total_alpha = 0.025, spending_type = "HSD", timing = c(1), hsd_gamma = -4)
 stopifnot(abs(single$z_boundary - qnorm(1 - 0.025)) < 1e-8)
 stopifnot(abs(single$cumulative_alpha_spent - 0.025) < 1e-8)

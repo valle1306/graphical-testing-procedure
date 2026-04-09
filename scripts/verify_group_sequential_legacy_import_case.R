@@ -18,6 +18,8 @@ legacy_gs_settings <- data.frame(
   planned_analyses = c(2L, 1L, 3L),
   info_timing = c("0.5, 1", "1", "0.33, 0.67, 1"),
   spending_values = c("", "", "0.2, 0.6, 1"),
+  hsd_gamma = c(-4, -4, -4),
+  haybittle_p1 = c(0.0003, 0.0003, 0.0003),
   stringsAsFactors = FALSE
 )
 
@@ -64,6 +66,8 @@ normalized_plan$custom_cumulative_alpha <- ifelse(
   legacy_gs_settings$spending_values,
   ""
 )
+normalized_plan$hsd_gamma <- legacy_gs_settings$hsd_gamma
+normalized_plan$haybittle_p1 <- legacy_gs_settings$haybittle_p1
 row.names(normalized_plan) <- NULL
 
 total_rounds <- max(normalized_plan$planned_analyses)
@@ -92,6 +96,7 @@ stopifnot(nrow(normalized_plan) == 3L)
 stopifnot(identical(normalized_plan$planned_analyses, c(2L, 1L, 3L)))
 stopifnot(normalized_plan$alpha_spending[1] == "O'Brien-Fleming")
 stopifnot(normalized_plan$alpha_spending[3] == "Custom cumulative alpha")
+stopifnot(abs(normalized_plan$haybittle_p1[1] - 0.0003) < 1e-12)
 stopifnot(derived_schedule$analysis_round[derived_schedule$hypothesis == "H2"][[1]] == 3L)
 stopifnot(all(diff(derived_schedule$information_fraction[derived_schedule$hypothesis == "H3"]) > 0))
 

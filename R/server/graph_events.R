@@ -930,6 +930,7 @@ observeEvent(input$upload_graph, {
   rv$edges <- sanitize_edges_tbl(edges)
 
   load_group_sequential_design_from_import(dat)
+  sync_group_sequential_inputs(rv$gs_hypothesis_plan, rv$gs_analysis_schedule)
   bump_tables()
   update_manual_reject_choices(rv$nodes$hypothesis)
 })

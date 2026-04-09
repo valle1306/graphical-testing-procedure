@@ -244,6 +244,12 @@ derive_group_sequential_plan_from_legacy <- function(gs_settings) {
   if (is.null(gs_settings$spending_values)) {
     gs_settings$spending_values <- rep("", nrow(gs_settings))
   }
+  if (is.null(gs_settings$hsd_gamma)) {
+    gs_settings$hsd_gamma <- rep(-4, nrow(gs_settings))
+  }
+  if (is.null(gs_settings$haybittle_p1)) {
+    gs_settings$haybittle_p1 <- rep(3e-04, nrow(gs_settings))
+  }
   sanitize_gs_hypothesis_plan_tbl(
     gs_settings %>%
       dplyr::transmute(
@@ -251,7 +257,9 @@ derive_group_sequential_plan_from_legacy <- function(gs_settings) {
         hypothesis = as.character(hypothesis),
         planned_analyses = as.integer(planned_analyses),
         alpha_spending = vapply(alpha_spending, normalize_spending_rule, character(1)),
-        custom_cumulative_alpha = as.character(spending_values)
+        custom_cumulative_alpha = as.character(spending_values),
+        hsd_gamma = suppressWarnings(as.numeric(hsd_gamma)),
+        haybittle_p1 = suppressWarnings(as.numeric(haybittle_p1))
       )
   )
 }
@@ -309,6 +317,7 @@ load_group_sequential_design_from_import <- function(dat) {
   } else {
     derive_group_sequential_plan_from_legacy(imported_legacy)
   }
+  plan_tbl <- normalize_imported_custom_cumulative_alpha(plan_tbl, rv$nodes)
 
   schedule_tbl <- if (!is.null(imported_schedule) && is.data.frame(imported_schedule) && nrow(imported_schedule)) {
     sanitize_gs_analysis_schedule_tbl(imported_schedule)

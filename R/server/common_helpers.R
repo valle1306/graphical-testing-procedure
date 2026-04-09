@@ -38,7 +38,8 @@ empty_gs_hypothesis_plan <- function() {
     planned_analyses = integer(),
     alpha_spending = character(),
     custom_cumulative_alpha = character(),
-    hsd_gamma = numeric()
+    hsd_gamma = numeric(),
+    haybittle_p1 = numeric()
   )
 }
 
@@ -62,6 +63,14 @@ default_info_timing_string <- function(k = 2L) {
     return("1")
   }
   paste(vapply(seq_len(k), function(i) format_plain_number(i / k), character(1)), collapse = ", ")
+}
+
+format_numeric_sequence <- function(values) {
+  values <- as.numeric(values)
+  if (!length(values)) {
+    return("")
+  }
+  paste(vapply(values, function(x) format(x, trim = TRUE, scientific = FALSE), character(1)), collapse = ", ")
 }
 
 format_alpha_snapshot <- function(allocations = get_current_allocations()) {
@@ -128,8 +137,13 @@ sanitize_gs_hypothesis_plan_tbl <- function(df) {
   }
   out$hsd_gamma <- suppressWarnings(as.numeric(out$hsd_gamma))
   out$hsd_gamma[is.na(out$hsd_gamma)] <- -4
+  if (!"haybittle_p1" %in% names(out)) {
+    out$haybittle_p1 <- rep(3e-04, nrow(out))
+  }
+  out$haybittle_p1 <- suppressWarnings(as.numeric(out$haybittle_p1))
+  out$haybittle_p1[is.na(out$haybittle_p1)] <- 3e-04
   out %>%
-    dplyr::select(id, hypothesis, planned_analyses, alpha_spending, custom_cumulative_alpha, hsd_gamma)
+    dplyr::select(id, hypothesis, planned_analyses, alpha_spending, custom_cumulative_alpha, hsd_gamma, haybittle_p1)
 }
 
 sanitize_gs_analysis_schedule_tbl <- function(df) {
@@ -269,6 +283,7 @@ gs_current_design_signature <- function(
         plan_tbl$alpha_spending,
         trimws(plan_tbl$custom_cumulative_alpha),
         format_plain_number(plan_tbl$hsd_gamma),
+        format_plain_number(plan_tbl$haybittle_p1),
         sep = ":"
       ),
       collapse = "|"
@@ -327,7 +342,9 @@ legacy_settings_from_group_sequential_design <- function(
       alpha_spending = character(),
       planned_analyses = integer(),
       info_timing = character(),
-      spending_values = character()
+      spending_values = character(),
+      hsd_gamma = numeric(),
+      haybittle_p1 = numeric()
     ))
   }
   rows <- lapply(seq_len(nrow(plan_tbl)), function(i) {
@@ -349,7 +366,9 @@ legacy_settings_from_group_sequential_design <- function(
         trimws(plan_tbl$custom_cumulative_alpha[[i]])
       } else {
         ""
-      }
+      },
+      hsd_gamma = plan_tbl$hsd_gamma[[i]],
+      haybittle_p1 = plan_tbl$haybittle_p1[[i]]
     )
   })
   dplyr::bind_rows(rows)
@@ -415,6 +434,61 @@ parse_numeric_sequence <- function(text_value) {
   suppressWarnings(as.numeric(pieces))
 }
 
+parse_custom_cumulative_alpha <- function(
+  text_value,
+  planned_analyses,
+  total_alpha = NULL,
+  allow_legacy_proportions = FALSE,
+  allow_total_mismatch = FALSE
+) {
+  planned_analyses <- suppressWarnings(as.integer(planned_analyses[[1]]))
+  if (is.na(planned_analyses) || planned_analyses < 1L) {
+    return(list(ok = FALSE, message = "Planned analyses must be a positive integer."))
+  }
+  values <- parse_numeric_sequence(text_value)
+  if (length(values) != planned_analyses) {
+    return(list(
+      ok = FALSE,
+      message = sprintf("Enter %d cumulative alpha values.", planned_analyses)
+    ))
+  }
+  if (any(!is.finite(values)) || any(values < 0) || any(values > 1 + 1e-8)) {
+    return(list(ok = FALSE, message = "Cumulative alpha values must stay between 0 and 1."))
+  }
+  if (any(diff(values) <= 0)) {
+    return(list(ok = FALSE, message = "Cumulative alpha values must increase from one analysis to the next."))
+  }
+
+  absolute_values <- values
+  proportions <- NULL
+  if (!is.null(total_alpha)) {
+    total_alpha <- as.numeric(total_alpha[[1]])
+    if (!is.finite(total_alpha) || total_alpha <= 0) {
+      return(list(ok = FALSE, message = "The hypothesis alpha must be positive before evaluating custom cumulative alpha."))
+    }
+    if (isTRUE(allow_legacy_proportions) && max(values) <= 1 + 1e-8 && abs(tail(values, 1) - 1) <= 1e-8) {
+      absolute_values <- values * total_alpha
+    } else if (!isTRUE(allow_total_mismatch) && abs(tail(values, 1) - total_alpha) > 1e-8) {
+      return(list(
+        ok = FALSE,
+        message = sprintf(
+          "The final cumulative alpha value must equal %s.",
+          format(total_alpha, trim = TRUE, scientific = FALSE)
+        )
+      ))
+    }
+    proportions <- absolute_values / total_alpha
+  }
+
+  list(
+    ok = TRUE,
+    message = NULL,
+    raw_values = values,
+    absolute_values = absolute_values,
+    proportions = proportions
+  )
+}
+
 parse_information_timing <- function(text_value, planned_analyses) {
   planned_analyses <- suppressWarnings(as.integer(planned_analyses[[1]]))
   if (is.na(planned_analyses) || planned_analyses < 1L) {
@@ -443,27 +517,46 @@ parse_information_timing <- function(text_value, planned_analyses) {
 }
 
 parse_spending_proportions <- function(text_value, planned_analyses) {
-  planned_analyses <- suppressWarnings(as.integer(planned_analyses[[1]]))
-  if (is.na(planned_analyses) || planned_analyses < 1L) {
-    return(list(ok = FALSE, message = "Planned analyses must be a positive integer."))
+  parse_custom_cumulative_alpha(
+    text_value = text_value,
+    planned_analyses = planned_analyses,
+    total_alpha = NULL,
+    allow_legacy_proportions = FALSE,
+    allow_total_mismatch = FALSE
+  )
+}
+
+normalize_imported_custom_cumulative_alpha <- function(plan_tbl, nodes_tbl = NULL) {
+  plan_tbl <- sanitize_gs_hypothesis_plan_tbl(plan_tbl)
+  if (!nrow(plan_tbl)) {
+    return(plan_tbl)
   }
-  values <- parse_numeric_sequence(text_value)
-  if (length(values) != planned_analyses) {
-    return(list(
-      ok = FALSE,
-      message = sprintf("Enter %d cumulative spending proportions.", planned_analyses)
-    ))
+  if (is.null(nodes_tbl) || !nrow(nodes_tbl)) {
+    return(plan_tbl)
   }
-  if (any(!is.finite(values)) || any(values < 0) || any(values > 1)) {
-    return(list(ok = FALSE, message = "Cumulative spending proportions must stay between 0 and 1."))
-  }
-  if (any(diff(values) < 0)) {
-    return(list(ok = FALSE, message = "Cumulative spending proportions must be non-decreasing."))
-  }
-  if (abs(tail(values, 1) - 1) > 1e-8) {
-    return(list(ok = FALSE, message = "The final cumulative spending proportion must be 1."))
-  }
-  list(ok = TRUE, values = values)
+  alpha_lookup <- stats::setNames(as.numeric(nodes_tbl$alpha), as.character(nodes_tbl$hypothesis))
+  rows <- lapply(seq_len(nrow(plan_tbl)), function(i) {
+    if (!identical(plan_tbl$alpha_spending[[i]], "Custom")) {
+      return(plan_tbl[i, , drop = FALSE])
+    }
+    alpha_now <- as.numeric(alpha_lookup[[plan_tbl$hypothesis[[i]]]])
+    if (length(alpha_now) != 1L || !is.finite(alpha_now) || alpha_now <= 0) {
+      return(plan_tbl[i, , drop = FALSE])
+    }
+    spend_info <- parse_custom_cumulative_alpha(
+      plan_tbl$custom_cumulative_alpha[[i]],
+      plan_tbl$planned_analyses[[i]],
+      total_alpha = alpha_now,
+      allow_legacy_proportions = TRUE,
+      allow_total_mismatch = TRUE
+    )
+    if (!isTRUE(spend_info$ok)) {
+      return(plan_tbl[i, , drop = FALSE])
+    }
+    plan_tbl$custom_cumulative_alpha[[i]] <- format_numeric_sequence(spend_info$absolute_values)
+    plan_tbl[i, , drop = FALSE]
+  })
+  sanitize_gs_hypothesis_plan_tbl(dplyr::bind_rows(rows))
 }
 
 build_information_correlation <- function(timing) {
@@ -553,7 +646,14 @@ solve_custom_boundaries <- function(cumulative_alpha, timing) {
   )
 }
 
-compute_boundary_schedule <- function(total_alpha, spending_type, timing, spending_values = NULL, hsd_gamma = -4) {
+compute_boundary_schedule <- function(
+  total_alpha,
+  spending_type,
+  timing,
+  spending_values = NULL,
+  hsd_gamma = -4,
+  haybittle_p1 = 3e-04
+) {
   total_alpha <- as.numeric(total_alpha[[1]])
   spending_type <- normalize_spending_rule(spending_type)
   timing <- as.numeric(timing)
@@ -579,7 +679,11 @@ compute_boundary_schedule <- function(total_alpha, spending_type, timing, spendi
     ))
   }
   if (identical(spending_type, "Haybittle-Peto")) {
-    hp <- HP(overall.alpha = total_alpha, timing = timing)
+    hp_p1 <- suppressWarnings(as.numeric(haybittle_p1[[1]]))
+    if (!is.finite(hp_p1)) {
+      hp_p1 <- 3e-04
+    }
+    hp <- HP(p1 = hp_p1, overall.alpha = total_alpha, timing = timing)
     return(tibble::tibble(
       analysis = seq_along(timing),
       timing = timing,
