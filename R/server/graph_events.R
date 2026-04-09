@@ -135,6 +135,7 @@ reset_group_sequential_state <- function(reset_log = TRUE) {
   }
   rv$ts_summary <- NULL
   rv$gs_boundary_preview <- empty_gs_boundary_preview()
+  rv$gs_boundary_preview_message <- NULL
   rv$gs_stage_history <- empty_gs_stage_history()
   rv$gs_analysis_history <- rv$gs_analysis_history[0, ]
   rv$gs_round_feedback <- NULL

@@ -49,6 +49,7 @@ stored_plan <- sanitize_gs_hypothesis_plan_tbl(
 
 stored_schedule <- build_schedule(stored_plan)
 stored_schedule$information_fraction[stored_schedule$schedule_key == gs_schedule_key(1L, 1L)] <- 0.4
+stored_schedule$analysis_round[stored_schedule$schedule_key == gs_schedule_key(2L, 1L)] <- 5L
 stored_schedule <- sanitize_gs_analysis_schedule_tbl(stored_schedule)
 
 transient_plan <- sanitize_gs_hypothesis_plan_tbl(stored_plan)
@@ -67,10 +68,12 @@ stopifnot(!same_sanitized_table(updated_plan, stored_plan, sanitize_gs_hypothesi
 stopifnot(!same_sanitized_table(updated_schedule, stored_schedule, sanitize_gs_analysis_schedule_tbl))
 stopifnot(nrow(h1_rows) == 3L)
 stopifnot(all(c(gs_schedule_key(1L, 1L), gs_schedule_key(1L, 2L), gs_schedule_key(1L, 3L)) %in% h1_rows$schedule_key))
+stopifnot(all.equal(h1_rows$information_fraction, c(1/3, 2/3, 1), tolerance = 1e-8))
+stopifnot(identical(h1_rows$analysis_round, c(1L, 2L, 3L)))
 stopifnot(
   identical(
-    updated_schedule$information_fraction[updated_schedule$schedule_key == gs_schedule_key(1L, 1L)],
-    stored_schedule$information_fraction[stored_schedule$schedule_key == gs_schedule_key(1L, 1L)]
+    updated_schedule$analysis_round[updated_schedule$schedule_key == gs_schedule_key(2L, 1L)],
+    stored_schedule$analysis_round[stored_schedule$schedule_key == gs_schedule_key(2L, 1L)]
   )
 )
 
@@ -84,7 +87,8 @@ cat("Group sequential reactive-guard verification scaffold\n\n")
 cat("Expected behavior:\n")
 cat("- Unchanged collected tables compare equal, so transient invalid numeric states do not rewrite stored state.\n")
 cat("- A committed K change produces a different stored plan and a regenerated schedule with the new stage rows.\n")
-cat("- Existing overlapping schedule rows are preserved during regeneration.\n")
+cat("- The changed hypothesis resets to valid default rounds and information fractions.\n")
+cat("- Unchanged hypotheses keep their previously edited schedule values.\n")
 cat("\nStored schedule:\n")
 print(stored_schedule)
 cat("\nUpdated schedule after H1 K changes from 2 to 3:\n")

@@ -90,8 +90,8 @@ collect_round_submission <- function() {
     return(NULL)
   }
 
-  preview_tbl <- rv$gs_boundary_preview
-  if (is.null(preview_tbl) || !nrow(preview_tbl)) {
+  preview_tbl <- sanitize_gs_boundary_preview_tbl(rv$gs_boundary_preview)
+  if (!nrow(preview_tbl)) {
     set_gs_round_feedback("No validated boundary schedule is available for analysis submission.", type = "error")
     return(NULL)
   }

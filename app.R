@@ -138,12 +138,14 @@ server <- function(input, output, session) {
     }
     plan_tbl <- sanitize_gs_hypothesis_plan_tbl(plan_tbl)
     schedule_tbl <- sanitize_gs_analysis_schedule_tbl(schedule_tbl)
+    alpha_lookup <- gs_design_alpha_lookup(fallback = get_current_allocations())
 
     if (nrow(plan_tbl)) {
       for (i in seq_len(nrow(plan_tbl))) {
         id <- plan_tbl$id[[i]]
         planned_analyses <- max(1L, as.integer(plan_tbl$planned_analyses[[i]]))
         rule <- normalize_spending_rule(plan_tbl$alpha_spending[[i]])
+        alpha_now <- as.numeric(alpha_lookup[[plan_tbl$hypothesis[[i]]]])
 
         updateNumericInput(
           session,
@@ -159,7 +161,7 @@ server <- function(input, output, session) {
           session,
           paste0("gs_plan_custom_", id),
           value = scalar_text_or_default(plan_tbl$custom_cumulative_alpha[[i]]),
-          placeholder = sprintf("e.g. 0.001, 0.025 for %s analyses", planned_analyses)
+          placeholder = gs_custom_cumulative_alpha_placeholder(planned_analyses, alpha_now)
         )
         updateTextInput(
           session,
@@ -367,8 +369,14 @@ server <- function(input, output, session) {
       cumulative_alpha_spent = numeric(),
       z_boundary = numeric(),
       p_boundary = numeric(),
-      status = character()
+      status = character(),
+      analysis_round = integer(),
+      hypothesis_stage = integer(),
+      schedule_key = character(),
+      is_final = logical(),
+      max_info = numeric()
     ),
+    gs_boundary_preview_message = NULL,
     gs_stage_history = tibble::tibble(
       submission = integer(),
       hypothesis = character(),

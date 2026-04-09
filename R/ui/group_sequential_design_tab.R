@@ -230,7 +230,7 @@ build_group_sequential_design_tab <- function() {
                 uiOutput("gs_analysis_schedule_ui"),
                 div(
                   class = "gs-wizard-nav",
-                  actionButton("gs_wizard_back_2", "\u2190 Back: Hypothesis Plan", class = "btn btn-outline-secondary"),
+                  actionButton("gs_wizard_back_2", "\u2190 Back: Hypotheses and Alpha Spending Functions", class = "btn btn-outline-secondary"),
                   actionButton("gs_wizard_next_2", "Next: Boundary Review \u2192", class = "btn btn-primary")
                 )
               ),
@@ -241,6 +241,7 @@ build_group_sequential_design_tab <- function() {
                   class = "gs-table-note",
                   "Review the design-time one-sided boundaries. When everything looks correct, finalize the design to proceed to the Analysis tab."
                 ),
+                uiOutput("gs_boundary_preview_feedback"),
                 div(class = "gs-table-shell", DTOutput("gs_boundary_schedule_table")),
                 uiOutput("gs_finalize_feedback"),
                 div(

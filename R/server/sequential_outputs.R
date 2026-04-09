@@ -1,7 +1,7 @@
 output$gs_stepper_indicator <- renderUI({
   step <- rv$gs_wizard_step
   finalized <- isTRUE(rv$gs_design_finalized)
-  labels <- c("Hypothesis Plan", "Analysis Timing", "Boundary Review")
+  labels <- c("Hypotheses and Alpha Spending Functions", "Analysis Timing", "Boundary Review")
   step_tags <- lapply(seq_along(labels), function(i) {
     cls <- if (finalized || i < step) {
       "gs-step completed"
@@ -47,6 +47,7 @@ output$gs_hypothesis_plan_ui <- renderUI({
     return(tags$p("Add at least one hypothesis in the Design tab before building the group sequential design."))
   }
   plan_tbl <- sanitize_gs_hypothesis_plan_tbl(rv$gs_hypothesis_plan)
+  alpha_lookup <- gs_design_alpha_lookup(fallback = get_current_allocations())
   if (!nrow(plan_tbl)) {
     return(tags$p("Define the hypothesis setup first."))
   }
@@ -54,7 +55,7 @@ output$gs_hypothesis_plan_ui <- renderUI({
     class = "gs-table-shell",
     tags$div(
       class = "gs-inline-note",
-      "Custom cumulative alpha uses cumulative alpha amounts, not proportions. Enter increasing values like 0.001, 0.025 for two analyses and make the final value equal the hypothesis alpha."
+      "Custom cumulative alpha uses cumulative alpha amounts, not proportions. Enter one cumulative alpha value per planned analysis. Values must increase, and the final value must equal the hypothesis alpha."
     ),
     tags$table(
       class = "gs-input-table",
@@ -63,7 +64,7 @@ output$gs_hypothesis_plan_ui <- renderUI({
           tags$th("Hypothesis"),
           tags$th("Total Number of Planned Analyses"),
           tags$th("Alpha Spending Function"),
-          tags$th("Rule Parameters")
+          tags$th("Parameter for Alpha Spending Function")
         )
       ),
       tags$tbody(
@@ -71,6 +72,7 @@ output$gs_hypothesis_plan_ui <- renderUI({
           id <- plan_tbl$id[[i]]
           planned_analyses <- max(1L, as.integer(plan_tbl$planned_analyses[[i]]))
           selected_rule <- normalize_spending_rule(plan_tbl$alpha_spending[[i]])
+          alpha_now <- as.numeric(alpha_lookup[[plan_tbl$hypothesis[[i]]]])
           rule_input <- selectInput(
             inputId = paste0("gs_plan_rule_", id),
             label = NULL,
@@ -104,11 +106,18 @@ output$gs_hypothesis_plan_ui <- renderUI({
               if (planned_analyses <= 1L) {
                 tags$div(class = "gs-muted", "N/A")
               } else if (identical(selected_rule, "Custom")) {
-                textInput(
-                  inputId = paste0("gs_plan_custom_", id),
-                  label = NULL,
-                  value = plan_tbl$custom_cumulative_alpha[[i]],
-                  placeholder = sprintf("e.g. 0.001, 0.025 for %s analyses", planned_analyses)
+                tagList(
+                  textInput(
+                    inputId = paste0("gs_plan_custom_", id),
+                    label = NULL,
+                    value = plan_tbl$custom_cumulative_alpha[[i]],
+                    placeholder = gs_custom_cumulative_alpha_placeholder(planned_analyses, alpha_now)
+                  ),
+                  tags$div(
+                    class = "gs-inline-note",
+                    style = "margin-top: 8px; margin-bottom: 0;",
+                    gs_custom_cumulative_alpha_instruction(planned_analyses, alpha_now)
+                  )
                 )
               } else if (identical(selected_rule, "HSD")) {
                 textInput(
@@ -205,10 +214,18 @@ output$gs_analysis_schedule_ui <- renderUI({
   )
 })
 
+output$gs_boundary_preview_feedback <- renderUI({
+  message <- rv$gs_boundary_preview_message
+  if (is.null(message) || !length(message) || !nzchar(trimws(as.character(message[[1]])))) {
+    return(NULL)
+  }
+  tags$div(class = "gs-inline-note", style = "color:#991b1b;", message[[1]])
+})
+
 output$gs_boundary_schedule_table <- renderDT({
   quiet_jsonlite_warning({
-    preview_tbl <- rv$gs_boundary_preview
-    if (is.null(preview_tbl) || !nrow(preview_tbl)) {
+    preview_tbl <- sanitize_gs_boundary_preview_tbl(rv$gs_boundary_preview)
+    if (!nrow(preview_tbl)) {
       return(datatable(
         data.frame(
           Analysis = integer(),
@@ -256,13 +273,20 @@ output$gs_finalize_feedback <- renderUI({
   tags$div(class = paste("alert", alert_class), style = "margin-top: 12px; margin-bottom: 0;", feedback$text[[1]])
 })
 
-observe({
-  preview_tbl <- rv$gs_boundary_preview
-  round_values <- if (!is.null(preview_tbl) && nrow(preview_tbl)) {
-    sort(unique(preview_tbl$analysis_round))
-  } else {
-    integer()
+output$gs_analysis_preview_feedback <- renderUI({
+  message <- rv$gs_boundary_preview_message
+  if (is.null(message) || !length(message) || !nzchar(trimws(message[[1]]))) {
+    return(NULL)
   }
+  tags$div(
+    class = "alert alert-danger",
+    style = "margin-top: 12px; margin-bottom: 0;",
+    message[[1]]
+  )
+})
+
+observe({
+  round_values <- gs_remaining_analysis_rounds()
   selected_round <- read_scalar_integer_input("gs_analysis_round", default = NA_integer_)
   if (!length(round_values)) {
     updateSelectInput(session, "gs_analysis_round", choices = character(0), selected = character(0))
@@ -289,8 +313,11 @@ output$gs_round_feedback <- renderUI({
 })
 
 output$gs_round_entry_ui <- renderUI({
-  preview_tbl <- rv$gs_boundary_preview
-  if (is.null(preview_tbl) || !nrow(preview_tbl)) {
+  preview_tbl <- sanitize_gs_boundary_preview_tbl(rv$gs_boundary_preview)
+  if (!nrow(preview_tbl)) {
+    if (!is.null(rv$gs_boundary_preview_message) && nzchar(trimws(rv$gs_boundary_preview_message[[1]]))) {
+      return(tags$p("Fix the boundary schedule issue above before submitting analysis results."))
+    }
     return(tags$p("Define a valid boundary schedule before submitting analysis results."))
   }
 
@@ -427,33 +454,16 @@ output$gs_submitted_analyses_table <- renderDT({
 
 output$gs_analysis_status_table <- renderDT({
   quiet_jsonlite_warning({
-    status_tbl <- build_ts_status_table()
-    if (is.null(status_tbl) || !nrow(status_tbl)) {
-      return(datatable(
-        data.frame(
-          Hypothesis = character(),
-          `Current Alpha` = numeric(),
-          Decision = character(),
-          stringsAsFactors = FALSE
-        ),
-        rownames = FALSE,
-        options = list(dom = "t", paging = FALSE, searching = FALSE, ordering = FALSE, info = FALSE)
-      ))
+    display_tbl <- tryCatch(
+      gs_status_display_tbl(),
+      error = function(e) {
+        set_ts_log(paste("Analysis status table error:", conditionMessage(e)))
+        empty_gs_analysis_status_display()
+      }
+    )
+    if (is.null(display_tbl) || !nrow(display_tbl)) {
+      display_tbl <- empty_gs_analysis_status_display()
     }
-    next_round_tbl <- rv$gs_boundary_preview %>%
-      dplyr::filter(!schedule_key %in% gs_submitted_schedule_keys()) %>%
-      dplyr::group_by(hypothesis) %>%
-      dplyr::summarise(`Next Round` = min(analysis_round), .groups = "drop")
-    display_tbl <- status_tbl %>%
-      dplyr::left_join(next_round_tbl, by = c("hypothesis" = "hypothesis")) %>%
-      dplyr::transmute(
-        Hypothesis = hypothesis,
-        `Current Alpha` = format(current_alpha, trim = TRUE, scientific = FALSE),
-        Decision = decision,
-        `In Graph` = ifelse(in_graph, "Yes", "No"),
-        Testable = ifelse(testable, "Yes", "No"),
-        `Next Round` = ifelse(is.na(`Next Round`), "", as.character(`Next Round`))
-      )
     datatable(
       display_tbl,
       rownames = FALSE,

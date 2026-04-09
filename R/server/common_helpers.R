@@ -12,7 +12,12 @@ empty_gs_boundary_preview <- function() {
     cumulative_alpha_spent = numeric(),
     z_boundary = numeric(),
     p_boundary = numeric(),
-    status = character()
+    status = character(),
+    analysis_round = integer(),
+    hypothesis_stage = integer(),
+    schedule_key = character(),
+    is_final = logical(),
+    max_info = numeric()
   )
 }
 
@@ -45,6 +50,28 @@ empty_gs_hypothesis_plan <- function() {
 
 # ── Shared display helpers ──────────────────────────────────────────────────
 
+coerce_scalar_integer <- function(x, default = NA_integer_, minimum = NULL) {
+  values <- suppressWarnings(as.integer(unlist(x, recursive = TRUE, use.names = FALSE)))
+  values <- values[is.finite(values) & !is.na(values)]
+  if (!length(values)) {
+    return(default)
+  }
+  value <- values[[1]]
+  if (!is.null(minimum) && is.finite(minimum) && value < minimum) {
+    return(as.integer(minimum))
+  }
+  value
+}
+
+coerce_scalar_numeric <- function(x, default = NA_real_) {
+  values <- suppressWarnings(as.numeric(unlist(x, recursive = TRUE, use.names = FALSE)))
+  values <- values[is.finite(values) & !is.na(values)]
+  if (!length(values)) {
+    return(default)
+  }
+  values[[1]]
+}
+
 format_hypothesis_list <- function(x) {
   values <- unique(trimws(as.character(x)))
   values <- values[nzchar(values)]
@@ -55,10 +82,7 @@ format_hypothesis_list <- function(x) {
 }
 
 default_info_timing_string <- function(k = 2L) {
-  k <- suppressWarnings(as.integer(k[[1]]))
-  if (is.na(k) || k < 1L) {
-    k <- 1L
-  }
+  k <- coerce_scalar_integer(k, default = 1L, minimum = 1L)
   if (k == 1L) {
     return("1")
   }
@@ -71,6 +95,40 @@ format_numeric_sequence <- function(values) {
     return("")
   }
   paste(vapply(values, function(x) format(x, trim = TRUE, scientific = FALSE), character(1)), collapse = ", ")
+}
+
+default_custom_cumulative_alpha_values <- function(planned_analyses, total_alpha = NULL) {
+  planned_analyses <- coerce_scalar_integer(planned_analyses, default = NA_integer_, minimum = 1L)
+  total_alpha <- coerce_scalar_numeric(total_alpha, default = NA_real_)
+  if (is.na(planned_analyses) || planned_analyses < 1L || !is.finite(total_alpha) || total_alpha <= 0) {
+    return(numeric(0))
+  }
+  signif((seq_len(planned_analyses) / planned_analyses) * total_alpha, digits = 6)
+}
+
+gs_custom_cumulative_alpha_placeholder <- function(planned_analyses, total_alpha = NULL) {
+  planned_analyses <- coerce_scalar_integer(planned_analyses, default = 1L, minimum = 1L)
+  example_values <- default_custom_cumulative_alpha_values(planned_analyses, total_alpha)
+  if (length(example_values)) {
+    return(sprintf("e.g. %s", format_numeric_sequence(example_values)))
+  }
+  sprintf("Enter %d increasing values ending at the hypothesis alpha", planned_analyses)
+}
+
+gs_custom_cumulative_alpha_instruction <- function(planned_analyses, total_alpha = NULL) {
+  planned_analyses <- coerce_scalar_integer(planned_analyses, default = 1L, minimum = 1L)
+  total_alpha <- coerce_scalar_numeric(total_alpha, default = NA_real_)
+  final_text <- if (is.finite(total_alpha) && total_alpha > 0) {
+    sprintf("The last number should be the total allocated alpha to the hypothesis: %s", format_plain_number(total_alpha))
+  } else {
+    "The last number should be the total allocated alpha to the hypothesis."
+  }
+  sprintf(
+    "Enter %d cumulative alpha value%s, one per planned analysis. The numbers must be incremental. %s",
+    planned_analyses,
+    ifelse(planned_analyses == 1L, "", "s"),
+    final_text
+  )
 }
 
 format_alpha_snapshot <- function(allocations = get_current_allocations()) {
@@ -209,6 +267,54 @@ sanitize_gs_analysis_history_tbl <- function(df) {
     dplyr::select(names(defaults))
 }
 
+sanitize_gs_boundary_preview_tbl <- function(df) {
+  if (is.null(df) || !nrow(df)) {
+    return(empty_gs_boundary_preview())
+  }
+  out <- tibble::as_tibble(df)
+  defaults <- empty_gs_boundary_preview()
+  for (nm in names(defaults)) {
+    if (!nm %in% names(out)) {
+      out[[nm]] <- defaults[[nm]]
+    }
+  }
+  out$hypothesis <- as.character(out$hypothesis)
+  out$alpha_spending <- as.character(out$alpha_spending)
+  out$planned_analyses <- as.integer(out$planned_analyses)
+  out$analysis <- as.integer(out$analysis)
+  out$timing <- as.numeric(out$timing)
+  out$current_alpha <- as.numeric(out$current_alpha)
+  out$stage_alpha <- as.numeric(out$stage_alpha)
+  out$cumulative_alpha_spent <- as.numeric(out$cumulative_alpha_spent)
+  out$z_boundary <- as.numeric(out$z_boundary)
+  out$p_boundary <- as.numeric(out$p_boundary)
+  out$status <- as.character(out$status)
+  out$analysis_round <- as.integer(out$analysis_round)
+  out$hypothesis_stage <- as.integer(out$hypothesis_stage)
+  out$schedule_key <- as.character(out$schedule_key)
+  out$is_final <- as.logical(out$is_final)
+  out$max_info <- as.numeric(out$max_info)
+  out %>%
+    dplyr::select(names(defaults))
+}
+
+gs_design_alpha_lookup <- function(
+  nodes_tbl = if (exists("rv", inherits = TRUE) && !is.null(rv$nodes)) rv$nodes else NULL,
+  fallback = NULL
+) {
+  if (!is.null(nodes_tbl) && NROW(nodes_tbl) > 0 && all(c("hypothesis", "alpha") %in% names(nodes_tbl))) {
+    return(stats::setNames(as.numeric(nodes_tbl$alpha), as.character(nodes_tbl$hypothesis)))
+  }
+  if (!is.null(fallback) && length(fallback)) {
+    return(stats::setNames(as.numeric(fallback), names(fallback)))
+  }
+  if (exists("get_current_allocations", mode = "function")) {
+    allocations <- get_current_allocations()
+    return(stats::setNames(as.numeric(allocations), names(allocations)))
+  }
+  numeric(0)
+}
+
 set_gs_round_feedback <- function(text = NULL, type = c("success", "error")) {
   if (is.null(text) || !nzchar(trimws(as.character(text[[1]])))) {
     rv$gs_round_feedback <- NULL
@@ -248,8 +354,8 @@ gs_schedule_key <- function(hypothesis_id, hypothesis_stage) {
 }
 
 gs_default_rounds <- function(planned_analyses, total_rounds) {
-  planned_analyses <- max(1L, as.integer(planned_analyses[[1]]))
-  total_rounds <- max(planned_analyses, as.integer(total_rounds[[1]]))
+  planned_analyses <- coerce_scalar_integer(planned_analyses, default = 1L, minimum = 1L)
+  total_rounds <- max(planned_analyses, coerce_scalar_integer(total_rounds, default = planned_analyses, minimum = planned_analyses))
   if (planned_analyses == 1L) {
     return(total_rounds)
   }
@@ -404,6 +510,70 @@ gs_round_choice_values <- function(schedule_tbl = rv$gs_analysis_schedule) {
   sort(unique(schedule_tbl$analysis_round[is.finite(schedule_tbl$analysis_round) & !is.na(schedule_tbl$analysis_round)]))
 }
 
+gs_remaining_analysis_rounds <- function(
+  schedule_tbl = rv$gs_analysis_schedule,
+  history_tbl = rv$gs_analysis_history
+) {
+  schedule_tbl <- sanitize_gs_analysis_schedule_tbl(schedule_tbl)
+  if (!nrow(schedule_tbl)) {
+    return(integer(0))
+  }
+  submitted_keys <- gs_submitted_schedule_keys(history_tbl)
+  remaining_tbl <- schedule_tbl %>%
+    dplyr::filter(!schedule_key %in% submitted_keys)
+  if (!nrow(remaining_tbl)) {
+    return(integer(0))
+  }
+  sort(unique(remaining_tbl$analysis_round[is.finite(remaining_tbl$analysis_round) & !is.na(remaining_tbl$analysis_round)]))
+}
+
+gs_preview_next_round_tbl <- function(
+  preview_tbl = rv$gs_boundary_preview,
+  history_tbl = rv$gs_analysis_history
+) {
+  preview_tbl <- sanitize_gs_boundary_preview_tbl(preview_tbl)
+  if (!nrow(preview_tbl)) {
+    return(tibble::tibble(hypothesis = character(), `Next Round` = integer()))
+  }
+  preview_tbl %>%
+    dplyr::filter(!schedule_key %in% gs_submitted_schedule_keys(history_tbl)) %>%
+    dplyr::group_by(hypothesis) %>%
+    dplyr::summarise(`Next Round` = min(analysis_round), .groups = "drop")
+}
+
+empty_gs_analysis_status_display <- function() {
+  tibble::tibble(
+    Hypothesis = character(),
+    `Current Alpha` = character(),
+    Decision = character(),
+    `In Graph` = character(),
+    Testable = character(),
+    `Next Round` = character()
+  )
+}
+
+gs_status_display_tbl <- function(
+  status_tbl = build_ts_status_table(),
+  preview_tbl = rv$gs_boundary_preview,
+  history_tbl = rv$gs_analysis_history
+) {
+  if (is.null(status_tbl) || !nrow(status_tbl)) {
+    return(empty_gs_analysis_status_display())
+  }
+  status_tbl <- tibble::as_tibble(status_tbl)
+  next_round_tbl <- gs_preview_next_round_tbl(preview_tbl = preview_tbl, history_tbl = history_tbl)
+  status_tbl %>%
+    dplyr::left_join(next_round_tbl, by = "hypothesis") %>%
+    dplyr::transmute(
+      Hypothesis = as.character(hypothesis),
+      `Current Alpha` = format(as.numeric(current_alpha), trim = TRUE, scientific = FALSE),
+      Decision = as.character(decision),
+      `In Graph` = ifelse(as.logical(in_graph), "Yes", "No"),
+      Testable = ifelse(as.logical(testable), "Yes", "No"),
+      `Next Round` = ifelse(is.na(`Next Round`), "", as.character(`Next Round`))
+    )
+}
+
 # Boundary computation helpers (moved from app.R server closure)
 
 normalize_spending_rule <- function(x) {
@@ -441,7 +611,7 @@ parse_custom_cumulative_alpha <- function(
   allow_legacy_proportions = FALSE,
   allow_total_mismatch = FALSE
 ) {
-  planned_analyses <- suppressWarnings(as.integer(planned_analyses[[1]]))
+  planned_analyses <- coerce_scalar_integer(planned_analyses, default = NA_integer_, minimum = 1L)
   if (is.na(planned_analyses) || planned_analyses < 1L) {
     return(list(ok = FALSE, message = "Planned analyses must be a positive integer."))
   }
@@ -462,7 +632,7 @@ parse_custom_cumulative_alpha <- function(
   absolute_values <- values
   proportions <- NULL
   if (!is.null(total_alpha)) {
-    total_alpha <- as.numeric(total_alpha[[1]])
+    total_alpha <- coerce_scalar_numeric(total_alpha, default = NA_real_)
     if (!is.finite(total_alpha) || total_alpha <= 0) {
       return(list(ok = FALSE, message = "The hypothesis alpha must be positive before evaluating custom cumulative alpha."))
     }

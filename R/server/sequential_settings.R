@@ -105,23 +105,25 @@ build_default_gs_analysis_schedule <- function(plan_tbl = rv$gs_hypothesis_plan)
   total_rounds <- max(plan_tbl$planned_analyses, na.rm = TRUE)
   rows <- lapply(seq_len(nrow(plan_tbl)), function(i) {
     planned_analyses <- max(1L, as.integer(plan_tbl$planned_analyses[[i]]))
+    stage_index <- seq_len(planned_analyses)
     rounds <- gs_default_rounds(planned_analyses, total_rounds)
     if (planned_analyses == 1L) {
       fractions <- 1
     } else {
-      fractions <- seq_len(planned_analyses) / planned_analyses
+      fractions <- stage_index / planned_analyses
     }
+    schedule_keys <- vapply(stage_index, function(stage) {
+      gs_schedule_key(plan_tbl$id[[i]], stage)
+    }, character(1))
     tibble::tibble(
-      schedule_key = vapply(seq_len(planned_analyses), function(stage) {
-        gs_schedule_key(plan_tbl$id[[i]], stage)
-      }, character(1)),
+      schedule_key = schedule_keys,
       analysis_round = as.integer(rounds),
       hypothesis = plan_tbl$hypothesis[[i]],
       hypothesis_id = plan_tbl$id[[i]],
-      hypothesis_stage = seq_len(planned_analyses),
+      hypothesis_stage = stage_index,
       planned_analyses = planned_analyses,
       information_fraction = as.numeric(fractions),
-      is_final = seq_len(planned_analyses) == planned_analyses
+      is_final = stage_index == planned_analyses
     )
   })
   sanitize_gs_analysis_schedule_tbl(dplyr::bind_rows(rows))
@@ -136,13 +138,29 @@ merge_gs_schedule_with_existing <- function(
   if (!nrow(default_tbl)) {
     return(default_tbl)
   }
-  rows <- lapply(seq_len(nrow(default_tbl)), function(i) {
-    existing_idx <- match(default_tbl$schedule_key[[i]], existing_tbl$schedule_key)
-    if (!is.na(existing_idx)) {
-      default_tbl$analysis_round[[i]] <- existing_tbl$analysis_round[[existing_idx]]
-      default_tbl$information_fraction[[i]] <- existing_tbl$information_fraction[[existing_idx]]
+  rows <- lapply(unique(default_tbl$hypothesis_id), function(hypothesis_id) {
+    default_rows <- default_tbl %>%
+      dplyr::filter(hypothesis_id == !!hypothesis_id) %>%
+      dplyr::arrange(hypothesis_stage)
+    existing_rows <- existing_tbl %>%
+      dplyr::filter(hypothesis_id == !!hypothesis_id) %>%
+      dplyr::arrange(hypothesis_stage)
+
+    same_shape <- nrow(existing_rows) == nrow(default_rows) &&
+      nrow(default_rows) > 0L &&
+      identical(existing_rows$schedule_key, default_rows$schedule_key) &&
+      identical(existing_rows$planned_analyses, default_rows$planned_analyses)
+
+    if (!same_shape) {
+      return(default_rows)
     }
-    default_tbl[i, , drop = FALSE]
+
+    for (i in seq_len(nrow(default_rows))) {
+      default_rows$analysis_round[[i]] <- existing_rows$analysis_round[[i]]
+      default_rows$information_fraction[[i]] <- existing_rows$information_fraction[[i]]
+    }
+
+    default_rows
   })
   sanitize_gs_analysis_schedule_tbl(dplyr::bind_rows(rows))
 }
@@ -200,6 +218,7 @@ validate_gs_analysis_schedule <- function(
   schedule_tbl <- sanitize_gs_analysis_schedule_tbl(schedule_tbl)
   plan_tbl <- sanitize_gs_hypothesis_plan_tbl(plan_tbl)
   current_alpha <- stats::setNames(as.numeric(current_alpha), names(current_alpha))
+  design_alpha_lookup <- gs_design_alpha_lookup(fallback = current_alpha)
   if (!nrow(plan_tbl)) {
     msg <- "Create hypotheses in the Design tab before defining a group sequential schedule."
     if (isTRUE(notify)) {
@@ -262,7 +281,7 @@ validate_gs_analysis_schedule <- function(
       return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
     }
     if (identical(plan_tbl$alpha_spending[[i]], "Custom")) {
-      alpha_now <- as.numeric(current_alpha[[plan_tbl$hypothesis[[i]]]])
+      alpha_now <- as.numeric(design_alpha_lookup[[plan_tbl$hypothesis[[i]]]])
       if (length(alpha_now) == 1L && is.finite(alpha_now) && alpha_now > 0) {
         spend_info <- parse_custom_cumulative_alpha(
           plan_tbl$custom_cumulative_alpha[[i]],

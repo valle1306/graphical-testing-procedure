@@ -57,6 +57,7 @@ build_analysis_tab <- function() {
               "Choose a global analysis round, then enter one-sided p-values for every active hypothesis scheduled at that look."
             ),
             selectInput("gs_analysis_round", "Global Analysis Round", choices = character(0), width = "100%"),
+            uiOutput("gs_analysis_preview_feedback"),
             uiOutput("gs_round_entry_ui"),
             div(
               class = "gs-actions",
