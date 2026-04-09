@@ -153,6 +153,10 @@ observeEvent(input$gs_finalize_design, {
   showNotification("Design finalized successfully.", type = "message", duration = 5)
 })
 
+observeEvent(input$gs_go_to_analysis, {
+  updateNavbarPage(session, "nav", selected = "Analysis")
+})
+
 observeEvent(input$gs_edit_design, {
   if (nrow(rv$gs_analysis_history)) {
     showNotification(
@@ -165,5 +169,7 @@ observeEvent(input$gs_edit_design, {
   rv$gs_applied_design_signature <- ""
   rv$gs_finalize_feedback <- NULL
   rv$gs_wizard_step <- 1L
-  showNotification("Design unlocked for editing. Return to the Group Sequential Design tab.", type = "message", duration = 5)
+  updateTabsetPanel(session, "gs_wizard_tabs", selected = "step1")
+  updateNavbarPage(session, "nav", selected = "Group Sequential Design")
+  showNotification("Design unlocked for editing. Returned to the Group Sequential Design tab.", type = "message", duration = 5)
 })

@@ -86,21 +86,16 @@ build_gs_boundary_schedule <- function(
         spending_values <- NULL
         boundary_total_alpha <- alpha_now
         if (identical(plan_tbl$alpha_spending[[i]], "Custom")) {
-          if (!is.finite(design_alpha_now) || design_alpha_now <= 0) {
-            stop(sprintf("%s custom cumulative alpha requires a positive design alpha.", plan_tbl$hypothesis[[i]]))
-          }
-          spend_info <- parse_custom_cumulative_alpha(
-            plan_tbl$custom_cumulative_alpha[[i]],
-            plan_tbl$planned_analyses[[i]],
-            total_alpha = design_alpha_now,
-            allow_legacy_proportions = FALSE,
-            allow_total_mismatch = FALSE
+          profile <- gs_custom_alpha_profile(
+            plan_tbl[i, , drop = FALSE],
+            design_alpha = design_alpha_now,
+            current_alpha = alpha_now
           )
-          if (!isTRUE(spend_info$ok)) {
-            stop(sprintf("%s custom cumulative alpha error: %s", plan_tbl$hypothesis[[i]], spend_info$message))
+          if (!isTRUE(profile$ok)) {
+            stop(sprintf("%s custom cumulative alpha error: %s", plan_tbl$hypothesis[[i]], profile$message))
           }
-          spending_values <- spend_info$proportions
-          boundary_total_alpha <- design_alpha_now
+          spending_values <- profile$proportions
+          boundary_total_alpha <- alpha_now
         }
 
         hsd_gamma_val <- if ("hsd_gamma" %in% names(plan_tbl)) plan_tbl$hsd_gamma[[i]] else -4

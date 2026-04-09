@@ -119,12 +119,16 @@ gs_custom_cumulative_alpha_instruction <- function(planned_analyses, total_alpha
   planned_analyses <- coerce_scalar_integer(planned_analyses, default = 1L, minimum = 1L)
   total_alpha <- coerce_scalar_numeric(total_alpha, default = NA_real_)
   final_text <- if (is.finite(total_alpha) && total_alpha > 0) {
-    sprintf("The last number should be the total allocated alpha to the hypothesis: %s", format_plain_number(total_alpha))
+    sprintf("The last number should be the initial allocated alpha for the hypothesis: %s", format_plain_number(total_alpha))
   } else {
-    "The last number should be the total allocated alpha to the hypothesis."
+    "The last number should be the initial allocated alpha for the hypothesis."
   }
   sprintf(
-    "Enter %d cumulative alpha value%s, one per planned analysis. The numbers must be incremental. %s",
+    paste0(
+      "Enter %d cumulative alpha value%s, one per planned analysis. ",
+      "The numbers must be incremental. %s ",
+      "If alpha is later recycled into this hypothesis, future custom looks are automatically rescaled using the same cumulative proportions."
+    ),
     planned_analyses,
     ifelse(planned_analyses == 1L, "", "s"),
     final_text
@@ -541,6 +545,20 @@ gs_preview_next_round_tbl <- function(
     dplyr::summarise(`Next Round` = min(analysis_round), .groups = "drop")
 }
 
+gs_schedule_next_round_tbl <- function(
+  schedule_tbl = rv$gs_analysis_schedule,
+  history_tbl = rv$gs_analysis_history
+) {
+  schedule_tbl <- sanitize_gs_analysis_schedule_tbl(schedule_tbl)
+  if (!nrow(schedule_tbl)) {
+    return(tibble::tibble(hypothesis = character(), `Next Round` = integer()))
+  }
+  schedule_tbl %>%
+    dplyr::filter(!schedule_key %in% gs_submitted_schedule_keys(history_tbl)) %>%
+    dplyr::group_by(hypothesis) %>%
+    dplyr::summarise(`Next Round` = min(analysis_round), .groups = "drop")
+}
+
 empty_gs_analysis_status_display <- function() {
   tibble::tibble(
     Hypothesis = character(),
@@ -572,6 +590,209 @@ gs_status_display_tbl <- function(
       Testable = ifelse(as.logical(testable), "Yes", "No"),
       `Next Round` = ifelse(is.na(`Next Round`), "", as.character(`Next Round`))
     )
+}
+
+empty_gs_live_analysis_state_display <- function() {
+  tibble::tibble(
+    Hypothesis = character(),
+    `Current Alpha` = character(),
+    `Last Submitted Round/Stage` = character(),
+    `Last Observed p` = character(),
+    Decision = character(),
+    `In Graph` = character(),
+    Testable = character(),
+    `Next Round` = character()
+  )
+}
+
+gs_last_history_by_hypothesis_tbl <- function(history_tbl = rv$gs_analysis_history) {
+  history_tbl <- sanitize_gs_analysis_history_tbl(history_tbl)
+  if (!nrow(history_tbl)) {
+    return(tibble::tibble(
+      hypothesis = character(),
+      last_round_stage = character(),
+      last_p_value = character(),
+      last_decision = character()
+    ))
+  }
+  history_tbl %>%
+    dplyr::arrange(submission, analysis_round, hypothesis_stage) %>%
+    dplyr::group_by(hypothesis) %>%
+    dplyr::slice_tail(n = 1) %>%
+    dplyr::ungroup() %>%
+    dplyr::transmute(
+      hypothesis = as.character(hypothesis),
+      last_round_stage = sprintf("Round %s / Stage %s", analysis_round, hypothesis_stage),
+      last_p_value = format_plain_number(p_value),
+      last_decision = as.character(decision)
+    )
+}
+
+gs_live_analysis_state_tbl <- function(
+  status_tbl = build_ts_status_table(),
+  schedule_tbl = rv$gs_analysis_schedule,
+  history_tbl = rv$gs_analysis_history
+) {
+  if (is.null(status_tbl) || !nrow(status_tbl)) {
+    return(empty_gs_live_analysis_state_display())
+  }
+  status_tbl <- tibble::as_tibble(status_tbl)
+  next_round_tbl <- gs_schedule_next_round_tbl(schedule_tbl = schedule_tbl, history_tbl = history_tbl)
+  history_last_tbl <- gs_last_history_by_hypothesis_tbl(history_tbl = history_tbl)
+  status_tbl %>%
+    dplyr::left_join(history_last_tbl, by = "hypothesis") %>%
+    dplyr::left_join(next_round_tbl, by = "hypothesis") %>%
+    dplyr::transmute(
+      Hypothesis = as.character(hypothesis),
+      `Current Alpha` = format_plain_number(current_alpha),
+      `Last Submitted Round/Stage` = dplyr::coalesce(last_round_stage, ""),
+      `Last Observed p` = dplyr::coalesce(last_p_value, ""),
+      Decision = dplyr::case_when(
+        !is.na(last_decision) & nzchar(last_decision) ~ last_decision,
+        !as.logical(in_graph) ~ "Reject",
+        !as.logical(testable) ~ "Not testable",
+        TRUE ~ "Pending"
+      ),
+      `In Graph` = ifelse(as.logical(in_graph), "Yes", "No"),
+      Testable = ifelse(as.logical(testable), "Yes", "No"),
+      `Next Round` = ifelse(is.na(`Next Round`), "", as.character(`Next Round`))
+    )
+}
+
+gs_custom_alpha_profile <- function(plan_row, design_alpha, current_alpha = design_alpha) {
+  plan_row <- sanitize_gs_hypothesis_plan_tbl(plan_row)
+  if (!nrow(plan_row)) {
+    return(list(ok = FALSE, message = "Custom alpha profile requires one hypothesis row."))
+  }
+  design_alpha <- coerce_scalar_numeric(design_alpha, default = NA_real_)
+  current_alpha <- coerce_scalar_numeric(current_alpha, default = design_alpha)
+  if (!is.finite(design_alpha) || design_alpha <= 0) {
+    return(list(ok = FALSE, message = "Custom cumulative alpha requires a positive initial design alpha."))
+  }
+  spend_info <- parse_custom_cumulative_alpha(
+    plan_row$custom_cumulative_alpha[[1]],
+    plan_row$planned_analyses[[1]],
+    total_alpha = design_alpha,
+    allow_legacy_proportions = FALSE,
+    allow_total_mismatch = FALSE
+  )
+  if (!isTRUE(spend_info$ok)) {
+    return(spend_info)
+  }
+  if (!is.finite(current_alpha) || current_alpha <= 0) {
+    current_alpha <- design_alpha
+  }
+  cumulative_alpha <- as.numeric(spend_info$proportions) * current_alpha
+  list(
+    ok = TRUE,
+    message = NULL,
+    proportions = as.numeric(spend_info$proportions),
+    cumulative_alpha = cumulative_alpha,
+    stage_alpha = c(cumulative_alpha[[1]], diff(cumulative_alpha))
+  )
+}
+
+gs_custom_alpha_profile_for_hypothesis <- function(
+  hypothesis,
+  plan_tbl = rv$gs_hypothesis_plan,
+  design_alpha_lookup = gs_design_alpha_lookup(),
+  current_alpha_lookup = get_current_allocations()
+) {
+  plan_tbl <- sanitize_gs_hypothesis_plan_tbl(plan_tbl)
+  plan_row <- plan_tbl %>% dplyr::filter(hypothesis == !!as.character(hypothesis)) %>% dplyr::slice(1)
+  design_alpha <- as.numeric(design_alpha_lookup[[as.character(hypothesis)]])
+  current_alpha <- as.numeric(current_alpha_lookup[[as.character(hypothesis)]])
+  gs_custom_alpha_profile(plan_row, design_alpha = design_alpha, current_alpha = current_alpha)
+}
+
+gs_custom_alpha_spent_fraction <- function(
+  hypothesis,
+  hypothesis_stage,
+  plan_tbl = rv$gs_hypothesis_plan,
+  design_alpha_lookup = gs_design_alpha_lookup(),
+  current_alpha_lookup = get_current_allocations()
+) {
+  profile <- gs_custom_alpha_profile_for_hypothesis(
+    hypothesis = hypothesis,
+    plan_tbl = plan_tbl,
+    design_alpha_lookup = design_alpha_lookup,
+    current_alpha_lookup = current_alpha_lookup
+  )
+  if (!isTRUE(profile$ok)) {
+    return(NA_real_)
+  }
+  hypothesis_stage <- coerce_scalar_integer(hypothesis_stage, default = NA_integer_, minimum = 1L)
+  if (is.na(hypothesis_stage) || hypothesis_stage > length(profile$proportions)) {
+    return(NA_real_)
+  }
+  as.numeric(profile$proportions[[hypothesis_stage]])
+}
+
+validate_gs_runtime_alpha_spent <- function(
+  stage_df,
+  ready_rows,
+  history_tbl = rv$gs_analysis_history,
+  plan_tbl = rv$gs_hypothesis_plan
+) {
+  history_tbl <- sanitize_gs_analysis_history_tbl(history_tbl)
+  ready_rows <- sanitize_gs_boundary_preview_tbl(ready_rows)
+  stage_df <- tibble::as_tibble(stage_df)
+  if (!nrow(stage_df) || !nrow(ready_rows)) {
+    return(list(ok = TRUE, message = NULL))
+  }
+  stage_df <- stage_df %>%
+    dplyr::mutate(
+      order = as.integer(order),
+      hypotheses = as.character(hypotheses),
+      alpha_spent = as.numeric(alpha_spent),
+      is_final = as.logical(is_final)
+    )
+  for (i in seq_len(nrow(stage_df))) {
+    runtime_code <- gs_runtime_spending_code(ready_rows$alpha_spending[[i]])
+    if (!identical(runtime_code, "asUser")) {
+      next
+    }
+    current_fraction <- as.numeric(stage_df$alpha_spent[[i]])
+    if (!is.finite(current_fraction)) {
+      return(list(
+        ok = FALSE,
+        message = sprintf(
+          "%s stage %s is missing a valid cumulative alpha-spending fraction.",
+          ready_rows$hypothesis[[i]],
+          ready_rows$hypothesis_stage[[i]]
+        )
+      ))
+    }
+    prior_rows <- history_tbl %>%
+      dplyr::filter(hypothesis == ready_rows$hypothesis[[i]], runtime_spending_code == "asUser") %>%
+      dplyr::arrange(analysis_round, hypothesis_stage)
+    if (!nrow(prior_rows)) {
+      next
+    }
+    prior_fractions <- vapply(seq_len(nrow(prior_rows)), function(j) {
+      prior_current_alpha <- as.numeric(prior_rows$current_alpha[[j]])
+      prior_cumulative <- as.numeric(prior_rows$cumulative_alpha_spent[[j]])
+      if (isTRUE(prior_rows$is_final[[j]])) {
+        return(1.0)
+      }
+      if (!is.finite(prior_current_alpha) || prior_current_alpha <= 0) {
+        return(NA_real_)
+      }
+      prior_cumulative / prior_current_alpha
+    }, numeric(1))
+    prior_fractions <- prior_fractions[is.finite(prior_fractions)]
+    if (length(prior_fractions) && current_fraction <= tail(prior_fractions, 1) + 1e-12) {
+      return(list(
+        ok = FALSE,
+        message = sprintf(
+          "%s stage %s must increase cumulative alpha spending beyond the previous submitted look.",
+          ready_rows$hypothesis[[i]],
+          ready_rows$hypothesis_stage[[i]]
+        )
+      ))
+    }
+  }
+  list(ok = TRUE, message = NULL)
 }
 
 # Boundary computation helpers (moved from app.R server closure)

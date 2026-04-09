@@ -64,7 +64,19 @@ server <- function(input, output, session) {
   }
   
   format_plain_number <- function(x) {
-    format(as.numeric(x), trim = TRUE, scientific = FALSE)
+    value <- suppressWarnings(as.numeric(x))
+    if (!length(value)) {
+      return(character(0))
+    }
+    out <- rep("", length(value))
+    keep <- !is.na(value) & is.finite(value)
+    if (!any(keep)) {
+      return(out)
+    }
+    formatted <- format(value[keep], trim = TRUE, scientific = FALSE, nsmall = 0)
+    formatted <- sub("([0-9])0+$", "\\1", formatted)
+    out[keep] <- sub("\\.$", "", formatted)
+    out
   }
   
   read_scalar_character_input <- function(input_id, reactive = TRUE) {

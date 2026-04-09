@@ -136,6 +136,11 @@ collect_round_submission <- function() {
       alpha_spent = if (identical(runtime_code, "asUser")) {
         if (isTRUE(ready_rows$is_final[[i]])) {
           1.0
+        } else if (identical(ready_rows$alpha_spending[[i]], "Custom")) {
+          gs_custom_alpha_spent_fraction(
+            hypothesis = ready_rows$hypothesis[[i]],
+            hypothesis_stage = ready_rows$hypothesis_stage[[i]]
+          )
         } else {
           hyp_alpha <- as.numeric(ready_rows$current_alpha[[i]])
           if (!is.finite(hyp_alpha) || hyp_alpha <= 0) 0 else as.numeric(ready_rows$cumulative_alpha_spent[[i]]) / hyp_alpha
@@ -147,6 +152,15 @@ collect_round_submission <- function() {
   })
 
   stage_df <- dplyr::bind_rows(stage_rows)
+  runtime_validation <- validate_gs_runtime_alpha_spent(
+    stage_df = stage_df,
+    ready_rows = ready_rows,
+    history_tbl = rv$gs_analysis_history
+  )
+  if (!isTRUE(runtime_validation$ok)) {
+    set_gs_round_feedback(runtime_validation$message, type = "error")
+    stop(runtime_validation$message)
+  }
   history_rows <- ready_rows %>%
     dplyr::transmute(
       submission = history_submission,

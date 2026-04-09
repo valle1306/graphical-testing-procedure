@@ -55,7 +55,7 @@ output$gs_hypothesis_plan_ui <- renderUI({
     class = "gs-table-shell",
     tags$div(
       class = "gs-inline-note",
-      "Custom cumulative alpha uses cumulative alpha amounts, not proportions. Enter one cumulative alpha value per planned analysis. Values must increase, and the final value must equal the hypothesis alpha."
+      "Custom cumulative alpha uses cumulative alpha amounts for the hypothesis's initial alpha, not proportions. Enter one cumulative alpha value per planned analysis. Values must increase, the final value must equal the initial hypothesis alpha, and future looks are automatically rescaled if alpha is later recycled into that hypothesis."
     ),
     tags$table(
       class = "gs-input-table",
@@ -270,7 +270,17 @@ output$gs_finalize_feedback <- renderUI({
     return(NULL)
   }
   alert_class <- if (identical(feedback$type, "error")) "alert-danger" else "alert-success"
-  tags$div(class = paste("alert", alert_class), style = "margin-top: 12px; margin-bottom: 0;", feedback$text[[1]])
+  tags$div(
+    class = paste("alert", alert_class),
+    style = "margin-top: 12px; margin-bottom: 0;",
+    tags$div(feedback$text[[1]]),
+    if (!identical(feedback$type, "error")) {
+      div(
+        style = "margin-top: 10px;",
+        actionButton("gs_go_to_analysis", "Go to Analysis", class = "btn btn-primary btn-sm")
+      )
+    }
+  )
 })
 
 output$gs_analysis_preview_feedback <- renderUI({
@@ -452,17 +462,17 @@ output$gs_submitted_analyses_table <- renderDT({
   })
 })
 
-output$gs_analysis_status_table <- renderDT({
+output$gs_live_analysis_state_table <- renderDT({
   quiet_jsonlite_warning({
     display_tbl <- tryCatch(
-      gs_status_display_tbl(),
+      gs_live_analysis_state_tbl(),
       error = function(e) {
-        set_ts_log(paste("Analysis status table error:", conditionMessage(e)))
-        empty_gs_analysis_status_display()
+        set_ts_log(paste("Live analysis state table error:", conditionMessage(e)))
+        empty_gs_live_analysis_state_display()
       }
     )
     if (is.null(display_tbl) || !nrow(display_tbl)) {
-      display_tbl <- empty_gs_analysis_status_display()
+      display_tbl <- empty_gs_live_analysis_state_display()
     }
     datatable(
       display_tbl,
@@ -507,7 +517,13 @@ output$gs_analysis_design_summary <- renderUI({
     if (!has_submissions) {
       div(
         style = "margin-top: 10px;",
-        actionButton("gs_edit_design", "Edit Design", class = "btn btn-outline-secondary btn-sm")
+        actionButton("gs_edit_design", "Back to Design", class = "btn btn-outline-secondary btn-sm")
+      )
+    } else {
+      div(
+        class = "gs-inline-note",
+        style = "margin-top: 10px; margin-bottom: 0; color:#14532d;",
+        "Design is locked because analysis rounds have already been submitted. Use Reset Analysis State to revise the design."
       )
     }
   )

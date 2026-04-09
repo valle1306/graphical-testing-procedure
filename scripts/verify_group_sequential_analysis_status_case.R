@@ -13,7 +13,21 @@ if (dir.exists(local_lib)) {
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(TrialSimulator))
 
-format_plain_number <- function(x) format(as.numeric(x), trim = TRUE, scientific = FALSE)
+format_plain_number <- function(x) {
+  value <- suppressWarnings(as.numeric(x))
+  if (!length(value)) {
+    return(character(0))
+  }
+  out <- rep("", length(value))
+  keep <- !is.na(value) & is.finite(value)
+  if (!any(keep)) {
+    return(out)
+  }
+  formatted <- format(value[keep], trim = TRUE, scientific = FALSE, nsmall = 0)
+  formatted <- sub("([0-9])0+$", "\\1", formatted)
+  out[keep] <- sub("\\.$", "", formatted)
+  out
+}
 observe <- function(...) invisible(NULL)
 
 source(file.path(project_root, "R", "server", "common_helpers.R"), local = TRUE)
@@ -86,6 +100,7 @@ withCallingHandlers(
     )
     stopifnot(identical(placeholder_example, "e.g. 0.0025, 0.005, 0.0075, 0.01"))
     stopifnot(grepl("4 cumulative alpha values", instruction_example, fixed = TRUE))
+    stopifnot(grepl("automatically rescaled", instruction_example, fixed = TRUE))
   },
   warning = function(w) {
     warning_messages <<- c(warning_messages, conditionMessage(w))
@@ -136,7 +151,7 @@ round1 <- data.frame(
   is_final = c(FALSE, TRUE),
   max_info = c(100L, 100L),
   alpha_spent = c(
-    as.numeric(h1_stage1$cumulative_alpha_spent) / as.numeric(h1_stage1$current_alpha),
+    gs_custom_alpha_spent_fraction("H1", 1L, plan_tbl = plan_tbl),
     NA_real_
   ),
   stringsAsFactors = FALSE
@@ -166,43 +181,89 @@ rv$gs_analysis_history <- sanitize_gs_analysis_history_tbl(
 )
 
 preview_after <- build_gs_boundary_schedule(plan_tbl = plan_tbl, schedule_tbl = schedule_tbl, notify = FALSE)
-status_tbl <- build_ts_status_table()
-status_display <- gs_status_display_tbl(status_tbl = status_tbl, preview_tbl = preview_after, history_tbl = rv$gs_analysis_history)
-status_display_empty_preview <- gs_status_display_tbl(status_tbl = status_tbl, preview_tbl = empty_gs_boundary_preview(), history_tbl = rv$gs_analysis_history)
-
 h1_after_stage2 <- preview_after %>%
   dplyr::filter(hypothesis == "H1", hypothesis_stage == 2L) %>%
   dplyr::slice(1)
-h1_status_row <- status_display %>%
-  dplyr::filter(Hypothesis == "H1") %>%
-  dplyr::slice(1)
-h2_status_row <- status_display %>%
-  dplyr::filter(Hypothesis == "H2") %>%
-  dplyr::slice(1)
+
+round2 <- data.frame(
+  order = 2L,
+  hypotheses = "H1",
+  p = 0.7,
+  info = 50L,
+  is_final = FALSE,
+  max_info = 100L,
+  alpha_spent = gs_custom_alpha_spent_fraction("H1", 2L, plan_tbl = plan_tbl),
+  stringsAsFactors = FALSE
+)
+
+runtime_validation <- validate_gs_runtime_alpha_spent(
+  stage_df = round2,
+  ready_rows = preview_after %>% dplyr::filter(hypothesis == "H1", hypothesis_stage == 2L),
+  history_tbl = rv$gs_analysis_history
+)
+stopifnot(isTRUE(runtime_validation$ok))
+
+invisible(rv$ts_object$test(round2))
+
+rv$gs_analysis_history <- sanitize_gs_analysis_history_tbl(
+  dplyr::bind_rows(
+    rv$gs_analysis_history,
+    tibble::tibble(
+      submission = 2L,
+      schedule_key = "1__2",
+      analysis_round = 2L,
+      hypothesis = "H1",
+      hypothesis_stage = 2L,
+      alpha_spending = "Custom",
+      runtime_spending_code = "asUser",
+      information_fraction = 0.5,
+      current_alpha = as.numeric(h1_after_stage2$current_alpha),
+      cumulative_alpha_spent = as.numeric(h1_after_stage2$cumulative_alpha_spent),
+      p_value = 0.7,
+      boundary_p = as.numeric(h1_after_stage2$p_boundary),
+      boundary_z = as.numeric(h1_after_stage2$z_boundary),
+      decision = "Do not reject",
+      is_final = FALSE,
+      max_info = 100
+    )
+  )
+)
+
+preview_after_round2 <- build_gs_boundary_schedule(plan_tbl = plan_tbl, schedule_tbl = schedule_tbl, notify = FALSE)
+status_tbl <- build_ts_status_table()
+live_state <- gs_live_analysis_state_tbl(status_tbl = status_tbl, schedule_tbl = schedule_tbl, history_tbl = rv$gs_analysis_history)
+live_state_empty_history <- gs_live_analysis_state_tbl(status_tbl = status_tbl, schedule_tbl = schedule_tbl, history_tbl = empty_gs_analysis_history())
+h1_live_row <- live_state %>% dplyr::filter(Hypothesis == "H1") %>% dplyr::slice(1)
+h2_live_row <- live_state %>% dplyr::filter(Hypothesis == "H2") %>% dplyr::slice(1)
 
 remaining_rounds <- gs_remaining_analysis_rounds(schedule_tbl = schedule_tbl, history_tbl = rv$gs_analysis_history)
 
 stopifnot(is.null(rv$gs_boundary_preview_message))
 stopifnot(all(c("analysis_round", "hypothesis_stage", "schedule_key", "is_final", "max_info") %in% names(preview_after)))
 stopifnot(abs(as.numeric(h1_after_stage2$current_alpha) - 0.02) < 1e-12)
-stopifnot(abs(as.numeric(h1_after_stage2$cumulative_alpha_spent) - 0.005) < 1e-12)
-stopifnot(identical(as.integer(remaining_rounds), c(2L, 3L, 4L)))
-stopifnot(identical(as.character(h1_status_row$`Next Round`), "2"))
-stopifnot(identical(as.character(h2_status_row$Decision), "reject"))
-stopifnot(identical(as.character(h2_status_row$`In Graph`), "No"))
-stopifnot(nrow(status_display_empty_preview) == 4L)
-stopifnot(all(status_display_empty_preview$`Next Round` == ""))
+stopifnot(abs(as.numeric(h1_after_stage2$cumulative_alpha_spent) - 0.01) < 1e-12)
+stopifnot(abs(round2$alpha_spent[[1]] - 0.5) < 1e-12)
+stopifnot(identical(as.integer(remaining_rounds), c(3L, 4L)))
+stopifnot(identical(as.character(h1_live_row$`Last Submitted Round/Stage`), "Round 2 / Stage 2"))
+stopifnot(identical(as.character(h1_live_row$`Last Observed p`), "0.7"))
+stopifnot(identical(as.character(h1_live_row$Decision), "Do not reject"))
+stopifnot(identical(as.character(h1_live_row$`Next Round`), "3"))
+stopifnot(identical(as.character(h2_live_row$Decision), "Reject"))
+stopifnot(identical(as.character(h2_live_row$`In Graph`), "No"))
+stopifnot(nrow(live_state_empty_history) == 4L)
+stopifnot(all(live_state_empty_history$`Last Submitted Round/Stage` == ""))
+stopifnot(all(c("analysis_round", "hypothesis_stage", "schedule_key", "is_final", "max_info") %in% names(preview_after_round2)))
 
 cat("Group sequential analysis-status regression scaffold\n\n")
 cat("Expected behavior:\n")
 cat("- Mixed Custom + OF submissions do not invalidate future boundary preview rows.\n")
-cat("- Custom cumulative alpha stays anchored to the original design alpha after recycling.\n")
-cat("- Remaining analysis rounds still come from the stored schedule after round 1 is submitted.\n")
-cat("- Current Status display stays renderable even when preview rows are empty.\n")
+cat("- Custom cumulative alpha is rescaled by the current recycled alpha using the original cumulative proportions.\n")
+cat("- Round 2 with H1 p = 0.7 submits successfully and advances the next round to 3.\n")
+cat("- Live Analysis State stays renderable and carries the latest per-hypothesis result.\n")
 cat("- Custom-alpha helper coercion no longer emits seq_len(length.out=...) warnings.\n")
-cat("\nStatus display after round 1:\n")
-print(status_display)
-cat("\nRemaining rounds after round 1:\n")
+cat("\nLive Analysis State after round 2:\n")
+print(live_state)
+cat("\nRemaining rounds after round 2:\n")
 print(remaining_rounds)
 cat("\nH1 preview rows after H2 rejection recycled alpha:\n")
 print(preview_after %>% dplyr::filter(hypothesis == "H1") %>% dplyr::arrange(hypothesis_stage))

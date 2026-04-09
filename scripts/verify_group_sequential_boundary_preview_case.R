@@ -13,7 +13,21 @@ if (dir.exists(local_lib)) {
 suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(jsonlite))
 
-format_plain_number <- function(x) format(as.numeric(x), trim = TRUE, scientific = FALSE)
+format_plain_number <- function(x) {
+  value <- suppressWarnings(as.numeric(x))
+  if (!length(value)) {
+    return(character(0))
+  }
+  out <- rep("", length(value))
+  keep <- !is.na(value) & is.finite(value)
+  if (!any(keep)) {
+    return(out)
+  }
+  formatted <- format(value[keep], trim = TRUE, scientific = FALSE, nsmall = 0)
+  formatted <- sub("([0-9])0+$", "\\1", formatted)
+  out[keep] <- sub("\\.$", "", formatted)
+  out
+}
 
 source(file.path(project_root, "R", "server", "common_helpers.R"), local = TRUE)
 observe <- function(...) invisible(NULL)

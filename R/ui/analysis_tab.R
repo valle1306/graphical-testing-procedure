@@ -31,14 +31,13 @@ build_analysis_tab <- function() {
             tags$details(
               class = "gs-card",
               style = "margin-top: 12px; margin-bottom: 0;",
-              tags$summary(style = "cursor:pointer; font-weight:600; color:#0f766e;", "Open live graph, status, and activity"),
+              tags$summary(style = "cursor:pointer; font-weight:600; color:#0f766e;", "Open live graph and activity"),
               div(
                 style = "margin-top: 12px;",
                 tabsetPanel(
                   id = "gs_analysis_overview_panel",
                   selected = "Graph",
                   tabPanel("Graph", div(class = "gs-table-shell", visNetworkOutput("seq_graph", height = "360px"))),
-                  tabPanel("Status", div(class = "gs-table-shell", DTOutput("ts_status_table"))),
                   tabPanel("Activity", div(style = "background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px;", verbatimTextOutput("ts_log")))
                 )
               )
@@ -72,28 +71,21 @@ build_analysis_tab <- function() {
           12,
           div(
             class = "gs-card",
-            tags$h4(class = "gs-section-title", "Current Results"),
-            div(class = "gs-table-shell", DTOutput("ts_result_table"))
-          )
-        )
-      ),
-      fluidRow(
-        column(
-          12,
-          div(
+            tags$h4(class = "gs-section-title", "Live Analysis State"),
+            tags$p(
+              class = "gs-table-note",
+              "Use this table to track each hypothesis, the latest submitted result, and the next scheduled global round."
+            ),
+            div(class = "gs-table-shell", DTOutput("gs_live_analysis_state_table"))
+          ),
+          tags$details(
             class = "gs-card",
-            tags$h4(class = "gs-section-title", "Submitted Analyses"),
-            div(class = "gs-table-shell", DTOutput("gs_submitted_analyses_table"))
-          )
-        )
-      ),
-      fluidRow(
-        column(
-          12,
-          div(
-            class = "gs-card",
-            tags$h4(class = "gs-section-title", "Current Status"),
-            div(class = "gs-table-shell", DTOutput("gs_analysis_status_table"))
+            style = "margin-top: 16px;",
+            tags$summary(style = "cursor:pointer; font-weight:600; color:#0f766e;", "Submitted Analyses"),
+            div(
+              style = "margin-top: 12px;",
+              div(class = "gs-table-shell", DTOutput("gs_submitted_analyses_table"))
+            )
           )
         )
       )
