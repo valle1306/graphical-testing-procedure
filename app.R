@@ -141,6 +141,112 @@ server <- function(input, output, session) {
     same_sanitized_table(left, right, sanitizer_name = "sanitize_gs_analysis_schedule_tbl")
   }
 
+  same_gs_boundary_preview_tbl <- function(left, right) {
+    same_sanitized_table(left, right, sanitizer_name = "sanitize_gs_boundary_preview_tbl")
+  }
+
+  reactivity_debug_enabled <- function() {
+    isTRUE(getOption("gmt.debug.reactivity", FALSE)) ||
+      identical(Sys.getenv("GMT_DEBUG_REACTIVITY"), "1")
+  }
+
+  reactivity_debug_state <- new.env(parent = emptyenv())
+  reactivity_debug_state$metrics <- list()
+
+  profile_reactivity <- function(label, expr, note = NULL) {
+    if (!isTRUE(reactivity_debug_enabled())) {
+      return(force(expr))
+    }
+
+    start_time <- proc.time()[["elapsed"]]
+    note_text <- if (!is.null(note) && length(note)) {
+      trimws(as.character(note[[1]]))
+    } else {
+      ""
+    }
+
+    on.exit({
+      elapsed_ms <- (proc.time()[["elapsed"]] - start_time) * 1000
+      metric <- reactivity_debug_state$metrics[[label]]
+      if (is.null(metric)) {
+        metric <- list(calls = 0L, total_ms = 0, last_ms = 0, note = "")
+      }
+      metric$calls <- as.integer(metric$calls) + 1L
+      metric$total_ms <- as.numeric(metric$total_ms) + elapsed_ms
+      metric$last_ms <- elapsed_ms
+      metric$note <- note_text
+      reactivity_debug_state$metrics[[label]] <- metric
+
+      message(
+        sprintf(
+          "[gmt-reactivity] %s call=%s elapsed=%.1fms%s",
+          label,
+          metric$calls,
+          elapsed_ms,
+          if (nzchar(note_text)) paste0(" note=", note_text) else ""
+        )
+      )
+    }, add = TRUE)
+
+    force(expr)
+  }
+
+  snapshot_reactivity_metrics <- function(label = NULL) {
+    metrics <- reactivity_debug_state$metrics
+    if (!length(metrics)) {
+      return(tibble::tibble(
+        label = character(),
+        calls = integer(),
+        total_ms = numeric(),
+        last_ms = numeric(),
+        note = character()
+      ))
+    }
+
+    rows <- lapply(names(metrics), function(metric_label) {
+      metric <- metrics[[metric_label]]
+      tibble::tibble(
+        label = metric_label,
+        calls = as.integer(metric$calls),
+        total_ms = as.numeric(metric$total_ms),
+        last_ms = as.numeric(metric$last_ms),
+        note = as.character(metric$note)
+      )
+    })
+
+    out <- dplyr::bind_rows(rows)
+    if (!is.null(label)) {
+      out <- out %>% dplyr::filter(.data$label == !!as.character(label))
+    }
+    out %>% dplyr::arrange(.data$label)
+  }
+
+  reset_reactivity_metrics <- function() {
+    reactivity_debug_state$metrics <- list()
+    invisible(NULL)
+  }
+
+  output_is_visible <- function(output_id) {
+    hidden_flag <- session$clientData[[paste0("output_", output_id, "_hidden")]]
+    !isTRUE(hidden_flag)
+  }
+
+  boundary_preview_cache_key <- function(
+    plan_tbl = rv$gs_hypothesis_plan,
+    schedule_tbl = rv$gs_analysis_schedule,
+    ts_state_value = ts_state_tick()
+  ) {
+    paste(
+      if (exists("gs_current_design_signature", mode = "function")) {
+        gs_current_design_signature(plan_tbl, schedule_tbl)
+      } else {
+        ""
+      },
+      as.integer(ts_state_value),
+      sep = "||"
+    )
+  }
+
   sync_group_sequential_inputs <- function(
     plan_tbl = rv$gs_hypothesis_plan,
     schedule_tbl = rv$gs_analysis_schedule
@@ -342,6 +448,11 @@ server <- function(input, output, session) {
   }
   
   cancel_pending_js <- "Shiny.setInputValue('cancel_pending', Math.random(), {priority:'event'});"
+  graph_view_cache <- new.env(parent = emptyenv())
+  graph_view_cache$graph <- list(content_signature = NULL, position_map = stats::setNames(character(0), character(0)))
+  graph_view_cache$seq_graph <- list(content_signature = NULL, position_map = stats::setNames(character(0), character(0)))
+  boundary_preview_cache <- new.env(parent = emptyenv())
+  boundary_preview_cache$key <- NULL
   
   rv <- reactiveValues(
     nodes = tibble::tibble(

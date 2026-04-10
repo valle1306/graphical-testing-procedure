@@ -1,5 +1,11 @@
 # ── Shared empty-table constructors ─────────────────────────────────────────
 
+if (!exists("profile_reactivity", mode = "function")) {
+  profile_reactivity <- function(label, expr, note = NULL) {
+    force(expr)
+  }
+}
+
 empty_gs_boundary_preview <- function() {
   tibble::tibble(
     hypothesis = character(),

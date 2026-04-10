@@ -68,24 +68,138 @@ build_graph_edges <- function() {
   display_edges
 }
 
-update_graph_views <- function() {
-  nodes_data <- build_graph_nodes()
-  edges_data <- build_graph_edges()
-  quiet_jsonlite_warning({
-    visNetworkProxy("graph") %>%
+graph_node_content_signature <- function(nodes_data) {
+  nodes_data <- sanitize_nodes_tbl(nodes_data)
+  if (!nrow(nodes_data)) {
+    return("")
+  }
+  font_signature <- vapply(nodes_data$font, function(font) {
+    paste(
+      as.character(font$color),
+      as.character(font$strokeWidth),
+      as.character(font$strokeColor),
+      as.character(font$vadjust),
+      sep = ":"
+    )
+  }, character(1))
+  paste(
+    nodes_data$id,
+    nodes_data$hypothesis,
+    nodes_data$label,
+    format_plain_number(nodes_data$alpha_display),
+    nodes_data$color,
+    nodes_data$borderWidth,
+    font_signature,
+    sep = "~",
+    collapse = "|"
+  )
+}
+
+graph_edge_content_signature <- function(edges_data) {
+  edges_data <- sanitize_edges_tbl(edges_data)
+  if (!nrow(edges_data)) {
+    return("")
+  }
+  smooth_signature <- if ("smooth" %in% names(edges_data)) {
+    vapply(edges_data$smooth, function(spec) {
+      if (is.list(spec)) {
+        paste(
+          as.character(spec$enabled),
+          as.character(spec$type),
+          as.character(spec$roundness),
+          sep = ":"
+        )
+      } else {
+        as.character(spec)
+      }
+    }, character(1))
+  } else {
+    rep("", nrow(edges_data))
+  }
+  paste(
+    edges_data$id,
+    edges_data$from,
+    edges_data$to,
+    format_plain_number(edges_data$weight),
+    if ("label" %in% names(edges_data)) edges_data$label else "",
+    smooth_signature,
+    sep = "~",
+    collapse = "|"
+  )
+}
+
+graph_content_signature <- function(nodes_data, edges_data) {
+  paste(
+    graph_node_content_signature(nodes_data),
+    graph_edge_content_signature(edges_data),
+    sep = "||"
+  )
+}
+
+graph_position_map <- function(nodes_data) {
+  nodes_data <- sanitize_nodes_tbl(nodes_data)
+  if (!nrow(nodes_data)) {
+    return(stats::setNames(character(0), character(0)))
+  }
+  stats::setNames(
+    paste(
+      format(nodes_data$x, trim = TRUE, scientific = FALSE, digits = 15),
+      format(nodes_data$y, trim = TRUE, scientific = FALSE, digits = 15),
+      sep = ":"
+    ),
+    as.character(nodes_data$id)
+  )
+}
+
+update_graph_target <- function(output_id, nodes_data, edges_data) {
+  if (!isTRUE(output_is_visible(output_id))) {
+    return(invisible(FALSE))
+  }
+
+  cache <- get0(output_id, envir = graph_view_cache, inherits = FALSE)
+  if (is.null(cache)) {
+    cache <- list(content_signature = NULL, position_map = stats::setNames(character(0), character(0)))
+  }
+
+  content_signature <- graph_content_signature(nodes_data, edges_data)
+  position_map <- graph_position_map(nodes_data)
+  content_changed <- !identical(cache$content_signature, content_signature)
+
+  if (isTRUE(content_changed)) {
+    visNetworkProxy(output_id) %>%
       visSetData(nodes = nodes_data, edges = edges_data) %>%
       visRedraw()
-    visNetworkProxy("seq_graph") %>%
-      visSetData(nodes = nodes_data, edges = edges_data) %>%
-      visRedraw()
-    if (nrow(rv$nodes)) {
-      for (i in seq_len(nrow(rv$nodes))) {
-        visNetworkProxy("graph") %>% visMoveNode(id = rv$nodes$id[i], x = rv$nodes$x[i], y = rv$nodes$y[i])
-        visNetworkProxy("seq_graph") %>% visMoveNode(id = rv$nodes$id[i], x = rv$nodes$x[i], y = rv$nodes$y[i])
+  } else {
+    previous_position_map <- cache$position_map
+    changed_ids <- names(position_map)[position_map != previous_position_map[names(position_map)]]
+    changed_ids <- changed_ids[!is.na(changed_ids) & nzchar(changed_ids)]
+    if (length(changed_ids)) {
+      for (node_id in changed_ids) {
+        row_idx <- match(as.integer(node_id), nodes_data$id)
+        if (!is.na(row_idx)) {
+          visNetworkProxy(output_id) %>%
+            visMoveNode(id = nodes_data$id[[row_idx]], x = nodes_data$x[[row_idx]], y = nodes_data$y[[row_idx]])
+        }
       }
     }
-  })
-  invisible(NULL)
+  }
+
+  cache$content_signature <- content_signature
+  cache$position_map <- position_map
+  assign(output_id, cache, envir = graph_view_cache)
+  invisible(TRUE)
+}
+
+update_graph_views <- function() {
+  profile_reactivity("update_graph_views", {
+    nodes_data <- build_graph_nodes()
+    edges_data <- build_graph_edges()
+    quiet_jsonlite_warning({
+      invisible(update_graph_target("graph", nodes_data, edges_data))
+      invisible(update_graph_target("seq_graph", nodes_data, edges_data))
+    })
+    invisible(NULL)
+  }, note = sprintf("nodes=%s edges=%s", nrow(rv$nodes), nrow(rv$edges)))
 }
 
 schedule_graph_refresh <- function(adjust_tables = TRUE) {
@@ -318,9 +432,6 @@ output$ts_status_table <- renderDT({
   })
 })
 
-outputOptions(output, "graph", suspendWhenHidden = FALSE)
-outputOptions(output, "seq_graph", suspendWhenHidden = FALSE)
-
 # ---- Panel toggle & data tables ----
 
 panel_visible <- reactiveVal(TRUE)
@@ -398,8 +509,21 @@ observeEvent(input$node_dragged, {
     ) %>%
     sanitize_nodes_tbl()
   quiet_jsonlite_warning({
-    visNetworkProxy("seq_graph") %>% visMoveNode(id = node_id, x = input$node_dragged$x, y = input$node_dragged$y)
+    if (isTRUE(output_is_visible("seq_graph"))) {
+      visNetworkProxy("seq_graph") %>% visMoveNode(id = node_id, x = input$node_dragged$x, y = input$node_dragged$y)
+    }
   })
+  cache <- get0("seq_graph", envir = graph_view_cache, inherits = FALSE)
+  if (!is.null(cache)) {
+    position_map <- cache$position_map
+    position_map[[as.character(node_id)]] <- paste(
+      format(input$node_dragged$x, trim = TRUE, scientific = FALSE, digits = 15),
+      format(input$node_dragged$y, trim = TRUE, scientific = FALSE, digits = 15),
+      sep = ":"
+    )
+    cache$position_map <- position_map
+    assign("seq_graph", cache, envir = graph_view_cache)
+  }
 })
 
 observe({

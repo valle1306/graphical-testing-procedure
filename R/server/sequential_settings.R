@@ -50,51 +50,53 @@ build_default_gs_hypothesis_plan <- function(
 }
 
 collect_gs_hypothesis_plan <- function(persist = FALSE) {
-  plan_tbl <- build_default_gs_hypothesis_plan()
-  if (!nrow(plan_tbl)) {
+  profile_reactivity("collect_gs_hypothesis_plan", {
+    plan_tbl <- build_default_gs_hypothesis_plan()
+    if (!nrow(plan_tbl)) {
+      if (isTRUE(persist)) {
+        rv$gs_hypothesis_plan <- plan_tbl
+      }
+      return(plan_tbl)
+    }
+    rows <- lapply(seq_len(nrow(plan_tbl)), function(i) {
+      id <- plan_tbl$id[[i]]
+      planned_analyses <- read_scalar_integer_input(paste0("gs_plan_k_", id), default = plan_tbl$planned_analyses[[i]])
+      if (is.na(planned_analyses) || planned_analyses < 1L) {
+        planned_analyses <- plan_tbl$planned_analyses[[i]]
+      }
+      rule <- read_scalar_character_input(paste0("gs_plan_rule_", id))
+      if (is.null(rule)) {
+        rule <- plan_tbl$alpha_spending[[i]]
+      }
+      rule <- normalize_spending_rule(rule)
+      custom_value <- read_scalar_character_input(paste0("gs_plan_custom_", id), reactive = FALSE)
+      if (is.null(custom_value)) {
+        custom_value <- plan_tbl$custom_cumulative_alpha[[i]]
+      }
+      hsd_gamma_value <- read_scalar_numeric_input(paste0("gs_plan_gamma_", id), reactive = FALSE)
+      if (is.na(hsd_gamma_value)) {
+        hsd_gamma_value <- if ("hsd_gamma" %in% names(plan_tbl)) plan_tbl$hsd_gamma[[i]] else -4
+      }
+      haybittle_p1_value <- read_scalar_numeric_input(paste0("gs_plan_haybittle_p1_", id), reactive = FALSE)
+      if (is.na(haybittle_p1_value)) {
+        haybittle_p1_value <- if ("haybittle_p1" %in% names(plan_tbl)) plan_tbl$haybittle_p1[[i]] else 3e-04
+      }
+      tibble::tibble(
+        id = id,
+        hypothesis = plan_tbl$hypothesis[[i]],
+        planned_analyses = as.integer(planned_analyses),
+        alpha_spending = rule,
+        custom_cumulative_alpha = custom_value,
+        hsd_gamma = hsd_gamma_value,
+        haybittle_p1 = haybittle_p1_value
+      )
+    })
+    out <- sanitize_gs_hypothesis_plan_tbl(dplyr::bind_rows(rows))
     if (isTRUE(persist)) {
-      rv$gs_hypothesis_plan <- plan_tbl
+      rv$gs_hypothesis_plan <- out
     }
-    return(plan_tbl)
-  }
-  rows <- lapply(seq_len(nrow(plan_tbl)), function(i) {
-    id <- plan_tbl$id[[i]]
-    planned_analyses <- read_scalar_integer_input(paste0("gs_plan_k_", id), default = plan_tbl$planned_analyses[[i]])
-    if (is.na(planned_analyses) || planned_analyses < 1L) {
-      planned_analyses <- plan_tbl$planned_analyses[[i]]
-    }
-    rule <- read_scalar_character_input(paste0("gs_plan_rule_", id))
-    if (is.null(rule)) {
-      rule <- plan_tbl$alpha_spending[[i]]
-    }
-    rule <- normalize_spending_rule(rule)
-    custom_value <- read_scalar_character_input(paste0("gs_plan_custom_", id), reactive = FALSE)
-    if (is.null(custom_value)) {
-      custom_value <- plan_tbl$custom_cumulative_alpha[[i]]
-    }
-    hsd_gamma_value <- read_scalar_numeric_input(paste0("gs_plan_gamma_", id), reactive = FALSE)
-    if (is.na(hsd_gamma_value)) {
-      hsd_gamma_value <- if ("hsd_gamma" %in% names(plan_tbl)) plan_tbl$hsd_gamma[[i]] else -4
-    }
-    haybittle_p1_value <- read_scalar_numeric_input(paste0("gs_plan_haybittle_p1_", id), reactive = FALSE)
-    if (is.na(haybittle_p1_value)) {
-      haybittle_p1_value <- if ("haybittle_p1" %in% names(plan_tbl)) plan_tbl$haybittle_p1[[i]] else 3e-04
-    }
-    tibble::tibble(
-      id = id,
-      hypothesis = plan_tbl$hypothesis[[i]],
-      planned_analyses = as.integer(planned_analyses),
-      alpha_spending = rule,
-      custom_cumulative_alpha = custom_value,
-      hsd_gamma = hsd_gamma_value,
-      haybittle_p1 = haybittle_p1_value
-    )
-  })
-  out <- sanitize_gs_hypothesis_plan_tbl(dplyr::bind_rows(rows))
-  if (isTRUE(persist)) {
-    rv$gs_hypothesis_plan <- out
-  }
-  out
+    out
+  }, note = sprintf("persist=%s", isTRUE(persist)))
 }
 
 build_default_gs_analysis_schedule <- function(plan_tbl = rv$gs_hypothesis_plan) {
@@ -166,48 +168,50 @@ merge_gs_schedule_with_existing <- function(
 }
 
 collect_gs_analysis_schedule <- function(plan_tbl = collect_gs_hypothesis_plan(persist = FALSE), persist = FALSE) {
-  default_tbl <- merge_gs_schedule_with_existing(
-    build_default_gs_analysis_schedule(plan_tbl),
-    isolate(rv$gs_analysis_schedule)
-  )
-  if (!nrow(default_tbl)) {
+  profile_reactivity("collect_gs_analysis_schedule", {
+    default_tbl <- merge_gs_schedule_with_existing(
+      build_default_gs_analysis_schedule(plan_tbl),
+      isolate(rv$gs_analysis_schedule)
+    )
+    if (!nrow(default_tbl)) {
+      if (isTRUE(persist)) {
+        rv$gs_analysis_schedule <- default_tbl
+        set_gs_analysis_schedule_round_signature(default_tbl)
+      }
+      return(default_tbl)
+    }
+    rows <- lapply(seq_len(nrow(default_tbl)), function(i) {
+      key <- default_tbl$schedule_key[[i]]
+      analysis_round <- read_scalar_integer_input(
+        paste0("gs_schedule_round_", key),
+        default = default_tbl$analysis_round[[i]],
+        reactive = FALSE
+      )
+      if (is.na(analysis_round) || analysis_round < 1L) {
+        analysis_round <- default_tbl$analysis_round[[i]]
+      }
+      info_fraction <- read_scalar_numeric_input(paste0("gs_schedule_info_", key), reactive = FALSE)
+      if (is.na(info_fraction)) {
+        info_fraction <- default_tbl$information_fraction[[i]]
+      }
+      tibble::tibble(
+        schedule_key = key,
+        analysis_round = as.integer(analysis_round),
+        hypothesis = default_tbl$hypothesis[[i]],
+        hypothesis_id = default_tbl$hypothesis_id[[i]],
+        hypothesis_stage = default_tbl$hypothesis_stage[[i]],
+        planned_analyses = default_tbl$planned_analyses[[i]],
+        information_fraction = as.numeric(info_fraction),
+        is_final = isTRUE(default_tbl$is_final[[i]])
+      )
+    })
+    out <- sanitize_gs_analysis_schedule_tbl(dplyr::bind_rows(rows))
     if (isTRUE(persist)) {
-      rv$gs_analysis_schedule <- default_tbl
-      set_gs_analysis_schedule_round_signature(default_tbl)
+      rv$gs_analysis_schedule <- out
+      set_gs_analysis_schedule_round_signature(out)
     }
-    return(default_tbl)
-  }
-  rows <- lapply(seq_len(nrow(default_tbl)), function(i) {
-    key <- default_tbl$schedule_key[[i]]
-    analysis_round <- read_scalar_integer_input(
-      paste0("gs_schedule_round_", key),
-      default = default_tbl$analysis_round[[i]],
-      reactive = FALSE
-    )
-    if (is.na(analysis_round) || analysis_round < 1L) {
-      analysis_round <- default_tbl$analysis_round[[i]]
-    }
-    info_fraction <- read_scalar_numeric_input(paste0("gs_schedule_info_", key), reactive = FALSE)
-    if (is.na(info_fraction)) {
-      info_fraction <- default_tbl$information_fraction[[i]]
-    }
-    tibble::tibble(
-      schedule_key = key,
-      analysis_round = as.integer(analysis_round),
-      hypothesis = default_tbl$hypothesis[[i]],
-      hypothesis_id = default_tbl$hypothesis_id[[i]],
-      hypothesis_stage = default_tbl$hypothesis_stage[[i]],
-      planned_analyses = default_tbl$planned_analyses[[i]],
-      information_fraction = as.numeric(info_fraction),
-      is_final = isTRUE(default_tbl$is_final[[i]])
-    )
-  })
-  out <- sanitize_gs_analysis_schedule_tbl(dplyr::bind_rows(rows))
-  if (isTRUE(persist)) {
-    rv$gs_analysis_schedule <- out
-    set_gs_analysis_schedule_round_signature(out)
-  }
-  out
+    out
+  }, note = sprintf("persist=%s rows=%s", isTRUE(persist), nrow(plan_tbl)))
 }
 
 validate_gs_analysis_schedule <- function(
