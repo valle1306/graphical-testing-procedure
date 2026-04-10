@@ -1,13 +1,13 @@
 # Graphical Multiple Testing
 
 <p align="center">
-  <a href="[https://s6z1ql-valerie-le.shinyapps.io/graphical-testing-procedure/](https://s6z1ql-valerie-le.shinyapps.io/graphical-testing-procedure/)">
+  <a href="https://s6z1ql-valerie-le.shinyapps.io/graphical-testing-procedure/">
     <img src="www/logo.gif" width="200" alt="Graphical Multiple Testing logo">
   </a>
 </p>
 
 <p align="center">
-  <a href="[https://u3fenv-valerie-le.shinyapps.io/graphical-testing-procedure/](https://s6z1ql-valerie-le.shinyapps.io/graphical-testing-procedure/)"><strong>Launch the app</strong></a>
+  <a href="https://s6z1ql-valerie-le.shinyapps.io/graphical-testing-procedure/"><strong>Launch the app</strong></a>
 </p>
 
 An interactive Shiny app for building graphical multiple-testing procedures and running one-sided group-sequential analyses with `TrialSimulator` and `gsDesign`.
@@ -16,7 +16,7 @@ An interactive Shiny app for building graphical multiple-testing procedures and 
 
 Use the hosted app here:
 
-- https://u3fenv-valerie-le.shinyapps.io/graphical-testing-procedure/
+- https://s6z1ql-valerie-le.shinyapps.io/graphical-testing-procedure/
 
 ## What This App Does
 
