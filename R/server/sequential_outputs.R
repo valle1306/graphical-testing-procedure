@@ -427,7 +427,7 @@ output$gs_submitted_analyses_table <- renderDT({
   })
 })
 
-output$gs_analysis_status_table <- renderDT({
+output$gs_live_analysis_state_table <- renderDT({
   quiet_jsonlite_warning({
     status_tbl <- build_ts_status_table()
     if (is.null(status_tbl) || !nrow(status_tbl)) {
@@ -442,20 +442,11 @@ output$gs_analysis_status_table <- renderDT({
         options = list(dom = "t", paging = FALSE, searching = FALSE, ordering = FALSE, info = FALSE)
       ))
     }
-    next_round_tbl <- rv$gs_boundary_preview %>%
-      dplyr::filter(!schedule_key %in% gs_submitted_schedule_keys()) %>%
-      dplyr::group_by(hypothesis) %>%
-      dplyr::summarise(`Next Round` = min(analysis_round), .groups = "drop")
-    display_tbl <- status_tbl %>%
-      dplyr::left_join(next_round_tbl, by = c("hypothesis" = "hypothesis")) %>%
-      dplyr::transmute(
-        Hypothesis = hypothesis,
-        `Current Alpha` = format(current_alpha, trim = TRUE, scientific = FALSE),
-        Decision = decision,
-        `In Graph` = ifelse(in_graph, "Yes", "No"),
-        Testable = ifelse(testable, "Yes", "No"),
-        `Next Round` = ifelse(is.na(`Next Round`), "", as.character(`Next Round`))
-      )
+    display_tbl <- gs_live_analysis_state_tbl(
+      status_tbl = status_tbl,
+      schedule_tbl = rv$gs_analysis_schedule,
+      history_tbl = rv$gs_analysis_history
+    )
     datatable(
       display_tbl,
       rownames = FALSE,
