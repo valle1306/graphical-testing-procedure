@@ -420,6 +420,7 @@ server <- function(input, output, session) {
       information_fraction = numeric(),
       is_final = logical()
     ),
+    gs_analysis_schedule_round_signature = "",
     gs_analysis_history = tibble::tibble(
       submission = integer(),
       schedule_key = character(),
@@ -443,6 +444,8 @@ server <- function(input, output, session) {
     gs_design_finalized = FALSE,
     gs_applied_design_signature = "",
     gs_wizard_step = 1L,
+    gs_round_selection_programmatic = FALSE,
+    gs_force_first_actionable_round = FALSE,
     alpha_spending = character(0),
     planned_max_info = numeric(0),
     transition = matrix(0, 0, 0)

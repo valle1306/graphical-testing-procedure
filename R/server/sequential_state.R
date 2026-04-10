@@ -83,12 +83,7 @@ initialize_batch_gs_object <- function(reset_history = FALSE) {
 }
 
 collect_round_submission <- function() {
-  round_value <- read_scalar_integer_input("gs_analysis_round", default = NA_integer_)
-  if (is.na(round_value) || round_value < 1L) {
-    set_gs_round_feedback("Choose a valid analysis round before submitting.", type = "error")
-    showNotification("Choose a valid analysis round before submitting.", type = "error")
-    return(NULL)
-  }
+  selected_round <- read_scalar_integer_input("gs_analysis_round", default = NA_integer_)
 
   preview_tbl <- sanitize_gs_boundary_preview_tbl(rv$gs_boundary_preview)
   if (!nrow(preview_tbl)) {
@@ -96,17 +91,37 @@ collect_round_submission <- function() {
     return(NULL)
   }
 
-  submitted_keys <- gs_submitted_schedule_keys()
-  round_rows <- preview_tbl %>%
-    dplyr::filter(analysis_round == round_value, !schedule_key %in% submitted_keys)
+  state <- gs_analysis_round_state(
+    preview_tbl = preview_tbl,
+    history_tbl = rv$gs_analysis_history,
+    selected_round = selected_round
+  )
+  round_value <- gs_resolve_analysis_round_target(
+    selected_round = selected_round,
+    actionable_rounds = state$actionable_rounds,
+    next_actionable_round = state$next_actionable_round,
+    force_first_actionable = isTRUE(rv$gs_force_first_actionable_round)
+  )
+  if (!identical(round_value, selected_round)) {
+    state <- gs_analysis_round_state(
+      preview_tbl = preview_tbl,
+      history_tbl = rv$gs_analysis_history,
+      selected_round = round_value
+    )
+  }
+  if (is.na(round_value) || round_value < 1L) {
+    set_gs_round_feedback("Choose a valid analysis round before submitting.", type = "error")
+    showNotification("Choose a valid analysis round before submitting.", type = "error")
+    return(NULL)
+  }
 
-  if (!nrow(round_rows)) {
+  if (!state$has_remaining_rows) {
     set_gs_round_feedback(sprintf("Analysis round %s has no remaining scheduled hypotheses to submit.", round_value), type = "error")
     showNotification(sprintf("Analysis round %s has no remaining scheduled hypotheses to submit.", round_value), type = "error")
     return(NULL)
   }
 
-  ready_rows <- round_rows %>% dplyr::filter(status == "Ready")
+  ready_rows <- state$actionable_rows
   if (!nrow(ready_rows)) {
     set_gs_round_feedback(sprintf("No active hypotheses are ready at analysis round %s.", round_value), type = "error")
     showNotification(sprintf("No active hypotheses are ready at analysis round %s.", round_value), type = "error")
@@ -335,9 +350,16 @@ load_group_sequential_design_from_import <- function(dat) {
 
   rv$gs_hypothesis_plan <- plan_tbl
   rv$gs_analysis_schedule <- schedule_tbl
+  set_gs_analysis_schedule_round_signature(schedule_tbl)
   rv$gs_settings <- legacy_settings_from_group_sequential_design(plan_tbl, schedule_tbl)
 
-  reset_group_sequential_state()
+  reset_group_sequential_runtime_state()
+  rv$gs_design_finalized <- FALSE
+  rv$gs_applied_design_signature <- ""
+  rv$gs_finalize_feedback <- NULL
+  rv$gs_wizard_step <- 1L
+  rv$gs_round_selection_programmatic <- FALSE
+  rv$gs_force_first_actionable_round <- FALSE
   if (nrow(history_tbl)) {
     replay_ok <- tryCatch(replay_group_sequential_history(history_tbl), error = function(e) e)
     if (inherits(replay_ok, "error") || !isTRUE(replay_ok)) {

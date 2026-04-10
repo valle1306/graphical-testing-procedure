@@ -97,6 +97,102 @@ format_numeric_sequence <- function(values) {
   paste(vapply(values, function(x) format(x, trim = TRUE, scientific = FALSE), character(1)), collapse = ", ")
 }
 
+gs_scalar_display_text <- function(value) {
+  if (is.null(value) || !length(value)) {
+    return("")
+  }
+  value <- value[[1]]
+  if (is.null(value) || is.na(value)) {
+    return("")
+  }
+  as.character(value)
+}
+
+gs_chip_html <- function(label, variant = "neutral", title = NULL) {
+  label_text <- gs_scalar_display_text(label)
+  if (!nzchar(label_text)) {
+    return("")
+  }
+  title_text <- gs_scalar_display_text(title)
+  title_attr <- if (nzchar(title_text)) {
+    sprintf(' title="%s"', htmltools::htmlEscape(title_text, attribute = TRUE))
+  } else {
+    ""
+  }
+  sprintf(
+    '<span class="gs-chip gs-chip-%s"%s>%s</span>',
+    as.character(variant),
+    title_attr,
+    htmltools::htmlEscape(label_text)
+  )
+}
+
+gs_submission_label <- function(submission) {
+  submission <- coerce_scalar_integer(submission, default = NA_integer_, minimum = 1L)
+  if (is.na(submission)) {
+    return("")
+  }
+  sprintf("Submission %s", submission)
+}
+
+gs_round_stage_label <- function(analysis_round, hypothesis_stage, is_final = FALSE) {
+  analysis_round <- suppressWarnings(as.integer(unlist(analysis_round, recursive = TRUE, use.names = FALSE)))
+  hypothesis_stage <- suppressWarnings(as.integer(unlist(hypothesis_stage, recursive = TRUE, use.names = FALSE)))
+  is_final <- as.logical(unlist(is_final, recursive = TRUE, use.names = FALSE))
+  if (!length(analysis_round) || !length(hypothesis_stage)) {
+    return(character())
+  }
+  if (!length(is_final)) {
+    is_final <- FALSE
+  }
+  n <- max(length(analysis_round), length(hypothesis_stage), length(is_final))
+  analysis_round <- rep(analysis_round, length.out = n)
+  hypothesis_stage <- rep(hypothesis_stage, length.out = n)
+  is_final <- rep(is_final, length.out = n)
+  out <- rep("", n)
+  keep <- !is.na(analysis_round) & is.finite(analysis_round) & !is.na(hypothesis_stage) & is.finite(hypothesis_stage)
+  if (any(keep)) {
+    out[keep] <- sprintf(
+      "Round %s / Stage %s%s",
+      analysis_round[keep],
+      hypothesis_stage[keep],
+      ifelse(is_final[keep], " (final)", "")
+    )
+  }
+  out
+}
+
+gs_submission_chip_html <- function(submission) {
+  gs_chip_html(gs_submission_label(submission), "submission", title = "Analysis batch")
+}
+
+gs_round_stage_chip_html <- function(analysis_round, hypothesis_stage, is_final = FALSE) {
+  gs_chip_html(
+    gs_round_stage_label(analysis_round, hypothesis_stage, is_final = is_final),
+    "round-stage",
+    title = "Round / stage"
+  )
+}
+
+gs_decision_chip_html <- function(decision) {
+  normalized <- normalize_gs_decision_label(decision)
+  if (!nzchar(gs_scalar_display_text(normalized))) {
+    normalized <- gs_scalar_display_text(decision)
+  }
+  if (!nzchar(normalized)) {
+    return("")
+  }
+  variant <- switch(
+    normalized,
+    "Reject" = "reject",
+    "Do not reject" = "keep",
+    "Pending" = "pending",
+    "Not testable" = "not-testable",
+    "neutral"
+  )
+  gs_chip_html(normalized, variant, title = "Analysis decision")
+}
+
 default_custom_cumulative_alpha_values <- function(planned_analyses, total_alpha = NULL) {
   planned_analyses <- coerce_scalar_integer(planned_analyses, default = NA_integer_, minimum = 1L)
   total_alpha <- coerce_scalar_numeric(total_alpha, default = NA_real_)
@@ -351,6 +447,32 @@ set_gs_round_feedback <- function(text = NULL, type = c("success", "error")) {
     type = match.arg(type)
   )
   invisible(NULL)
+}
+
+gs_round_submission_feedback_text <- function(
+  analysis_round,
+  hypothesis_count,
+  next_round = NA_integer_
+) {
+  analysis_round <- coerce_scalar_integer(analysis_round, default = NA_integer_, minimum = 1L)
+  hypothesis_count <- coerce_scalar_integer(hypothesis_count, default = NA_integer_, minimum = 0L)
+  next_round <- coerce_scalar_integer(next_round, default = NA_integer_, minimum = 1L)
+
+  if (is.na(analysis_round) || is.na(hypothesis_count)) {
+    return("")
+  }
+
+  noun <- if (identical(hypothesis_count, 1L)) "hypothesis" else "hypotheses"
+  message <- sprintf(
+    "Saved analysis round %s for %s %s.",
+    analysis_round,
+    hypothesis_count,
+    noun
+  )
+  if (!is.na(next_round) && !identical(next_round, analysis_round)) {
+    message <- sprintf("%s Now showing Round %s.", message, next_round)
+  }
+  message
 }
 
 gs_rule_choices <- function(include_custom = TRUE) {
@@ -647,6 +769,122 @@ gs_schedule_next_round_tbl <- function(
     dplyr::summarise(`Next Round` = min(analysis_round), .groups = "drop")
 }
 
+gs_analysis_schedule_round_signature <- function(schedule_tbl = rv$gs_analysis_schedule) {
+  schedule_tbl <- sanitize_gs_analysis_schedule_tbl(schedule_tbl)
+  if (!nrow(schedule_tbl)) {
+    return("")
+  }
+  schedule_tbl %>%
+    dplyr::arrange(schedule_key) %>%
+    dplyr::transmute(
+      signature = paste(
+        schedule_key,
+        ifelse(is.na(analysis_round), "NA", as.character(analysis_round)),
+        sep = ":"
+      )
+    ) %>%
+    dplyr::pull(signature) %>%
+    paste(collapse = "|")
+}
+
+set_gs_analysis_schedule_round_signature <- function(schedule_tbl = rv$gs_analysis_schedule) {
+  if (!exists("rv", inherits = TRUE)) {
+    return(invisible(NULL))
+  }
+  signature <- gs_analysis_schedule_round_signature(schedule_tbl)
+  if (!identical(rv$gs_analysis_schedule_round_signature, signature)) {
+    rv$gs_analysis_schedule_round_signature <- signature
+  }
+  invisible(rv$gs_analysis_schedule_round_signature)
+}
+
+gs_analysis_schedule_display_tbl <- function(
+  plan_tbl = rv$gs_hypothesis_plan,
+  schedule_tbl = rv$gs_analysis_schedule
+) {
+  plan_tbl <- sanitize_gs_hypothesis_plan_tbl(plan_tbl)
+  if (!nrow(plan_tbl)) {
+    return(empty_gs_analysis_schedule())
+  }
+  schedule_tbl <- merge_gs_schedule_with_existing(
+    build_default_gs_analysis_schedule(plan_tbl),
+    schedule_tbl
+  )
+  schedule_tbl <- sanitize_gs_analysis_schedule_tbl(schedule_tbl)
+  if (!nrow(schedule_tbl)) {
+    return(schedule_tbl)
+  }
+  schedule_tbl %>%
+    dplyr::arrange(analysis_round, hypothesis, hypothesis_stage)
+}
+
+gs_resolve_analysis_round_target <- function(
+  selected_round = NA_integer_,
+  actionable_rounds = integer(0),
+  next_actionable_round = NA_integer_,
+  force_first_actionable = FALSE
+) {
+  selected_round <- coerce_scalar_integer(selected_round, default = NA_integer_, minimum = 1L)
+  next_actionable_round <- coerce_scalar_integer(next_actionable_round, default = NA_integer_, minimum = 1L)
+  actionable_rounds <- as.integer(actionable_rounds)
+  actionable_rounds <- actionable_rounds[is.finite(actionable_rounds) & !is.na(actionable_rounds)]
+  actionable_rounds <- sort(unique(actionable_rounds))
+
+  if (!length(actionable_rounds)) {
+    return(NA_integer_)
+  }
+  if (isTRUE(force_first_actionable)) {
+    return(actionable_rounds[[1]])
+  }
+  if (!is.na(selected_round) && selected_round %in% actionable_rounds) {
+    return(selected_round)
+  }
+  if (!is.na(next_actionable_round) && next_actionable_round %in% actionable_rounds) {
+    return(next_actionable_round)
+  }
+  actionable_rounds[[1]]
+}
+
+gs_analysis_round_state <- function(
+  preview_tbl = rv$gs_boundary_preview,
+  history_tbl = rv$gs_analysis_history,
+  selected_round = NA_integer_
+) {
+  preview_tbl <- sanitize_gs_boundary_preview_tbl(preview_tbl)
+  history_tbl <- sanitize_gs_analysis_history_tbl(history_tbl)
+  selected_round <- coerce_scalar_integer(selected_round, default = NA_integer_, minimum = 1L)
+  submitted_keys <- gs_submitted_schedule_keys(history_tbl)
+  remaining_tbl <- preview_tbl %>%
+    dplyr::filter(!schedule_key %in% submitted_keys) %>%
+    dplyr::arrange(analysis_round, hypothesis, hypothesis_stage)
+  actionable_tbl <- remaining_tbl %>%
+    dplyr::filter(status == "Ready")
+  actionable_rounds <- sort(unique(
+    actionable_tbl$analysis_round[is.finite(actionable_tbl$analysis_round) & !is.na(actionable_tbl$analysis_round)]
+  ))
+  next_actionable_round <- if (length(actionable_rounds)) actionable_rounds[[1]] else NA_integer_
+  remaining_rows <- remaining_tbl %>%
+    dplyr::filter(analysis_round == selected_round) %>%
+    dplyr::arrange(hypothesis, hypothesis_stage)
+  actionable_rows <- remaining_rows %>%
+    dplyr::filter(status == "Ready")
+  list(
+    selected_round = selected_round,
+    remaining_rows = remaining_rows,
+    actionable_rows = actionable_rows,
+    actionable_rounds = actionable_rounds,
+    next_actionable_round = next_actionable_round,
+    has_remaining_rows = nrow(remaining_rows) > 0L,
+    has_actionable_rows = nrow(actionable_rows) > 0L,
+    selected_round_complete = !nrow(actionable_rows),
+    is_complete = !length(actionable_rounds)
+  )
+}
+
+gs_analysis_round_closed_state_message <- function() {
+  "All actionable analysis rounds have been submitted."
+}
+
 empty_gs_analysis_status_display <- function() {
   tibble::tibble(
     Hypothesis = character(),
@@ -654,7 +892,7 @@ empty_gs_analysis_status_display <- function() {
     Decision = character(),
     `In Graph` = character(),
     Testable = character(),
-    `Next Round` = character()
+    `Next Global Round` = character()
   )
 }
 
@@ -676,7 +914,7 @@ gs_status_display_tbl <- function(
       Decision = as.character(decision),
       `In Graph` = ifelse(as.logical(in_graph), "Yes", "No"),
       Testable = ifelse(as.logical(testable), "Yes", "No"),
-      `Next Round` = ifelse(is.na(`Next Round`), "", as.character(`Next Round`))
+      `Next Global Round` = ifelse(is.na(`Next Round`), "", as.character(`Next Round`))
     )
 }
 
@@ -684,12 +922,12 @@ empty_gs_live_analysis_state_display <- function() {
   tibble::tibble(
     Hypothesis = character(),
     `Current Alpha` = character(),
-    `Last Submitted Round/Stage` = character(),
+    `Last Submitted Round / Stage` = character(),
     `Last Observed p` = character(),
     Decision = character(),
     `In Graph` = character(),
     Testable = character(),
-    `Next Round` = character()
+    `Next Global Round` = character()
   )
 }
 
@@ -710,9 +948,40 @@ gs_last_history_by_hypothesis_tbl <- function(history_tbl = rv$gs_analysis_histo
     dplyr::ungroup() %>%
     dplyr::transmute(
       hypothesis = as.character(hypothesis),
-      last_round_stage = sprintf("Round %s / Stage %s", analysis_round, hypothesis_stage),
+      last_round_stage = gs_round_stage_label(analysis_round, hypothesis_stage),
       last_p_value = format_plain_number(p_value),
       last_decision = as.character(decision)
+    )
+}
+
+gs_submitted_analyses_display_tbl <- function(history_tbl = rv$gs_analysis_history) {
+  history_tbl <- sanitize_gs_analysis_history_tbl(history_tbl)
+  if (!nrow(history_tbl)) {
+    return(tibble::tibble(
+      Submission = character(),
+      `Round / Stage` = character(),
+      Hypothesis = character(),
+      Rule = character(),
+      `Info Fraction` = character(),
+      `Alpha At Submission` = character(),
+      P = character(),
+      `Boundary p` = character(),
+      `Boundary z` = character(),
+      Decision = character()
+    ))
+  }
+  history_tbl %>%
+    dplyr::transmute(
+      Submission = as.character(submission),
+      `Round / Stage` = gs_round_stage_label(analysis_round, hypothesis_stage, is_final = is_final),
+      Hypothesis = as.character(hypothesis),
+      Rule = as.character(alpha_spending),
+      `Info Fraction` = format_plain_number(information_fraction),
+      `Alpha At Submission` = format_plain_number(current_alpha),
+      P = format_plain_number(p_value),
+      `Boundary p` = format_plain_number(boundary_p),
+      `Boundary z` = format_plain_number(boundary_z),
+      Decision = as.character(decision)
     )
 }
 
@@ -733,7 +1002,7 @@ gs_live_analysis_state_tbl <- function(
     dplyr::transmute(
       Hypothesis = as.character(hypothesis),
       `Current Alpha` = format_plain_number(current_alpha),
-      `Last Submitted Round/Stage` = dplyr::coalesce(last_round_stage, ""),
+      `Last Submitted Round / Stage` = dplyr::coalesce(last_round_stage, ""),
       `Last Observed p` = dplyr::coalesce(last_p_value, ""),
       Decision = dplyr::case_when(
         !is.na(last_decision) & nzchar(last_decision) ~ last_decision,
@@ -743,7 +1012,7 @@ gs_live_analysis_state_tbl <- function(
       ),
       `In Graph` = ifelse(as.logical(in_graph), "Yes", "No"),
       Testable = ifelse(as.logical(testable), "Yes", "No"),
-      `Next Round` = ifelse(is.na(`Next Round`), "", as.character(`Next Round`))
+      `Next Global Round` = ifelse(is.na(`Next Round`), "", as.character(`Next Round`))
     )
 }
 

@@ -173,6 +173,7 @@ collect_gs_analysis_schedule <- function(plan_tbl = collect_gs_hypothesis_plan(p
   if (!nrow(default_tbl)) {
     if (isTRUE(persist)) {
       rv$gs_analysis_schedule <- default_tbl
+      set_gs_analysis_schedule_round_signature(default_tbl)
     }
     return(default_tbl)
   }
@@ -204,6 +205,7 @@ collect_gs_analysis_schedule <- function(plan_tbl = collect_gs_hypothesis_plan(p
   out <- sanitize_gs_analysis_schedule_tbl(dplyr::bind_rows(rows))
   if (isTRUE(persist)) {
     rv$gs_analysis_schedule <- out
+    set_gs_analysis_schedule_round_signature(out)
   }
   out
 }
@@ -331,6 +333,7 @@ observe({
   if (!nzchar(node_signature) && !nrow(rv$nodes)) {
     rv$gs_hypothesis_plan <- empty_gs_hypothesis_plan()
     rv$gs_analysis_schedule <- empty_gs_analysis_schedule()
+    set_gs_analysis_schedule_round_signature(rv$gs_analysis_schedule)
     rv$gs_settings <- legacy_settings_from_group_sequential_design()
     return()
   }
@@ -339,6 +342,7 @@ observe({
     build_default_gs_analysis_schedule(rv$gs_hypothesis_plan),
     isolate(rv$gs_analysis_schedule)
   )
+  set_gs_analysis_schedule_round_signature(rv$gs_analysis_schedule)
   rv$gs_settings <- legacy_settings_from_group_sequential_design(rv$gs_hypothesis_plan, rv$gs_analysis_schedule)
 })
 
@@ -358,6 +362,7 @@ observe({
   }
   rv$gs_hypothesis_plan <- plan_tbl
   rv$gs_analysis_schedule <- schedule_tbl
+  set_gs_analysis_schedule_round_signature(schedule_tbl)
   rv$gs_settings <- legacy_settings_from_group_sequential_design(plan_tbl, schedule_tbl)
 })
 
@@ -369,6 +374,7 @@ observe({
     schedule_changed <- !same_gs_analysis_schedule_tbl(empty_schedule, isolate(rv$gs_analysis_schedule))
     if (schedule_changed) {
       rv$gs_analysis_schedule <- empty_schedule
+      set_gs_analysis_schedule_round_signature(empty_schedule)
     }
     if (schedule_changed || has_settings_rows) {
       rv$gs_settings <- legacy_settings_from_group_sequential_design()
@@ -383,5 +389,6 @@ observe({
     return()
   }
   rv$gs_analysis_schedule <- schedule_tbl
+  set_gs_analysis_schedule_round_signature(schedule_tbl)
   rv$gs_settings <- legacy_settings_from_group_sequential_design(rv$gs_hypothesis_plan, schedule_tbl)
 })

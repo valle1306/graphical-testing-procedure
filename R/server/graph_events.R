@@ -135,7 +135,7 @@ refresh_ts_state <- function() {
   invisible(NULL)
 }
 
-reset_group_sequential_state <- function(reset_log = TRUE) {
+reset_group_sequential_runtime_state <- function(reset_log = TRUE) {
   rv$ts_object <- NULL
   if (isTRUE(reset_log)) {
     set_ts_log("")
@@ -144,16 +144,22 @@ reset_group_sequential_state <- function(reset_log = TRUE) {
   rv$gs_boundary_preview <- empty_gs_boundary_preview()
   rv$gs_boundary_preview_message <- NULL
   rv$gs_stage_history <- empty_gs_stage_history()
-  rv$gs_analysis_history <- rv$gs_analysis_history[0, ]
+  rv$gs_analysis_history <- empty_gs_analysis_history()
   rv$gs_round_feedback <- NULL
-  rv$gs_finalize_feedback <- NULL
-  rv$gs_design_finalized <- FALSE
-  rv$gs_applied_design_signature <- ""
-  rv$gs_wizard_step <- 1L
   update_manual_reject_choices(rv$nodes$hypothesis)
   update_sequential_test_choices(rv$nodes$hypothesis)
   bump_ts_state()
   schedule_graph_refresh()
+  invisible(NULL)
+}
+
+invalidate_group_sequential_design_state <- function(reset_log = TRUE) {
+  reset_group_sequential_runtime_state(reset_log = reset_log)
+  rv$gs_finalize_feedback <- NULL
+  rv$gs_design_finalized <- FALSE
+  rv$gs_applied_design_signature <- ""
+  rv$gs_wizard_step <- 1L
+  rv$gs_force_first_actionable_round <- FALSE
   invisible(NULL)
 }
 
@@ -444,7 +450,7 @@ observeEvent(input$ctx_add_node, {
   )
   rv$nodes <- dplyr::bind_rows(rv$nodes, base_row) %>%
     sanitize_nodes_tbl()
-  reset_group_sequential_state()
+  invalidate_group_sequential_design_state()
   bump_tables()
   update_manual_reject_choices(rv$nodes$hypothesis)
   
@@ -471,7 +477,7 @@ observeEvent(input$ctx_del_node, {
     rv$edges <- dplyr::filter(rv$edges, !(from == nid | to == nid))
     rv$nodes <- dplyr::filter(rv$nodes, id != nid) %>%
       sanitize_nodes_tbl()
-    reset_group_sequential_state()
+    invalidate_group_sequential_design_state()
     bump_tables()
     update_manual_reject_choices(rv$nodes$hypothesis)
   }
@@ -527,7 +533,7 @@ observeEvent(input$save_node_edit, {
       alpha      = ifelse(id == !!id, a_val, alpha)
     ) %>%
     sanitize_nodes_tbl()
-  reset_group_sequential_state()
+  invalidate_group_sequential_design_state()
   rv$ctx$edit_node_id <- NULL
   removeModal()
   bump_tables()
@@ -540,7 +546,7 @@ observeEvent(input$cancel_new_node, {
   if (!is.null(id_to_remove)) {
     rv$nodes <- rv$nodes[rv$nodes$id != id_to_remove, ] %>%
       sanitize_nodes_tbl()
-    reset_group_sequential_state()
+    invalidate_group_sequential_design_state()
     bump_tables()
     update_manual_reject_choices(rv$nodes$hypothesis)
   }
@@ -620,7 +626,7 @@ observeEvent(input$save_new_edge, {
     tibble::tibble(id = eid, from = from, to = to, weight = w_val)
   ) %>%
     sanitize_edges_tbl()
-  reset_group_sequential_state()
+  invalidate_group_sequential_design_state()
   removeModal()
   rv$edge_new <- NULL
   rv$pending_source <- NULL
@@ -671,7 +677,7 @@ observeEvent(input$confirm_delete_edge, {
   }
   rv$edges <- dplyr::filter(rv$edges, id != eid) %>%
     sanitize_edges_tbl()
-  reset_group_sequential_state()
+  invalidate_group_sequential_design_state()
   bump_tables()
 })
 
@@ -708,7 +714,7 @@ observeEvent(input$save_edge_edit, {
   rv$edges <- rv$edges %>%
     mutate(weight = ifelse(id == !!eid, w_val, weight)) %>%
     sanitize_edges_tbl()
-  reset_group_sequential_state()
+  invalidate_group_sequential_design_state()
   rv$ctx$edit_edge_id <- NULL
   removeModal()
   bump_tables()
@@ -751,7 +757,8 @@ observeEvent(input$design_run_ts, {
 })
 
 observeEvent(input$design_clear_results, {
-  reset_group_sequential_state()
+  reset_group_sequential_runtime_state()
+  rv$gs_force_first_actionable_round <- TRUE
 })
 
 observeEvent(input$design_auto_layout, {

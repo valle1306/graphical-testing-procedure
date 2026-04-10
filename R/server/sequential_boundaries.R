@@ -51,12 +51,12 @@ build_gs_boundary_schedule <- function(
         current_status <- "Ready"
         if (!is.null(status_row) && nrow(status_row)) {
           if (!isTRUE(status_row$in_graph[[1]])) {
-            current_status <- "Rejected"
+            current_status <- "Inactive"
           } else if (!isTRUE(status_row$testable[[1]]) || !is.finite(alpha_now) || alpha_now <= 0) {
-            current_status <- "Not testable"
+            current_status <- "Not currently testable"
           }
         } else if (!is.finite(alpha_now) || alpha_now <= 0) {
-          current_status <- "Not testable"
+          current_status <- "Not currently testable"
         }
 
         output_rows <- hypothesis_rows %>%
