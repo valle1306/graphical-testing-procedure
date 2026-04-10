@@ -500,31 +500,41 @@ server <- function(input, output, session) {
     if (!nrow(rv$nodes)) {
       return(NULL)
     }
-    if (is.null(rv$ts_object)) {
-      return(tibble::tibble(
-        hypothesis = rv$nodes$hypothesis,
-        current_alpha = as.numeric(rv$nodes$alpha),
-        decision = rep("ready", nrow(rv$nodes)),
-        in_graph = rep(TRUE, nrow(rv$nodes)),
-        testable = rv$nodes$alpha > 0
-      ))
+    allocations <- if (is.null(rv$ts_object)) {
+      stats::setNames(rv$nodes$alpha, rv$nodes$hypothesis)
+    } else {
+      get_current_allocations()
     }
-    decisions <- tryCatch(rv$ts_object$get_current_decision(), error = function(e) {
-      stats::setNames(rep("accept", nrow(rv$nodes)), rv$nodes$hypothesis)
-    })
-    allocations <- get_current_allocations()
+    in_graph <- if (is.null(rv$ts_object)) {
+      rep(TRUE, nrow(rv$nodes))
+    } else {
+      vapply(rv$nodes$hypothesis, function(hyp) {
+        tryCatch(rv$ts_object$is_in_graph(rv$ts_object$get_hid(hyp)), error = function(e) TRUE)
+      }, logical(1))
+    }
+    testable <- if (is.null(rv$ts_object)) {
+      rv$nodes$alpha > 0
+    } else {
+      vapply(rv$nodes$hypothesis, function(hyp) {
+        tryCatch(rv$ts_object$is_testable(rv$ts_object$get_hid(hyp)), error = function(e) FALSE)
+      }, logical(1))
+    }
+    decision_map <- if (nrow(rv$gs_analysis_history)) {
+      latest_gs_history_decision_map(rv$gs_analysis_history, rv$nodes$hypothesis)
+    } else {
+      stats::setNames(rep("Pending", nrow(rv$nodes)), rv$nodes$hypothesis)
+    }
     status_tbl <- tibble::tibble(
       hypothesis = rv$nodes$hypothesis,
       current_alpha = as.numeric(allocations[rv$nodes$hypothesis]),
-      decision = unname(decisions[rv$nodes$hypothesis]),
-      in_graph = vapply(rv$nodes$hypothesis, function(hyp) {
-        tryCatch(rv$ts_object$is_in_graph(rv$ts_object$get_hid(hyp)), error = function(e) TRUE)
-      }, logical(1)),
-      testable = vapply(rv$nodes$hypothesis, function(hyp) {
-        tryCatch(rv$ts_object$is_testable(rv$ts_object$get_hid(hyp)), error = function(e) FALSE)
-      }, logical(1))
+      decision = unname(decision_map[rv$nodes$hypothesis]),
+      in_graph = in_graph,
+      testable = testable
     )
-    status_tbl$decision[!status_tbl$in_graph] <- "reject"
+    status_tbl$decision[!status_tbl$in_graph] <- "Reject"
+    if (is.null(rv$ts_object)) {
+      return(status_tbl)
+    }
     status_tbl
   }
   

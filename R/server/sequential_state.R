@@ -202,21 +202,9 @@ replay_group_sequential_history <- function(history_tbl) {
     batch_rows <- history_tbl %>%
       dplyr::filter(submission == submission_id) %>%
       dplyr::arrange(hypothesis, hypothesis_stage)
-    batch_df <- tibble::tibble(
-      order = as.integer(batch_rows$analysis_round),
-      hypotheses = batch_rows$hypothesis,
-      p = as.numeric(batch_rows$p_value),
-      info = as.integer(round(100 * batch_rows$information_fraction)),
-      is_final = as.logical(batch_rows$is_final),
-      max_info = as.integer(round(batch_rows$max_info)),
-      alpha_spent = ifelse(
-        batch_rows$runtime_spending_code == "asUser",
-        ifelse(as.logical(batch_rows$is_final), 1.0,
-               as.numeric(batch_rows$cumulative_alpha_spent) / pmax(as.numeric(batch_rows$current_alpha), 1e-15)),
-        NA_real_
-      )
-    )
-    invisible(rv$ts_object$test(as.data.frame(batch_df, stringsAsFactors = FALSE)))
+    rejected_rows <- batch_rows %>%
+      dplyr::filter(vapply(decision, normalize_gs_decision_label, character(1)) == "Reject")
+    invisible(apply_frozen_gs_rejections(rv$ts_object, rejected_rows$hypothesis))
     bump_ts_state()
   }
   rv$gs_analysis_history <- history_tbl

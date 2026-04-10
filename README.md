@@ -87,6 +87,7 @@ Use the `Sequential` tab for group-sequential testing.
 You can test the import feature with:
 
 - [examples/upload_example.json](examples/upload_example.json)
+- [examples/frozen_round_recycling_case.json](examples/frozen_round_recycling_case.json)
 
 ## Repository Layout
 

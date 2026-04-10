@@ -147,6 +147,27 @@ format_alpha_snapshot <- function(allocations = get_current_allocations()) {
   )
 }
 
+normalize_gs_decision_label <- function(x) {
+  if (is.null(x) || !length(x)) {
+    return(NA_character_)
+  }
+  value <- trimws(as.character(x[[1]]))
+  if (!length(value) || is.na(value) || !nzchar(value)) {
+    return(NA_character_)
+  }
+  lower <- tolower(value)
+  if (identical(lower, "reject")) {
+    return("Reject")
+  }
+  if (lower %in% c("do not reject", "donotreject", "accept", "accepted", "not reject")) {
+    return("Do not reject")
+  }
+  if (identical(lower, "pending")) {
+    return("Pending")
+  }
+  value
+}
+
 empty_gs_analysis_schedule <- function() {
   tibble::tibble(
     schedule_key = character(),
@@ -265,6 +286,7 @@ sanitize_gs_analysis_history_tbl <- function(df) {
   out$boundary_p <- as.numeric(out$boundary_p)
   out$boundary_z <- as.numeric(out$boundary_z)
   out$decision <- as.character(out$decision)
+  out$decision <- vapply(out$decision, normalize_gs_decision_label, character(1))
   out$is_final <- as.logical(out$is_final)
   out$max_info <- as.numeric(out$max_info)
   out %>%
@@ -507,6 +529,72 @@ build_round_submit_log <- function(history_rows) {
     sprintf("Decisions: %s.", decision_summary),
     format_alpha_snapshot()
   )
+}
+
+build_gs_round_result_summary <- function(history_rows) {
+  history_rows <- sanitize_gs_analysis_history_tbl(history_rows)
+  if (!nrow(history_rows)) {
+    return(tibble::tibble(
+      hypothesis = character(),
+      obs_p_value = numeric(),
+      max_allocated_alpha = numeric(),
+      decision = character(),
+      stages = integer(),
+      order = integer(),
+      typeOfDesign = character()
+    ))
+  }
+  history_rows %>%
+    dplyr::transmute(
+      hypothesis = hypothesis,
+      obs_p_value = p_value,
+      max_allocated_alpha = current_alpha,
+      decision = vapply(decision, normalize_gs_decision_label, character(1)),
+      stages = hypothesis_stage,
+      order = analysis_round,
+      typeOfDesign = runtime_spending_code
+    )
+}
+
+latest_gs_history_decision_map <- function(
+  history_tbl = rv$gs_analysis_history,
+  hypotheses = rv$nodes$hypothesis
+) {
+  hypotheses <- unique(as.character(hypotheses))
+  result <- stats::setNames(rep("Pending", length(hypotheses)), hypotheses)
+  if (!length(hypotheses)) {
+    return(result)
+  }
+  history_tbl <- sanitize_gs_analysis_history_tbl(history_tbl)
+  if (!nrow(history_tbl)) {
+    return(result)
+  }
+  latest_rows <- history_tbl %>%
+    dplyr::filter(hypothesis %in% hypotheses) %>%
+    dplyr::arrange(hypothesis, submission, analysis_round, hypothesis_stage) %>%
+    dplyr::group_by(hypothesis) %>%
+    dplyr::slice_tail(n = 1) %>%
+    dplyr::ungroup()
+  if (nrow(latest_rows)) {
+    result[latest_rows$hypothesis] <- vapply(latest_rows$decision, normalize_gs_decision_label, character(1))
+  }
+  result
+}
+
+apply_frozen_gs_rejections <- function(ts_object, rejected_hypotheses) {
+  rejected_hypotheses <- rejected_hypotheses[!is.na(rejected_hypotheses)]
+  rejected_hypotheses <- unique(trimws(as.character(rejected_hypotheses)))
+  rejected_hypotheses <- rejected_hypotheses[nzchar(rejected_hypotheses)]
+  if (is.null(ts_object) || !length(rejected_hypotheses)) {
+    return(invisible(FALSE))
+  }
+  for (hyp in rejected_hypotheses) {
+    withCallingHandlers(
+      ts_object$reject_a_hypothesis(hyp),
+      message = function(m) invokeRestart("muffleMessage")
+    )
+  }
+  invisible(TRUE)
 }
 
 gs_round_choice_values <- function(schedule_tbl = rv$gs_analysis_schedule) {

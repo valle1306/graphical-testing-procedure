@@ -109,9 +109,16 @@ refresh_ts_state <- function() {
     schedule_graph_refresh()
     return(invisible(NULL))
   }
-  latest <- tryCatch(rv$ts_object$get_current_testing_results(), error = function(e) NULL)
-  if (is.null(latest) || !nrow(latest)) {
-    latest <- status_tbl
+  if (nrow(rv$gs_analysis_history)) {
+    latest_submission <- max(rv$gs_analysis_history$submission, na.rm = TRUE)
+    latest <- build_gs_round_result_summary(
+      rv$gs_analysis_history %>% dplyr::filter(submission == latest_submission)
+    )
+  } else {
+    latest <- tryCatch(rv$ts_object$get_current_testing_results(), error = function(e) NULL)
+    if (is.null(latest) || !nrow(latest)) {
+      latest <- status_tbl
+    }
   }
   rv$ts_summary <- latest
   active_hyps <- if (!is.null(status_tbl) && nrow(status_tbl)) {

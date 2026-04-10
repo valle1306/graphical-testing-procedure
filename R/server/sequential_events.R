@@ -55,7 +55,10 @@ observeEvent(input$gs_submit_round, {
   }
 
   tryCatch({
-    invisible(rv$ts_object$test(submission$stage_df))
+    reject_hypotheses <- submission$history_rows$hypothesis[
+      vapply(submission$history_rows$decision, normalize_gs_decision_label, character(1)) == "Reject"
+    ]
+    invisible(apply_frozen_gs_rejections(rv$ts_object, reject_hypotheses))
     rv$gs_analysis_history <- sanitize_gs_analysis_history_tbl(
       dplyr::bind_rows(rv$gs_analysis_history, submission$history_rows)
     )
