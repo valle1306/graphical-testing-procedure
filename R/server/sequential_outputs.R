@@ -36,7 +36,7 @@ output$gs_design_context <- renderUI({
   round_values <- gs_round_choice_values(schedule_tbl)
   tags$span(
     sprintf(
-      "Current graph hypotheses: %s. This design currently spans %s global analysis round%s and uses one-sided testing throughout.",
+      "Current graph hypotheses: %s. This design currently spans %s analysis time%s and uses one-sided testing throughout.",
       format_hypothesis_list(rv$nodes$hypothesis),
       length(round_values),
       ifelse(length(round_values) == 1L, "", "s")
@@ -159,7 +159,7 @@ output$gs_analysis_schedule_ui <- renderUI({
       class = "gs-input-table",
       tags$thead(
         tags$tr(
-          tags$th("Global Round"),
+          tags$th("Analysis Time"),
           tags$th("Hypothesis"),
           tags$th("Hypothesis Stage"),
           tags$th("Information Fraction")
@@ -211,36 +211,7 @@ output$gs_analysis_schedule_ui <- renderUI({
 output$gs_boundary_schedule_table <- renderDT({
   quiet_jsonlite_warning({
     preview_tbl <- rv$gs_boundary_preview
-    if (is.null(preview_tbl) || !nrow(preview_tbl)) {
-      return(datatable(
-        data.frame(
-          Round = integer(),
-          Hypothesis = character(),
-          Stage = integer(),
-          `Info Fraction` = numeric(),
-          Rule = character(),
-          `Boundary p` = numeric(),
-          stringsAsFactors = FALSE
-        ),
-        rownames = FALSE,
-        options = list(dom = "t", paging = FALSE, searching = FALSE, ordering = FALSE, info = FALSE)
-      ))
-    }
-    display_tbl <- preview_tbl %>%
-      dplyr::transmute(
-        Round = analysis_round,
-        Hypothesis = hypothesis,
-        Stage = hypothesis_stage,
-        `Planned Analyses` = planned_analyses,
-        `Info Fraction` = format(timing, trim = TRUE, scientific = FALSE),
-        Rule = alpha_spending,
-        `Current Alpha` = ifelse(is.na(current_alpha), "", format(current_alpha, trim = TRUE, scientific = FALSE)),
-        `Stage Alpha` = ifelse(is.na(stage_alpha), "", format(stage_alpha, trim = TRUE, scientific = FALSE)),
-        `Cumulative Alpha` = ifelse(is.na(cumulative_alpha_spent), "", format(cumulative_alpha_spent, trim = TRUE, scientific = FALSE)),
-        `Boundary p` = ifelse(is.na(p_boundary), "", format(p_boundary, trim = TRUE, scientific = FALSE)),
-        `Boundary z` = ifelse(is.na(z_boundary), "", format(z_boundary, trim = TRUE, scientific = FALSE)),
-        Status = status
-      )
+    display_tbl <- gs_boundary_review_display_tbl(preview_tbl)
     datatable(
       display_tbl,
       rownames = FALSE,
@@ -578,7 +549,7 @@ output$gs_analysis_design_summary <- renderUI({
     tags$p(
       style = "color:#14532d; margin:0;",
       sprintf(
-        "Hypotheses: %s. Global rounds: %s. Design signature applied.",
+        "Hypotheses: %s. Analysis times: %s. Design signature applied.",
         format_hypothesis_list(rv$nodes$hypothesis),
         length(round_values)
       )

@@ -304,7 +304,7 @@ build_group_sequential_design_tab <- function() {
                 tags$h4(class = "gs-section-title", "Step 2. Planned Analysis Times for Entire Study"),
                 tags$p(
                   class = "gs-table-note",
-                  "The schedule is generated from the hypothesis plan. Adjust the global analysis round or information fraction when a hypothesis needs a different timing."
+                  "The schedule is generated from the hypothesis plan. Adjust the analysis time or information fraction when a hypothesis needs a different timing."
                 ),
                 uiOutput("gs_schedule_validation_ui"),
                 uiOutput("gs_analysis_schedule_ui"),

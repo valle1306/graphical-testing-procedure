@@ -885,6 +885,45 @@ gs_analysis_round_closed_state_message <- function() {
   "All actionable analysis rounds have been submitted."
 }
 
+empty_gs_boundary_review_display <- function() {
+  tibble::tibble(
+    Round = integer(),
+    Hypothesis = character(),
+    Stage = integer(),
+    `Total Analyses` = integer(),
+    `Info Fraction` = character(),
+    `Alpha Spending` = character(),
+    `Current Alpha` = character(),
+    `Stage Alpha` = character(),
+    `Cumulative Alpha` = character(),
+    `Boundary p` = character(),
+    `Boundary z` = character(),
+    Status = character()
+  )
+}
+
+gs_boundary_review_display_tbl <- function(preview_tbl = rv$gs_boundary_preview) {
+  preview_tbl <- sanitize_gs_boundary_preview_tbl(preview_tbl)
+  if (!nrow(preview_tbl)) {
+    return(empty_gs_boundary_review_display())
+  }
+  preview_tbl %>%
+    dplyr::transmute(
+      Round = analysis_round,
+      Hypothesis = hypothesis,
+      Stage = hypothesis_stage,
+      `Total Analyses` = planned_analyses,
+      `Info Fraction` = format_plain_number(timing),
+      `Alpha Spending` = as.character(alpha_spending),
+      `Current Alpha` = ifelse(is.na(current_alpha), "", format_plain_number(current_alpha)),
+      `Stage Alpha` = ifelse(is.na(stage_alpha), "", format_plain_number(stage_alpha)),
+      `Cumulative Alpha` = ifelse(is.na(cumulative_alpha_spent), "", format_plain_number(cumulative_alpha_spent)),
+      `Boundary p` = ifelse(is.na(p_boundary), "", format_plain_number(p_boundary)),
+      `Boundary z` = ifelse(is.na(z_boundary), "", format_plain_number(z_boundary)),
+      Status = status
+    )
+}
+
 empty_gs_analysis_status_display <- function() {
   tibble::tibble(
     Hypothesis = character(),
@@ -961,7 +1000,7 @@ gs_submitted_analyses_display_tbl <- function(history_tbl = rv$gs_analysis_histo
       Submission = character(),
       `Round / Stage` = character(),
       Hypothesis = character(),
-      Rule = character(),
+      `Alpha Spending` = character(),
       `Info Fraction` = character(),
       `Alpha At Submission` = character(),
       P = character(),
@@ -975,7 +1014,7 @@ gs_submitted_analyses_display_tbl <- function(history_tbl = rv$gs_analysis_histo
       Submission = as.character(submission),
       `Round / Stage` = gs_round_stage_label(analysis_round, hypothesis_stage, is_final = is_final),
       Hypothesis = as.character(hypothesis),
-      Rule = as.character(alpha_spending),
+      `Alpha Spending` = as.character(alpha_spending),
       `Info Fraction` = format_plain_number(information_fraction),
       `Alpha At Submission` = format_plain_number(current_alpha),
       P = format_plain_number(p_value),

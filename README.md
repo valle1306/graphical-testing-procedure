@@ -77,8 +77,8 @@ Use the `Design` tab for the classic graphical multiple-testing procedure.
 Use the `Group Sequential Design` tab to define the planned one-sided interim analysis workflow.
 
 - Step 1 sets planned looks and alpha-spending rules for each hypothesis.
-- Step 2 assigns each hypothesis stage to a global analysis round and information fraction.
-- Step 3 reviews the derived one-sided boundaries before you lock the design.
+- Step 2 assigns each hypothesis stage to an analysis time and information fraction.
+- Step 3 reviews the derived one-sided boundaries, including total analyses and alpha spending, before you lock the design.
 - Click `Finalize Design` when the plan and boundary review are ready.
 
 ### 4. Analysis

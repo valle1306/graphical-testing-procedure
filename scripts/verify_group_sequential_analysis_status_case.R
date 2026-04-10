@@ -143,7 +143,7 @@ stopifnot(identical(
     "Submission",
     "Round / Stage",
     "Hypothesis",
-    "Rule",
+    "Alpha Spending",
     "Info Fraction",
     "Alpha At Submission",
     "P",
@@ -153,6 +153,26 @@ stopifnot(identical(
   )
 ))
 stopifnot(nrow(empty_submitted_display) == 0L)
+
+empty_boundary_review_display <- gs_boundary_review_display_tbl(empty_gs_boundary_preview())
+stopifnot(identical(
+  names(empty_boundary_review_display),
+  c(
+    "Round",
+    "Hypothesis",
+    "Stage",
+    "Total Analyses",
+    "Info Fraction",
+    "Alpha Spending",
+    "Current Alpha",
+    "Stage Alpha",
+    "Cumulative Alpha",
+    "Boundary p",
+    "Boundary z",
+    "Status"
+  )
+))
+stopifnot(nrow(empty_boundary_review_display) == 0L)
 
 mismatch_history <- sanitize_gs_analysis_history_tbl(tibble::tibble(
   submission = c(9L, 9L),
@@ -446,6 +466,7 @@ rv$gs_analysis_history <- sanitize_gs_analysis_history_tbl(
 )
 
 preview_after_round2 <- build_gs_boundary_schedule(plan_tbl = plan_tbl, schedule_tbl = schedule_tbl, notify = FALSE)
+boundary_review_display <- gs_boundary_review_display_tbl(preview_after_round2)
 status_tbl <- build_ts_status_table()
 live_state <- gs_live_analysis_state_tbl(status_tbl = status_tbl, schedule_tbl = schedule_tbl, history_tbl = rv$gs_analysis_history)
 live_state_empty_history <- gs_live_analysis_state_tbl(status_tbl = status_tbl, schedule_tbl = schedule_tbl, history_tbl = empty_gs_analysis_history())
@@ -456,6 +477,20 @@ remaining_rounds <- gs_remaining_analysis_rounds(schedule_tbl = schedule_tbl, hi
 
 stopifnot(is.null(rv$gs_boundary_preview_message))
 stopifnot(all(c("analysis_round", "hypothesis_stage", "schedule_key", "is_final", "max_info") %in% names(preview_after)))
+stopifnot(all(c(
+  "Round",
+  "Hypothesis",
+  "Stage",
+  "Total Analyses",
+  "Info Fraction",
+  "Alpha Spending",
+  "Current Alpha",
+  "Stage Alpha",
+  "Cumulative Alpha",
+  "Boundary p",
+  "Boundary z",
+  "Status"
+) %in% names(boundary_review_display)))
 stopifnot(all(c(
   "Hypothesis",
   "Current Alpha",
