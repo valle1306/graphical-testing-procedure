@@ -80,10 +80,89 @@ build_group_sequential_design_tab <- function() {
               background: linear-gradient(180deg, #eff6ff 0%, #f8fbff 100%);
               color: #1e3a8a;
             }
+            .gs-disclosure {
+              margin-top: 12px;
+              padding: 10px 12px;
+              border-radius: 12px;
+              border: 1px solid #e2e8f0;
+              background: #f8fafc;
+              box-shadow: none;
+            }
+            .gs-disclosure > summary {
+              cursor: pointer;
+              font-weight: 600;
+              color: #0f766e;
+              list-style: none;
+            }
+            .gs-disclosure > summary::-webkit-details-marker {
+              display: none;
+            }
+            .gs-complete-note {
+              margin-top: 12px;
+              padding: 10px 12px;
+              border-radius: 12px;
+              border: 1px solid #dbeafe;
+              background: #eff6ff;
+              color: #1e3a8a;
+            }
             .gs-muted {
               color: #64748b;
               font-size: 0.88rem;
               padding-top: 8px;
+            }
+            .gs-chip {
+              display: inline-flex;
+              align-items: center;
+              gap: 0.25rem;
+              padding: 0.24rem 0.6rem;
+              border-radius: 999px;
+              border: 1px solid transparent;
+              font-size: 0.78rem;
+              font-weight: 600;
+              line-height: 1.2;
+              letter-spacing: 0.01em;
+              white-space: nowrap;
+              vertical-align: middle;
+            }
+            .gs-chip-submission {
+              background: #ffffff;
+              border-color: #cbd5e1;
+              color: #475569;
+            }
+            .gs-chip-round-stage {
+              background: #ffffff;
+              border-color: #cbd5e1;
+              color: #475569;
+            }
+            .gs-chip-reject {
+              background: #fef2f2;
+              border-color: #fecaca;
+              color: #b91c1c;
+            }
+            .gs-chip-keep {
+              background: #ecfdf5;
+              border-color: #a7f3d0;
+              color: #047857;
+            }
+            .gs-chip-pending {
+              background: #fffbeb;
+              border-color: #fcd34d;
+              color: #b45309;
+            }
+            .gs-chip-not-testable,
+            .gs-chip-neutral {
+              background: #f8fafc;
+              border-color: #cbd5e1;
+              color: #475569;
+            }
+            .gs-input-table tbody tr.gs-round-group-odd td {
+              background: #f8fafc;
+            }
+            .gs-input-table tbody tr.gs-round-group-even td {
+              background: #f1f5f9;
+            }
+            .gs-input-table tbody tr.gs-round-group-start td {
+              border-top: 2px solid #cbd5e1;
             }
             /* Stepper indicator */
             .gs-stepper {
@@ -248,7 +327,7 @@ build_group_sequential_design_tab <- function() {
                 div(
                   class = "gs-wizard-nav",
                   actionButton("gs_wizard_back_3", "\u2190 Back: Analysis Timing", class = "btn btn-outline-secondary"),
-                  actionButton("gs_finalize_design", "Finalize Design", class = "btn btn-primary")
+                  uiOutput("gs_finalize_action_ui")
                 )
               )
             )

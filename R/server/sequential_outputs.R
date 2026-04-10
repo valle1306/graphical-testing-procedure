@@ -31,7 +31,8 @@ output$gs_design_context <- renderUI({
     return(tags$span("Create hypotheses in the Design tab first. The group sequential design tables will appear here automatically."))
   }
   plan_tbl <- collect_gs_hypothesis_plan(persist = FALSE)
-  schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = FALSE)
+  schedule_signature <- rv$gs_analysis_schedule_round_signature
+  schedule_tbl <- isolate(gs_analysis_schedule_display_tbl(plan_tbl = plan_tbl, schedule_tbl = rv$gs_analysis_schedule))
   round_values <- gs_round_choice_values(schedule_tbl)
   tags$span(
     sprintf(
@@ -141,22 +142,17 @@ output$gs_analysis_schedule_ui <- renderUI({
   if (!nrow(plan_tbl)) {
     return(tags$p("Define the hypothesis setup first."))
   }
-  # Isolate from fraction/round input changes to prevent the table from being
-  # recreated while the user is mid-edit (the flicker bug). Initial values come
-  # from rv$gs_analysis_schedule, which is kept current by the schedule observer.
-  # The table only re-renders when the schedule structure changes (K or hypotheses).
-  schedule_tbl <- isolate(
-    merge_gs_schedule_with_existing(
-      build_default_gs_analysis_schedule(plan_tbl),
-      rv$gs_analysis_schedule
-    )
-  )
-  schedule_tbl <- sanitize_gs_analysis_schedule_tbl(schedule_tbl)
+  # Re-render only when the committed round assignments change. That keeps the
+  # table stable while the user edits information fractions, but lets the row
+  # order snap into round order once a round change is committed.
+  schedule_signature <- rv$gs_analysis_schedule_round_signature
+  schedule_tbl <- isolate(gs_analysis_schedule_display_tbl(plan_tbl, rv$gs_analysis_schedule))
   if (!nrow(schedule_tbl)) {
     return(tags$p("Define the hypothesis setup first."))
   }
-  schedule_tbl <- schedule_tbl %>%
-    dplyr::arrange(analysis_round, hypothesis, hypothesis_stage)
+  round_group_start <- c(TRUE, diff(schedule_tbl$analysis_round) != 0L)
+  round_group_index <- cumsum(round_group_start)
+  round_group_class <- ifelse(round_group_index %% 2L == 1L, "gs-round-group-odd", "gs-round-group-even")
   tags$div(
     class = "gs-table-shell",
     tags$table(
@@ -172,7 +168,12 @@ output$gs_analysis_schedule_ui <- renderUI({
       tags$tbody(
         lapply(seq_len(nrow(schedule_tbl)), function(i) {
           key <- schedule_tbl$schedule_key[[i]]
+          row_class <- round_group_class[[i]]
+          if (isTRUE(round_group_start[[i]])) {
+            row_class <- paste(row_class, "gs-round-group-start")
+          }
           tags$tr(
+            class = row_class,
             tags$td(
               numericInput(
                 inputId = paste0("gs_schedule_round_", key),
@@ -258,32 +259,105 @@ output$gs_finalize_feedback <- renderUI({
   tags$div(class = paste("alert", alert_class), style = "margin-top: 12px; margin-bottom: 0;", feedback$text[[1]])
 })
 
-observe({
-  preview_tbl <- rv$gs_boundary_preview
-  round_values <- if (!is.null(preview_tbl) && nrow(preview_tbl)) {
-    sort(unique(preview_tbl$analysis_round))
-  } else {
-    integer()
+output$gs_boundary_preview_feedback <- renderUI({
+  message <- rv$gs_boundary_preview_message
+  if (is.null(message) || !length(message) || !nzchar(trimws(as.character(message[[1]])))) {
+    return(NULL)
   }
+  tags$div(class = "alert alert-danger", style = "margin-top: 12px; margin-bottom: 12px;", as.character(message[[1]]))
+})
+
+output$gs_analysis_preview_feedback <- renderUI({
+  message <- rv$gs_boundary_preview_message
+  if (is.null(message) || !length(message) || !nzchar(trimws(as.character(message[[1]])))) {
+    return(NULL)
+  }
+  tags$div(class = "alert alert-danger", style = "margin-bottom: 12px;", as.character(message[[1]]))
+})
+
+output$gs_analysis_round_ui <- renderUI({
+  preview_tbl <- rv$gs_boundary_preview
+  if (is.null(preview_tbl) || !nrow(preview_tbl)) {
+    return(tags$p("Define a valid boundary schedule before submitting analysis results."))
+  }
+
   selected_round <- read_scalar_integer_input("gs_analysis_round", default = NA_integer_)
-  if (!length(round_values)) {
-    updateSelectInput(session, "gs_analysis_round", choices = character(0), selected = character(0))
-  } else {
-    if (is.na(selected_round) || !selected_round %in% round_values) {
-      selected_round <- round_values[[1]]
-    }
-    updateSelectInput(
-      session,
-      "gs_analysis_round",
-      choices = stats::setNames(as.character(round_values), paste("Round", round_values)),
-      selected = as.character(selected_round)
+  state <- gs_analysis_round_state(
+    preview_tbl = preview_tbl,
+    history_tbl = rv$gs_analysis_history,
+    selected_round = selected_round
+  )
+  if (isTRUE(state$is_complete)) {
+    return(
+      tags$div(
+        class = "gs-inline-note gs-complete-note",
+        gs_analysis_round_closed_state_message()
+      )
     )
   }
+
+  display_round <- gs_resolve_analysis_round_target(
+    selected_round = state$selected_round,
+    actionable_rounds = state$actionable_rounds,
+    next_actionable_round = state$next_actionable_round,
+    force_first_actionable = isTRUE(rv$gs_force_first_actionable_round)
+  )
+  if (is.na(display_round)) {
+    return(tags$p("Choose an actionable analysis round to enter one-sided p-values."))
+  }
+
+  selectInput(
+    "gs_analysis_round",
+    "Global Analysis Round",
+    choices = stats::setNames(
+      as.character(state$actionable_rounds),
+      paste("Round", state$actionable_rounds)
+    ),
+    selected = as.character(display_round),
+    width = "100%"
+  )
+})
+
+observe({
+  selected_round <- read_scalar_integer_input("gs_analysis_round", default = NA_integer_)
+  state <- gs_analysis_round_state(
+    preview_tbl = rv$gs_boundary_preview,
+    history_tbl = rv$gs_analysis_history,
+    selected_round = selected_round
+  )
+  if (!length(state$actionable_rounds)) {
+    rv$gs_round_selection_programmatic <- FALSE
+    rv$gs_force_first_actionable_round <- FALSE
+    return(invisible(NULL))
+  }
+  target_round <- gs_resolve_analysis_round_target(
+    selected_round = selected_round,
+    actionable_rounds = state$actionable_rounds,
+    next_actionable_round = state$next_actionable_round,
+    force_first_actionable = isTRUE(rv$gs_force_first_actionable_round)
+  )
+  if (!identical(selected_round, target_round)) {
+    rv$gs_round_selection_programmatic <- TRUE
+  }
+  updateSelectInput(
+    session,
+    "gs_analysis_round",
+    choices = stats::setNames(as.character(state$actionable_rounds), paste("Round", state$actionable_rounds)),
+    selected = as.character(target_round)
+  )
 })
 
 output$gs_round_feedback <- renderUI({
   feedback <- rv$gs_round_feedback
   if (is.null(feedback) || !length(feedback$text) || !nzchar(feedback$text[[1]])) {
+    return(NULL)
+  }
+  state <- gs_analysis_round_state(
+    preview_tbl = rv$gs_boundary_preview,
+    history_tbl = rv$gs_analysis_history,
+    selected_round = read_scalar_integer_input("gs_analysis_round", default = NA_integer_)
+  )
+  if (isTRUE(state$is_complete)) {
     return(NULL)
   }
   alert_class <- if (identical(feedback$type, "error")) "alert-danger" else "alert-success"
@@ -296,22 +370,37 @@ output$gs_round_entry_ui <- renderUI({
     return(tags$p("Define a valid boundary schedule before submitting analysis results."))
   }
 
-  round_value <- read_scalar_integer_input("gs_analysis_round", default = NA_integer_)
-  if (is.na(round_value)) {
-    return(tags$p("Choose an analysis round to enter one-sided p-values."))
+  selected_round <- read_scalar_integer_input("gs_analysis_round", default = NA_integer_)
+  state <- gs_analysis_round_state(
+    preview_tbl = preview_tbl,
+    history_tbl = rv$gs_analysis_history,
+    selected_round = selected_round
+  )
+  if (isTRUE(state$is_complete)) {
+    return(NULL)
   }
 
-  round_rows <- preview_tbl %>%
-    dplyr::filter(analysis_round == round_value) %>%
-    dplyr::arrange(hypothesis, hypothesis_stage)
-  if (!nrow(round_rows)) {
-    return(tags$p(sprintf("No hypotheses are scheduled at analysis round %s.", round_value)))
+  display_round <- gs_resolve_analysis_round_target(
+    selected_round = state$selected_round,
+    actionable_rounds = state$actionable_rounds,
+    next_actionable_round = state$next_actionable_round,
+    force_first_actionable = isTRUE(rv$gs_force_first_actionable_round)
+  )
+  if (is.na(display_round)) {
+    return(tags$p("Choose an actionable analysis round to enter one-sided p-values."))
   }
 
-  submitted_keys <- gs_submitted_schedule_keys()
-  remaining_rows <- round_rows %>% dplyr::filter(!schedule_key %in% submitted_keys)
-  if (!nrow(remaining_rows)) {
-    return(tags$p(sprintf("All scheduled hypotheses for analysis round %s have already been submitted.", round_value)))
+  display_state <- if (identical(display_round, state$selected_round)) {
+    state
+  } else {
+    gs_analysis_round_state(
+      preview_tbl = preview_tbl,
+      history_tbl = rv$gs_analysis_history,
+      selected_round = display_round
+    )
+  }
+  if (!nrow(display_state$remaining_rows)) {
+    return(tags$p(sprintf("No hypotheses are scheduled at analysis round %s.", display_round)))
   }
 
   tags$div(
@@ -330,29 +419,29 @@ output$gs_round_entry_ui <- renderUI({
         )
       ),
       tags$tbody(
-        lapply(seq_len(nrow(remaining_rows)), function(i) {
-          key <- remaining_rows$schedule_key[[i]]
+        lapply(seq_len(nrow(display_state$remaining_rows)), function(i) {
+          key <- display_state$remaining_rows$schedule_key[[i]]
           tags$tr(
-            tags$td(tags$strong(remaining_rows$hypothesis[[i]])),
+            tags$td(tags$strong(display_state$remaining_rows$hypothesis[[i]])),
             tags$td(
               sprintf(
                 "%s of %s%s",
-                remaining_rows$hypothesis_stage[[i]],
-                remaining_rows$planned_analyses[[i]],
-                ifelse(isTRUE(remaining_rows$is_final[[i]]), " (final)", "")
+                display_state$remaining_rows$hypothesis_stage[[i]],
+                display_state$remaining_rows$planned_analyses[[i]],
+                ifelse(isTRUE(display_state$remaining_rows$is_final[[i]]), " (final)", "")
               )
             ),
-            tags$td(format_plain_number(remaining_rows$current_alpha[[i]])),
-            tags$td(format_plain_number(remaining_rows$timing[[i]])),
+            tags$td(format_plain_number(display_state$remaining_rows$current_alpha[[i]])),
+            tags$td(format_plain_number(display_state$remaining_rows$timing[[i]])),
             tags$td(
-              if (is.na(remaining_rows$p_boundary[[i]])) {
+              if (is.na(display_state$remaining_rows$p_boundary[[i]])) {
                 ""
               } else {
-                format_plain_number(remaining_rows$p_boundary[[i]])
+                format_plain_number(display_state$remaining_rows$p_boundary[[i]])
               }
             ),
             tags$td(
-              if (identical(remaining_rows$status[[i]], "Ready")) {
+              if (identical(display_state$remaining_rows$status[[i]], "Ready")) {
                 numericInput(
                   inputId = paste0("gs_round_p_", key),
                   label = NULL,
@@ -367,17 +456,17 @@ output$gs_round_entry_ui <- renderUI({
               }
             ),
             tags$td(
-              if (identical(remaining_rows$status[[i]], "Ready")) {
+              if (identical(display_state$remaining_rows$status[[i]], "Ready")) {
                 "Computed on submit"
               } else {
-                remaining_rows$status[[i]]
+                display_state$remaining_rows$status[[i]]
               }
             )
           )
         })
       )
     ),
-    if (any(remaining_rows$status != "Ready")) {
+    if (any(display_state$remaining_rows$status != "Ready")) {
       tags$div(
         class = "gs-inline-note",
         "Only hypotheses that are still active in the graph and ready for one-sided testing accept p-values at this round."
@@ -386,42 +475,44 @@ output$gs_round_entry_ui <- renderUI({
   )
 })
 
+output$gs_submit_round_ui <- renderUI({
+  preview_tbl <- rv$gs_boundary_preview
+  if (is.null(preview_tbl) || !nrow(preview_tbl)) {
+    return(NULL)
+  }
+  state <- gs_analysis_round_state(
+    preview_tbl = preview_tbl,
+    history_tbl = rv$gs_analysis_history,
+    selected_round = read_scalar_integer_input("gs_analysis_round", default = NA_integer_)
+  )
+  if (isTRUE(state$is_complete)) {
+    return(NULL)
+  }
+  tags$div(
+    class = "gs-actions",
+    actionButton("gs_submit_round", "Submit Analysis Round", class = "btn btn-warning")
+  )
+})
+
 output$gs_submitted_analyses_table <- renderDT({
   quiet_jsonlite_warning({
     history_tbl <- rv$gs_analysis_history
-    if (is.null(history_tbl) || !nrow(history_tbl)) {
-      return(datatable(
-        data.frame(
-          Submission = integer(),
-          Round = integer(),
-          Hypothesis = character(),
-          Stage = integer(),
-          P = numeric(),
-          `Boundary p` = numeric(),
-          stringsAsFactors = FALSE
+    display_tbl <- gs_submitted_analyses_display_tbl(history_tbl)
+    display_tbl <- display_tbl %>%
+      dplyr::mutate(
+        Submission = vapply(Submission, gs_submission_chip_html, character(1)),
+        `Round / Stage` = vapply(
+          `Round / Stage`,
+          function(x) gs_chip_html(x, "round-stage", title = "Round / stage"),
+          character(1)
         ),
-        rownames = FALSE,
-        options = list(dom = "t", paging = FALSE, searching = FALSE, ordering = FALSE, info = FALSE)
-      ))
-    }
-    display_tbl <- history_tbl %>%
-      dplyr::transmute(
-        Submission = submission,
-        Round = analysis_round,
-        Hypothesis = hypothesis,
-        Stage = hypothesis_stage,
-        Rule = alpha_spending,
-        `Info Fraction` = format(information_fraction, trim = TRUE, scientific = FALSE),
-        `Current Alpha` = format(current_alpha, trim = TRUE, scientific = FALSE),
-        P = format(p_value, trim = TRUE, scientific = FALSE),
-        `Boundary p` = format(boundary_p, trim = TRUE, scientific = FALSE),
-        `Boundary z` = format(boundary_z, trim = TRUE, scientific = FALSE),
-        Decision = decision
+        Decision = vapply(Decision, gs_decision_chip_html, character(1))
       )
     datatable(
       display_tbl,
       rownames = FALSE,
       class = "compact stripe hover nowrap",
+      escape = FALSE,
       options = list(dom = "t", pageLength = 12, lengthChange = FALSE, searching = FALSE, ordering = FALSE, info = FALSE, scrollX = TRUE, autoWidth = FALSE)
     )
   })
@@ -430,27 +521,30 @@ output$gs_submitted_analyses_table <- renderDT({
 output$gs_live_analysis_state_table <- renderDT({
   quiet_jsonlite_warning({
     status_tbl <- build_ts_status_table()
-    if (is.null(status_tbl) || !nrow(status_tbl)) {
-      return(datatable(
-        data.frame(
-          Hypothesis = character(),
-          `Current Alpha` = numeric(),
-          Decision = character(),
-          stringsAsFactors = FALSE
-        ),
-        rownames = FALSE,
-        options = list(dom = "t", paging = FALSE, searching = FALSE, ordering = FALSE, info = FALSE)
-      ))
-    }
     display_tbl <- gs_live_analysis_state_tbl(
       status_tbl = status_tbl,
       schedule_tbl = rv$gs_analysis_schedule,
       history_tbl = rv$gs_analysis_history
     )
+    display_tbl <- display_tbl %>%
+      dplyr::mutate(
+        `Last Submitted Round / Stage` = vapply(
+          `Last Submitted Round / Stage`,
+          function(x) {
+            if (!nzchar(gs_scalar_display_text(x))) {
+              return("")
+            }
+            gs_chip_html(x, "round-stage", title = "Latest submitted round / stage")
+          },
+          character(1)
+        ),
+        Decision = vapply(Decision, gs_decision_chip_html, character(1))
+      )
     datatable(
       display_tbl,
       rownames = FALSE,
       class = "compact stripe hover nowrap",
+      escape = FALSE,
       options = list(dom = "t", pageLength = 12, lengthChange = FALSE, searching = FALSE, ordering = FALSE, info = FALSE, scrollX = TRUE, autoWidth = FALSE)
     )
   })
@@ -474,7 +568,8 @@ output$gs_analysis_design_summary <- renderUI({
   }
   has_submissions <- nrow(rv$gs_analysis_history) > 0
   plan_tbl <- collect_gs_hypothesis_plan(persist = FALSE)
-  schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = FALSE)
+  schedule_signature <- rv$gs_analysis_schedule_round_signature
+  schedule_tbl <- isolate(gs_analysis_schedule_display_tbl(plan_tbl = plan_tbl, schedule_tbl = rv$gs_analysis_schedule))
   round_values <- gs_round_choice_values(schedule_tbl)
   div(
     class = "gs-card",
@@ -495,4 +590,11 @@ output$gs_analysis_design_summary <- renderUI({
       )
     }
   )
+})
+
+output$gs_finalize_action_ui <- renderUI({
+  if (isTRUE(rv$gs_design_finalized)) {
+    return(actionButton("gs_go_to_analysis", "Go to Analysis", class = "btn btn-primary"))
+  }
+  actionButton("gs_finalize_design", "Finalize Design", class = "btn btn-primary")
 })

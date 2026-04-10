@@ -23,6 +23,12 @@ observeEvent(input$gs_wizard_back_3, {
 
 # ---- Analysis round observers ----
 observeEvent(input$gs_analysis_round, {
+  if (isTRUE(rv$gs_round_selection_programmatic)) {
+    rv$gs_round_selection_programmatic <- FALSE
+    rv$gs_force_first_actionable_round <- FALSE
+    return(invisible(NULL))
+  }
+  rv$gs_force_first_actionable_round <- FALSE
   set_gs_round_feedback(NULL)
 }, ignoreInit = TRUE)
 
@@ -67,12 +73,22 @@ observeEvent(input$gs_submit_round, {
     refresh_ts_state()
     rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
     set_ts_log(build_round_submit_log(submission$history_rows))
+    post_submit_state <- gs_analysis_round_state(
+      preview_tbl = rv$gs_boundary_preview,
+      history_tbl = rv$gs_analysis_history,
+      selected_round = submission$history_rows$analysis_round[[1]]
+    )
+    next_display_round <- gs_resolve_analysis_round_target(
+      selected_round = post_submit_state$selected_round,
+      actionable_rounds = post_submit_state$actionable_rounds,
+      next_actionable_round = post_submit_state$next_actionable_round,
+      force_first_actionable = FALSE
+    )
     set_gs_round_feedback(
-      sprintf(
-        "Saved analysis round %s for %s hypothesis%s.",
-        submission$history_rows$analysis_round[[1]],
-        nrow(submission$history_rows),
-        ifelse(nrow(submission$history_rows) == 1L, "", "es")
+      gs_round_submission_feedback_text(
+        analysis_round = submission$history_rows$analysis_round[[1]],
+        hypothesis_count = nrow(submission$history_rows),
+        next_round = next_display_round
       ),
       type = "success"
     )
@@ -85,8 +101,10 @@ observeEvent(input$gs_submit_round, {
 })
 
 observeEvent(input$gs_reset_analysis_state, {
-  reset_group_sequential_state()
+  reset_group_sequential_runtime_state()
   rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
+  rv$gs_round_selection_programmatic <- FALSE
+  rv$gs_force_first_actionable_round <- TRUE
   set_gs_round_feedback(NULL)
   showNotification("Analysis state reset. The group sequential design tables were kept.", type = "message")
 })
@@ -94,13 +112,12 @@ observeEvent(input$gs_reset_analysis_state, {
 observeEvent(input$gs_reset_design_defaults, {
   rv$gs_hypothesis_plan <- build_default_gs_hypothesis_plan(rv$nodes, empty_gs_hypothesis_plan())
   rv$gs_analysis_schedule <- build_default_gs_analysis_schedule(rv$gs_hypothesis_plan)
+  set_gs_analysis_schedule_round_signature(rv$gs_analysis_schedule)
   rv$gs_settings <- legacy_settings_from_group_sequential_design(rv$gs_hypothesis_plan, rv$gs_analysis_schedule)
-  reset_group_sequential_state()
+  invalidate_group_sequential_design_state()
   sync_group_sequential_inputs(rv$gs_hypothesis_plan, rv$gs_analysis_schedule)
   rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
-  rv$gs_design_finalized <- FALSE
-  rv$gs_finalize_feedback <- NULL
-  rv$gs_wizard_step <- 1L
+  rv$gs_round_selection_programmatic <- FALSE
   updateTabsetPanel(session, "gs_wizard_tabs", selected = "step1")
   set_gs_round_feedback(NULL)
   showNotification("Group sequential design reset to defaults generated from the graph.", type = "message")
@@ -172,6 +189,7 @@ observeEvent(input$gs_edit_design, {
   rv$gs_applied_design_signature <- ""
   rv$gs_finalize_feedback <- NULL
   rv$gs_wizard_step <- 1L
+  rv$gs_round_selection_programmatic <- FALSE
   updateTabsetPanel(session, "gs_wizard_tabs", selected = "step1")
   updateNavbarPage(session, "nav", selected = "Group Sequential Design")
   showNotification("Design unlocked for editing. Returned to the Group Sequential Design tab.", type = "message", duration = 5)

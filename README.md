@@ -22,7 +22,8 @@ Use the hosted app here:
 
 - Build a graphical testing procedure with hypotheses, alphas, and transition weights.
 - Run the classic graphical rejection procedure from the `Design` tab.
-- Run planned one-sided sequential analyses from the `Sequential` tab.
+- Build and lock the group-sequential design from the `Group Sequential Design` tab.
+- Run planned one-sided sequential analyses from the `Analysis` tab.
 - Preview rejection boundaries at each planned analysis and watch alpha redistribution on the graph.
 
 ## Download The Repository
@@ -71,16 +72,24 @@ Use the `Design` tab for the classic graphical multiple-testing procedure.
 - Use `Reject Selected` to reject one testable hypothesis.
 - Read the result in the `Output` box.
 
-### 3. Sequential
+### 3. Group Sequential Design
 
-Use the `Sequential` tab for group-sequential testing.
+Use the `Group Sequential Design` tab to define the planned one-sided interim analysis workflow.
 
-- `Test` is the default view for the common workflow.
-- Enter one hypothesis, its planned analysis number, and a one-sided p-value.
-- Click `Apply Test` to run the analysis, recycle alpha on rejection, and recalculate the remaining one-sided boundaries automatically.
-- Use `Plan` only when a hypothesis needs an exception to the shared spending rule or timing template.
-- Use `Review` to inspect the boundary preview and submitted sequential history.
-- Open `Open graph, status, and activity` when you want the live graph or the sequential activity log without leaving the tab.
+- Step 1 sets planned looks and alpha-spending rules for each hypothesis.
+- Step 2 assigns each hypothesis stage to a global analysis round and information fraction.
+- Step 3 reviews the derived one-sided boundaries before you lock the design.
+- Click `Finalize Design` when the plan and boundary review are ready.
+
+### 4. Analysis
+
+Use the `Analysis` tab to submit one full global analysis round at a time.
+
+- Choose the current global analysis round.
+- Enter one-sided p-values for every active hypothesis scheduled at that round.
+- Click `Submit Analysis Round` to apply the batch, recycle alpha on rejection, and refresh the remaining boundaries.
+- Use `Reset Analysis State` to clear submitted analysis data while keeping the current design tables.
+- Open `Open live graph and activity` when you want the live graph or the sequential activity log without leaving the tab.
 
 ## Example File
 

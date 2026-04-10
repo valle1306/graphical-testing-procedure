@@ -25,13 +25,13 @@ build_analysis_tab <- function() {
               ),
               div(
                 class = "gs-actions",
-                actionButton("gs_reset_analysis_state", "Reset Analysis State", class = "btn btn-secondary")
+                actionButton("gs_reset_analysis_state", "Reset Analysis State", class = "btn btn-outline-secondary")
               )
             ),
             tags$details(
-              class = "gs-card",
+              class = "gs-disclosure",
               style = "margin-top: 12px; margin-bottom: 0;",
-              tags$summary(style = "cursor:pointer; font-weight:600; color:#0f766e;", "Open live graph and activity"),
+              tags$summary("Open live graph and activity"),
               div(
                 style = "margin-top: 12px;",
                 tabsetPanel(
@@ -53,15 +53,12 @@ build_analysis_tab <- function() {
             tags$h4(class = "gs-section-title", "Submit One Analysis Round"),
             tags$p(
               class = "gs-table-note",
-              "Choose a global analysis round, then enter one-sided p-values for every active hypothesis scheduled at that look."
+              "Choose a global analysis round, then enter one-sided p-values for every active hypothesis scheduled at that round."
             ),
-            selectInput("gs_analysis_round", "Global Analysis Round", choices = character(0), width = "100%"),
+            uiOutput("gs_analysis_round_ui"),
             uiOutput("gs_analysis_preview_feedback"),
             uiOutput("gs_round_entry_ui"),
-            div(
-              class = "gs-actions",
-              actionButton("gs_submit_round", "Submit Analysis Round", class = "btn btn-warning")
-            ),
+            uiOutput("gs_submit_round_ui"),
             uiOutput("gs_round_feedback")
           )
         )
@@ -82,6 +79,11 @@ build_analysis_tab <- function() {
             class = "gs-card",
             style = "margin-top: 16px;",
             tags$summary(style = "cursor:pointer; font-weight:600; color:#0f766e;", "Submitted Analyses"),
+            tags$p(
+              class = "gs-table-note",
+              style = "margin-top: 12px;",
+              "Submission is the saved batch. Round / Stage identifies the specific round and stage inside that batch. Alpha At Submission is frozen for that row and does not change after recycling."
+            ),
             div(
               style = "margin-top: 12px;",
               div(class = "gs-table-shell", DTOutput("gs_submitted_analyses_table"))
