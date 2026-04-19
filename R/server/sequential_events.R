@@ -1,14 +1,29 @@
 # ------------------------------------------------------------------------------
-# This file handles the buttons on the group-sequential pages:
-# Next / Back (wizard), Submit round, Reset, Finalize, Edit, and Go to Analysis.
-# Each click saves the form, runs the right checks, and updates what the user
-# sees on screen. The real math lives in sequential_state.R and
-# sequential_boundaries.R -- this file just wires the buttons to that logic.
+# Group-sequential event observers.
+#
+# This file is the "button wiring" for the sequential workflow:
+#   1. move through the design wizard,
+#   2. finalize or unlock the design,
+#   3. submit one analysis round at a time,
+#   4. reset runtime state when the user wants to start over.
+#
+# The underlying calculations are located in:
+# - plan/schedule collection and validation happen in sequential_settings.R
+# - boundary construction happens in sequential_boundaries.R
+# - test-object setup and round payload construction happen in sequential_state.R
+#
+# The observers here mainly decide when those pieces run and which reactive
+# values in rv should be updated in response to a user action.
 # ------------------------------------------------------------------------------
 
 # ---- Wizard navigation ----
-# The design wizard has 3 steps. "Next" saves the form first, then moves on.
-# "Back" just changes which step is visible.
+# The wizard has three steps:
+#   Step 1 = hypothesis plan
+#   Step 2 = analysis timing / global rounds
+#   Step 3 = boundary review
+#
+# "Next" buttons persist the current form state before moving forward so the
+# later steps always read from rv rather than from stale input defaults.
 observeEvent(input$gs_wizard_next_1, {
   persist_group_sequential_design_state(update_boundary = FALSE)
   rv$gs_wizard_step <- 2L
@@ -31,11 +46,12 @@ observeEvent(input$gs_wizard_back_3, {
   updateTabsetPanel(session, "gs_wizard_tabs", selected = "step2")
 })
 
-# ---- Analysis round observers ----
+# ---- Analysis round selection ----
 
-# Runs whenever the user picks a round in the "analysis round" dropdown.
-# If the code (not the user) set the value, we silently reset the flag and
-# leave. Otherwise it's a real user pick, so we clear any old feedback.
+# The analysis-round dropdown is sometimes changed by the server, not the user.
+# When that happens we do not want to treat it as a fresh user choice, because
+# that would clear feedback messages and interfere with the "jump to the next
+# actionable round" behavior used after resets and successful submissions.
 observeEvent(input$gs_analysis_round, {
   if (isTRUE(rv$gs_round_selection_programmatic)) {
     rv$gs_round_selection_programmatic <- FALSE
@@ -46,20 +62,22 @@ observeEvent(input$gs_analysis_round, {
   set_gs_round_feedback(NULL)
 }, ignoreInit = TRUE)
 
-# The big "Submit Round" button on the Analysis tab.
-# Steps (in plain English):
-#   1. Make sure the design hasn't been edited since the user started.
-#   2. If there's no live test object yet, build one.
-#   3. Read the user's p-values for this round (collect_round_submission).
-#   4. Apply any rejections to the test object, append to history,
-#      rebuild the boundary preview, and show a success message.
-# Any error along the way becomes a friendly red notification.
+# ---- Round submission ----
+# This is the main runtime action in the Analysis tab.
+#
+# High-level flow:
+#   1. refuse submission if the design changed after earlier saved rounds,
+#   2. build the live test object on the first submission,
+#   3. collect and validate all p-values for the selected global round,
+#   4. apply the round to the live object and freeze the submitted history,
+#   5. refresh the preview / live state so the next round is ready.
 observeEvent(input$gs_submit_round, {
   set_gs_round_feedback(NULL)
 
-  # Step 1: block submission if the plan/schedule changed after earlier rounds.
-  # Compare the design's current "fingerprint" to the one saved when the user
-  # first submitted; if they differ, the history wouldn't line up.
+  # If the user already submitted earlier rounds, those rows belong to one
+  # specific finalized design. We compare the current plan/schedule signature
+  # to the saved signature and stop if they no longer match, because continuing
+  # would mix history from two different designs.
   if (nrow(rv$gs_analysis_history) && nzchar(rv$gs_applied_design_signature)) {
     current_signature <- gs_current_design_signature()
     if (!identical(current_signature, rv$gs_applied_design_signature)) {
@@ -70,13 +88,21 @@ observeEvent(input$gs_submit_round, {
     }
   }
 
-  # Step 2: first-time submit? Build the test object from scratch. If that
-  # fails, initialize_batch_gs_object already showed the error -- just bail.
+  # The first successful submission needs a live GraphicalTesting object.
+  # Later rounds reuse and mutate that same object so alpha recycling follows
+  # the exact sequence of saved decisions.
   if (is.null(rv$ts_object) && !isTRUE(initialize_batch_gs_object(reset_history = TRUE))) {
     return(invisible(NULL))
   }
 
-  # Step 3: read + validate the user's p-values for this round.
+  # Build the round payload from the currently selected analysis round:
+  # - figure out which rows are still actionable,
+  # - read one-sided p-values from the UI,
+  # - validate them,
+  # - return the history rows we would append if submission succeeds.
+  #
+  # Any failure here should happen before we mutate runtime state or append
+  # anything to frozen history.
   submission <- tryCatch(collect_round_submission(), error = function(e) e)
   if (inherits(submission, "error")) {
     set_ts_log(paste("Round submission error:", submission$message))
@@ -88,29 +114,36 @@ observeEvent(input$gs_submit_round, {
     return(invisible(NULL))
   }
 
-  # Step 4: commit the round. This is where we actually change state.
+  # Once we reach this block, the submission is valid and we commit it in one
+  # place so the live object, frozen history, boundary preview, and UI state
+  # stay in sync.
   tryCatch({
-    # Apply rejections to the live GraphicalTesting object so alpha transfers
-    # on the graph match what the user saw in this round.
+    # Identify the hypotheses rejected in this batch and apply those rejections
+    # to the live GraphicalTesting object first. This is the step that moves
+    # alpha through the graph for future rounds.
     reject_hypotheses <- submission$history_rows$hypothesis[
       vapply(submission$history_rows$decision, normalize_gs_decision_label, character(1)) == "Reject"
     ]
     invisible(apply_frozen_gs_rejections(rv$ts_object, reject_hypotheses))
 
-    # Append this round's rows to the history tables (both new + legacy shapes).
+    # Freeze the submitted round into the modern history table, then rebuild
+    # the legacy stage-history shape that older display code still expects.
     rv$gs_analysis_history <- sanitize_gs_analysis_history_tbl(
       dplyr::bind_rows(rv$gs_analysis_history, submission$history_rows)
     )
     rv$gs_stage_history <- gs_history_to_legacy_stage_history(rv$gs_analysis_history)
 
-    # Refresh downstream state: result summary, graph colors, boundary preview.
+    # Recompute derived runtime outputs from the updated live object/history:
+    # status tables, graph appearance, and the boundary preview shown for the
+    # remaining analyses.
     bump_ts_state()
     refresh_ts_state()
     rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
     set_ts_log(build_round_submit_log(submission$history_rows))
 
-    # Figure out which round to point the user to next, then show a green
-    # success message telling them what just happened and what's next.
+    # After submission, recompute which global round should be shown next.
+    # This keeps the UI pointed at the next actionable work instead of leaving
+    # the user on a round that is now complete.
     post_submit_state <- gs_analysis_round_state(
       preview_tbl = rv$gs_boundary_preview,
       history_tbl = rv$gs_analysis_history,
@@ -130,18 +163,27 @@ observeEvent(input$gs_submit_round, {
       ),
       type = "success"
     )
-    # Nudge the client to resize DataTables whose visible columns changed.
+    # Some DataTables gain or lose visible columns after state changes, so
+    # nudge the client to recalculate widths after the submission completes.
     session$sendCustomMessage("adjust-datatables", list())
   }, error = function(e) {
-    # Anything unexpected in Step 4: log it and show a red notification.
+    # Anything unexpected during the commit phase still goes through the shared
+    # log + feedback path so the user sees one consistent failure surface even
+    # if the error came from deeper runtime code.
     set_ts_log(paste("Group sequential batch analysis error:", e$message))
     set_gs_round_feedback(paste("Group sequential batch analysis error:", e$message), type = "error")
     showNotification(paste("Group sequential batch analysis error:", e$message), type = "error", duration = 8)
   })
 })
 
-# "Reset Analysis State" button: throw away submitted rounds and results,
-# but KEEP the design (plan/schedule/graph) so the user can start testing over.
+# This button clears only runtime analysis artifacts:
+# - the live test object,
+# - frozen submitted rounds,
+# - live summary state,
+# - current boundary preview.
+#
+# It keeps the design inputs so the user can rerun the same
+# sequential design from a clean analysis state.
 observeEvent(input$gs_reset_analysis_state, {
   reset_group_sequential_runtime_state()
   rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
@@ -151,9 +193,10 @@ observeEvent(input$gs_reset_analysis_state, {
   showNotification("Analysis state reset. The group sequential design tables were kept.", type = "message")
 })
 
-# "Reset Design to Defaults" button: throw away the user's plan + schedule
-# and rebuild both from scratch using sensible defaults derived from the
-# current graph. Also sends the user back to Step 1 of the wizard.
+# This is a stronger reset than "Reset Analysis State". It discards the current
+# hypothesis plan and analysis schedule, rebuilds both from the current graph,
+# clears finalized/runtime state, and sends the user back to step 1 so they can
+# review the new defaults from the beginning.
 observeEvent(input$gs_reset_design_defaults, {
   rv$gs_hypothesis_plan <- build_default_gs_hypothesis_plan(rv$nodes, empty_gs_hypothesis_plan())
   rv$gs_analysis_schedule <- build_default_gs_analysis_schedule(rv$gs_hypothesis_plan)
@@ -168,20 +211,22 @@ observeEvent(input$gs_reset_design_defaults, {
   showNotification("Group sequential design reset to defaults generated from the graph.", type = "message")
 })
 
-# "Finalize Design" button. Locks in the design so the Analysis tab can use it.
-# Three things must pass before we lock:
-#   1. plan + schedule validate against each other,
-#   2. the boundary preview can actually be computed without errors,
-#   3. the boundary preview isn't empty (e.g. all hypotheses had alpha = 0).
-# If all three pass, save a "fingerprint" of the design so we can later
-# detect any edits and flip the gs_design_finalized flag to TRUE.
+# Finalization is the explicit handoff from design-time editing to analysis.
+# We only lock the design if three things are true:
+#   1. the plan and schedule validate together,
+#   2. the boundary schedule can actually be computed,
+#   3. the computed preview contains at least one testable row.
+#
+# If finalization succeeds, we save the exact design signature so later round
+# submissions can verify they still match the locked design.
 observeEvent(input$gs_finalize_design, {
   rv$gs_finalize_feedback <- NULL
   design_state <- persist_group_sequential_design_state(update_boundary = FALSE)
   plan_tbl <- design_state$plan
   schedule_tbl <- design_state$schedule
 
-  # Check 1: plan and schedule fit together.
+  # Validation here checks the design as currently entered in the wizard, not
+  # whatever happened to be saved earlier in rv.
   validation <- validate_gs_analysis_schedule(
     schedule_tbl = schedule_tbl,
     plan_tbl = plan_tbl,
@@ -197,7 +242,8 @@ observeEvent(input$gs_finalize_design, {
     return(invisible(NULL))
   }
 
-  # Check 2: the boundary math runs cleanly.
+  # A validated schedule is not enough on its own; we also require the boundary
+  # computation to run cleanly for the current design.
   boundary_preview <- tryCatch(
     build_gs_boundary_schedule(notify = FALSE),
     error = function(e) e
@@ -211,7 +257,8 @@ observeEvent(input$gs_finalize_design, {
     return(invisible(NULL))
   }
 
-  # Check 3: there's actually something to test (at least one row).
+  # An empty preview usually means there is nothing actionable to test, for
+  # example because every hypothesis is inactive or has zero alpha.
   if (is.null(boundary_preview) || !nrow(boundary_preview)) {
     rv$gs_finalize_feedback <- list(
       text = "Cannot finalize: boundary schedule is empty. Check that hypotheses have alpha > 0.",
@@ -221,9 +268,9 @@ observeEvent(input$gs_finalize_design, {
     return(invisible(NULL))
   }
 
-  # All checks passed -- save the preview, record the design fingerprint
-  # (used later to detect if the user edited the design mid-analysis),
-  # mark the design as locked, and show a success banner.
+  # Finalization stores both the preview and the signature of the exact design
+  # that produced it. That signature is later used to block submissions if the
+  # user edits the design after saving analysis history.
   rv$gs_boundary_preview <- boundary_preview
   sig <- gs_current_design_signature()
   rv$gs_applied_design_signature <- sig
@@ -239,9 +286,13 @@ observeEvent(input$gs_go_to_analysis, {
   updateNavbarPage(session, "nav", selected = "Analysis")
 })
 
-# "Edit Design" button. The inverse of Finalize: unlock the design so the
-# user can change the plan/schedule. BUT if any rounds have been submitted,
-# editing would break the history -- force them to Reset Analysis State first.
+# "Edit Design" is the inverse of finalization: it unlocks the wizard so the
+# user can change plan and schedule inputs again.
+#
+# But if any analysis rounds were already submitted, those rows belong to the
+# previously locked design. Unlocking the design at that point would sever the
+# connection between frozen history and the design that produced it, so we
+# require the user to reset runtime analysis state first.
 observeEvent(input$gs_edit_design, {
   if (nrow(rv$gs_analysis_history)) {
     showNotification(
