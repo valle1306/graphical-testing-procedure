@@ -1,3 +1,28 @@
+# ------------------------------------------------------------------------------
+# Group-sequential outputs.
+#
+# This file builds the visible UI for the sequential workflow after the
+# underlying plan, schedule, boundary preview, and runtime state already exist.
+#
+# Broadly, these outputs do four jobs:
+#   1. render the design wizard inputs and helper text,
+#   2. render the boundary-review / finalization surfaces,
+#   3. render the analysis-round entry UI and feedback,
+#   4. render live and frozen analysis summaries.
+#
+# The calculation-heavy logic lives in helper/state files. The code here is
+# mostly about translating reactive state in rv into visible controls, tables,
+# and messages that stay synchronized with the current workflow stage.
+# ------------------------------------------------------------------------------
+
+# For each hypothesis row in the plan table, render the rule-specific parameter
+# control that belongs in the "Rule Parameters" column.
+#
+# The control depends on the currently selected spending rule:
+# - Custom -> free-text cumulative alpha values
+# - HSD -> gamma numeric input
+# - Haybittle-Peto -> p1 numeric input
+# - other built-in rules -> no extra parameter UI
 observe({
   node_tbl <- sanitize_nodes_tbl(rv$nodes)
   if (!nrow(node_tbl)) {
@@ -84,6 +109,9 @@ observe({
   invisible(NULL)
 })
 
+# Render the wizard stepper at the top of the Group Sequential Design flow.
+# It reflects both the current step and whether the design has already been
+# finalized, in which case every prior step is shown as complete.
 output$gs_stepper_indicator <- renderUI({
   step <- rv$gs_wizard_step
   finalized <- isTRUE(rv$gs_design_finalized)
@@ -112,6 +140,8 @@ output$gs_stepper_indicator <- renderUI({
   tags$div(class = "gs-stepper", step_tags)
 })
 
+# Show a compact plain-language summary of the current graph and schedule so the
+# user can tell what design context the wizard is operating on.
 output$gs_design_context <- renderUI({
   if (!nrow(rv$nodes)) {
     return(tags$span("Create hypotheses in the Design tab first. The group sequential design tables will appear here automatically."))
@@ -133,6 +163,12 @@ output$gs_design_context <- renderUI({
   )
 })
 
+# Render the Step 1 table where each hypothesis gets:
+# - a number of planned looks,
+# - an alpha-spending rule,
+# - any rule-specific parameters.
+#
+# The table is rebuilt from the current graph plus any persisted plan state.
 output$gs_hypothesis_plan_ui <- renderUI({
   profile_reactivity("renderUI:gs_hypothesis_plan", {
     node_signature <- paste(rv$nodes$id, rv$nodes$hypothesis, collapse = "|")
@@ -187,13 +223,14 @@ output$gs_hypothesis_plan_ui <- renderUI({
   }, note = sprintf("nodes=%s", nrow(rv$nodes)))
 })
 
-# Validation message in a separate output so it updates on every fraction change
-# without recreating the input table (which would interrupt the user's typing).
+# Keep schedule-validation feedback separate from the schedule input table.
+# That lets validation update on every timing edit without forcing the table
+# itself to re-render and interrupt the user's typing.
 output$gs_schedule_validation_ui <- renderUI({
   if (!nrow(rv$gs_hypothesis_plan)) return(NULL)
-  # Reactive dependency on rv$gs_analysis_schedule is intentional here:
-  # the observer in sequential_settings.R updates it on every input change,
-  # so validation reflects the latest typed values without touching the inputs.
+  # The direct dependency on rv$gs_analysis_schedule is intentional. That table
+  # is updated as the user edits timing fields, so validation stays current
+  # while the input table remains stable.
   schedule_tbl <- rv$gs_analysis_schedule
   plan_tbl <- isolate(rv$gs_hypothesis_plan)
   validation <- validate_gs_analysis_schedule(
@@ -205,6 +242,13 @@ output$gs_schedule_validation_ui <- renderUI({
   tags$div(class = "gs-inline-note", style = "color:#991b1b;", validation$message)
 })
 
+# Render the Step 2 schedule table. Each row corresponds to one planned look
+# for one hypothesis and lets the user edit:
+# - the global analysis round where that look happens,
+# - the information fraction at that look.
+#
+# The table groups rows visually by analysis round so the schedule is easier to
+# scan as a global timeline rather than as isolated per-hypothesis rows.
 output$gs_analysis_schedule_ui <- renderUI({
   plan_tbl <- rv$gs_hypothesis_plan
   if (!nrow(plan_tbl) && nrow(rv$nodes)) {
@@ -213,9 +257,9 @@ output$gs_analysis_schedule_ui <- renderUI({
   if (!nrow(plan_tbl)) {
     return(tags$p("Define the hypothesis setup first."))
   }
-  # Re-render only when the committed round assignments change. That keeps the
-  # table stable while the user edits information fractions, but lets the row
-  # order snap into round order once a round change is committed.
+  # Re-render only when the committed round assignments change. This avoids
+  # shuffling rows while the user types information fractions, but still lets
+  # the display snap back into round order after a real round edit.
   schedule_signature <- rv$gs_analysis_schedule_round_signature
   schedule_tbl <- isolate(gs_analysis_schedule_display_tbl(plan_tbl, rv$gs_analysis_schedule))
   if (!nrow(schedule_tbl)) {
@@ -279,6 +323,8 @@ output$gs_analysis_schedule_ui <- renderUI({
   )
 })
 
+# Step 3 boundary-review table. This shows the computed design-time boundary
+# schedule the user is about to lock in, one row per (round, hypothesis, stage).
 output$gs_boundary_schedule_table <- renderDT({
   quiet_jsonlite_warning({
     preview_tbl <- rv$gs_boundary_preview
@@ -292,6 +338,7 @@ output$gs_boundary_schedule_table <- renderDT({
   })
 })
 
+# Show success/error feedback for the "Finalize Design" action.
 output$gs_finalize_feedback <- renderUI({
   feedback <- rv$gs_finalize_feedback
   if (is.null(feedback) || !length(feedback$text) || !nzchar(feedback$text[[1]])) {
@@ -301,6 +348,7 @@ output$gs_finalize_feedback <- renderUI({
   tags$div(class = paste("alert", alert_class), style = "margin-top: 12px; margin-bottom: 0;", feedback$text[[1]])
 })
 
+# Show boundary-preview computation problems in the boundary-review step.
 output$gs_boundary_preview_feedback <- renderUI({
   message <- rv$gs_boundary_preview_message
   if (is.null(message) || !length(message) || !nzchar(trimws(as.character(message[[1]])))) {
@@ -309,6 +357,8 @@ output$gs_boundary_preview_feedback <- renderUI({
   tags$div(class = "alert alert-danger", style = "margin-top: 12px; margin-bottom: 12px;", as.character(message[[1]]))
 })
 
+# Show the same boundary-preview message again on the Analysis tab so analysis
+# surfaces can explain why round entry is unavailable.
 output$gs_analysis_preview_feedback <- renderUI({
   message <- rv$gs_boundary_preview_message
   if (is.null(message) || !length(message) || !nzchar(trimws(as.character(message[[1]])))) {
@@ -317,6 +367,12 @@ output$gs_analysis_preview_feedback <- renderUI({
   tags$div(class = "alert alert-danger", style = "margin-bottom: 12px;", as.character(message[[1]]))
 })
 
+# Render the global analysis-round dropdown.
+#
+# This dropdown is driven by the boundary preview plus submission history:
+# - already-submitted rows are removed,
+# - only actionable rounds remain selectable,
+# - once all rounds are complete, the control is replaced by a closed-state note.
 output$gs_analysis_round_ui <- renderUI({
   preview_tbl <- rv$gs_boundary_preview
   if (is.null(preview_tbl) || !nrow(preview_tbl)) {
@@ -360,6 +416,12 @@ output$gs_analysis_round_ui <- renderUI({
   )
 })
 
+# Keep the selected round synchronized with the currently actionable rounds.
+#
+# This observer is what nudges the UI to the first/next valid round after
+# submissions or resets. When it changes the dropdown itself, it marks the
+# change as programmatic so the event handler in sequential_events.R knows not
+# to treat it as a user edit.
 observe({
   selected_round <- read_scalar_integer_input("gs_analysis_round", default = NA_integer_)
   state <- gs_analysis_round_state(
@@ -389,6 +451,9 @@ observe({
   )
 })
 
+# Render per-round success/error feedback in the Analysis tab. Once all rounds
+# are complete, this feedback is hidden because there is no longer an active
+# round-entry surface it should attach to.
 output$gs_round_feedback <- renderUI({
   feedback <- rv$gs_round_feedback
   if (is.null(feedback) || !length(feedback$text) || !nzchar(feedback$text[[1]])) {
@@ -406,6 +471,11 @@ output$gs_round_feedback <- renderUI({
   tags$div(class = paste("alert", alert_class), style = "margin-top: 12px;", feedback$text[[1]])
 })
 
+# Render the per-hypothesis entry table for the currently displayed analysis
+# round. This is the UI the user fills in before clicking "Submit Analysis Round".
+#
+# Each row comes from the remaining boundary-preview rows for the selected round.
+# Ready rows get a p-value input; non-ready rows are shown as informational only.
 output$gs_round_entry_ui <- renderUI({
   preview_tbl <- rv$gs_boundary_preview
   if (is.null(preview_tbl) || !nrow(preview_tbl)) {
@@ -517,6 +587,7 @@ output$gs_round_entry_ui <- renderUI({
   )
 })
 
+# Show the submit button only when there is still at least one actionable round.
 output$gs_submit_round_ui <- renderUI({
   preview_tbl <- rv$gs_boundary_preview
   if (is.null(preview_tbl) || !nrow(preview_tbl)) {
@@ -536,6 +607,8 @@ output$gs_submit_round_ui <- renderUI({
   )
 })
 
+# Frozen submission history table. Each row is a saved analysis result and keeps
+# the alpha, boundary, and decision values that were true at the time of submit.
 output$gs_submitted_analyses_table <- renderDT({
   quiet_jsonlite_warning({
     history_tbl <- rv$gs_analysis_history
@@ -560,6 +633,9 @@ output$gs_submitted_analyses_table <- renderDT({
   })
 })
 
+# Live analysis-state table. Unlike the submitted-history table, this view is a
+# current summary derived from the latest runtime state and points the user to
+# the next scheduled global round for each hypothesis.
 output$gs_live_analysis_state_table <- renderDT({
   quiet_jsonlite_warning({
     status_tbl <- build_ts_status_table()
@@ -592,6 +668,12 @@ output$gs_live_analysis_state_table <- renderDT({
   })
 })
 
+# Summary card at the top of the Analysis tab.
+#
+# If no design is finalized, this card acts as a workflow gate and explains why
+# analysis submission is not ready yet. If the design is finalized, it instead
+# shows a compact locked-design summary and, before any submissions occur, an
+# "Edit Design" action.
 output$gs_analysis_design_summary <- renderUI({
   if (!isTRUE(rv$gs_design_finalized)) {
     return(
@@ -637,6 +719,9 @@ output$gs_analysis_design_summary <- renderUI({
   )
 })
 
+# The primary action at the bottom of the design wizard changes meaning after
+# finalization: before lock it is "Finalize Design"; after lock it becomes
+# "Go to Analysis".
 output$gs_finalize_action_ui <- renderUI({
   if (isTRUE(rv$gs_design_finalized)) {
     return(actionButton("gs_go_to_analysis", "Go to Analysis", class = "btn btn-primary"))
