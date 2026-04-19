@@ -1,9 +1,12 @@
-# Graph rendering, CRUD observers, Design-tab handlers,
-# and import / export handlers.
-# Sourced inside the server function with source(..., local = TRUE).
+# The file has three jobs:
+#   1. Build the visNetwork graph (nodes/edges + styling) from rv$nodes/rv$edges.
+#   2. Handle user interactions: right-click menu, drag, double-click modals.
+#   3. Import/export the design as JSON.
+#
 
 # ---- Graph construction helpers ----
 
+# Build a styled, labeled, colored node table from rv$nodes for visNetwork to draw.
 build_graph_nodes <- function() {
   allocations <- get_current_allocations()
   status_tbl <- build_ts_status_table()
@@ -30,6 +33,7 @@ build_graph_nodes <- function() {
   result
 }
 
+# Turn rv$edges into display edges. 
 build_graph_edges <- function() {
   base_edges <- sanitize_edges_tbl(rv$edges)
   if (is.null(rv$ts_object) || !nrow(base_edges)) {
@@ -67,6 +71,9 @@ build_graph_edges <- function() {
   }
   display_edges
 }
+
+# ---- Signature / caching helpers ----
+# Hash the graph's visual state into a string so update_graph_target can skip redraws when nothing changed.
 
 graph_node_content_signature <- function(nodes_data) {
   nodes_data <- sanitize_nodes_tbl(nodes_data)
@@ -136,6 +143,8 @@ graph_content_signature <- function(nodes_data, edges_data) {
   )
 }
 
+# Build an id -> "x:y" lookup table so the app can tell which bubbles moved
+# and slide only those, instead of redrawing the entire graph.
 graph_position_map <- function(nodes_data) {
   nodes_data <- sanitize_nodes_tbl(nodes_data)
   if (!nrow(nodes_data)) {
@@ -151,6 +160,9 @@ graph_position_map <- function(nodes_data) {
   )
 }
 
+# Decide the cheapest way to refresh a graph: skip it if hidden, slide
+# individual nodes if only positions changed, or fully redraw only when
+# the content really changed.
 update_graph_target <- function(output_id, nodes_data, edges_data) {
   if (!isTRUE(output_is_visible(output_id))) {
     return(invisible(FALSE))
@@ -190,6 +202,7 @@ update_graph_target <- function(output_id, nodes_data, edges_data) {
   invisible(TRUE)
 }
 
+# Build node/edge trays once and push them to both the Design-tab graph and the Sequential-tab mirror so they stay in sync.
 update_graph_views <- function() {
   profile_reactivity("update_graph_views", {
     nodes_data <- build_graph_nodes()
@@ -202,6 +215,7 @@ update_graph_views <- function() {
   }, note = sprintf("nodes=%s edges=%s", nrow(rv$nodes), nrow(rv$edges)))
 }
 
+# Defer the graph refresh until Shiny finishes its current flush cycle so we don't fight the reactive system mid-update.
 schedule_graph_refresh <- function(adjust_tables = TRUE) {
   session$onFlushed(function() {
     isolate({
@@ -214,6 +228,7 @@ schedule_graph_refresh <- function(adjust_tables = TRUE) {
   invisible(NULL)
 }
 
+# Rebuild the results summary and refresh the hypothesis dropdowns from the latest analysis round or the live test object.
 refresh_ts_state <- function() {
   status_tbl <- build_ts_status_table()
   if (is.null(rv$ts_object)) {
@@ -249,6 +264,8 @@ refresh_ts_state <- function() {
   invisible(NULL)
 }
 
+# wipes the live test object, result summary, boundary preview, and analysis history — 
+# but keeps the graph design intact, so you can re-run analyses on the same setup.
 reset_group_sequential_runtime_state <- function(reset_log = TRUE) {
   rv$ts_object <- NULL
   if (isTRUE(reset_log)) {
@@ -267,6 +284,7 @@ reset_group_sequential_runtime_state <- function(reset_log = TRUE) {
   invisible(NULL)
 }
 
+# the design itself is no longer valid — wipe everything AND force the user back to step 1 of the wizard.
 invalidate_group_sequential_design_state <- function(reset_log = TRUE) {
   reset_group_sequential_runtime_state(reset_log = reset_log)
   rv$gs_finalize_feedback <- NULL
@@ -278,7 +296,6 @@ invalidate_group_sequential_design_state <- function(reset_log = TRUE) {
 }
 
 # ---- Graph outputs ----
-
 output$graph <- renderVisNetwork({
   quiet_jsonlite_warning(
     visNetwork(build_graph_nodes(), build_graph_edges()) %>%
@@ -375,6 +392,7 @@ output$graph <- renderVisNetwork({
   )
 })
 
+# Read-only mirror shown on the Sequential tab 
 output$seq_graph <- renderVisNetwork({
   quiet_jsonlite_warning(
     visNetwork(build_graph_nodes(), build_graph_edges()) %>%
@@ -399,6 +417,7 @@ output$graph_ui <- renderUI({
   visNetworkOutput("graph", height = "640px")
 })
 
+# Status table (hypothesis, current alpha, decision, testable, active) shown below the Design-tab graph.
 output$ts_status_table <- renderDT({
   quiet_jsonlite_warning({
     df <- build_ts_status_table()
@@ -434,14 +453,17 @@ output$ts_status_table <- renderDT({
 
 # ---- Panel toggle & data tables ----
 
+# Left-column visibility state used by the "Hide/Show data panel" button.
 panel_visible <- reactiveVal(TRUE)
 
+# Keep the two hypothesis dropdowns in sync whenever rv$nodes changes.
 observe({
   rv$nodes
   update_manual_reject_choices(rv$nodes$hypothesis)
   update_sequential_test_choices(rv$nodes$hypothesis)
 })
 
+# Toggle the left column by swapping Bootstrap col classes so the graph can expand to fill the row.
 observeEvent(input$toggle_panel, {
   if (isTRUE(panel_visible())) {
     shinyjs::hide("left-col")
@@ -462,6 +484,7 @@ observeEvent(input$toggle_panel, {
   }
 })
 
+# Left-panel read-only node table; tables_tick() forces re-render after any mutation.
 output$nodes_table <- renderDT({
   tables_tick()
   isolate(quiet_jsonlite_warning({
@@ -479,6 +502,7 @@ output$nodes_table <- renderDT({
   }))
 })
 
+# Edge table shows hypothesis names (joined from rv$nodes), not raw IDs.
 output$edges_table <- renderDT({
   tables_tick()
   isolate(quiet_jsonlite_warning({
@@ -500,6 +524,7 @@ output$edges_table <- renderDT({
 
 # ---- Node drag ----
 
+# Persist the dragged node's new x/y, mirror it to seq_graph, and update the position cache -- drag is cosmetic so no invalidation.
 observeEvent(input$node_dragged, {
   node_id <- input$node_dragged$id
   rv$nodes <- rv$nodes %>%
@@ -526,6 +551,7 @@ observeEvent(input$node_dragged, {
   }
 })
 
+# Global client-side listeners: any click hides the context menu, Escape cancels an in-progress edge.
 observe({
   runjs("
     document.addEventListener('click', function(){
@@ -542,6 +568,7 @@ observe({
 
 # ---- Context menu event ----
 
+# Store which node/edge was right-clicked and where, so downstream ctx_* handlers know what the user is targeting.
 observeEvent(input$ctx_event, {
   canvas_coords <- suppressWarnings(as.numeric(unlist(input$ctx_event$canvas)))
   if (length(canvas_coords) < 2 || any(!is.finite(canvas_coords[1:2]))) {
@@ -552,6 +579,7 @@ observeEvent(input$ctx_event, {
   rv$ctx$canvas <- unname(canvas_coords[1:2])
 })
 
+# Right-clicking anywhere cancels an in-progress edge creation.
 observeEvent(input$any_context, {
   if (!is.null(rv$pending_source)) {
     rv$pending_source <- NULL
@@ -560,6 +588,8 @@ observeEvent(input$any_context, {
 }, ignoreInit = TRUE)
 
 # ---------- Node: add / delete / edit ----------
+
+# Add a new node at the right-click position and immediately open the edit modal so the user can set its name and alpha.
 observeEvent(input$ctx_add_node, {
   runjs("document.getElementById('ctx-menu').style.display='none';")
   nid <- ifelse(nrow(rv$nodes)==0, 1, max(rv$nodes$id)+1)
@@ -577,9 +607,7 @@ observeEvent(input$ctx_add_node, {
   invalidate_group_sequential_design_state()
   bump_tables()
   update_manual_reject_choices(rv$nodes$hypothesis)
-  
-  # Immediately open the edit modal for the new node (Dr. Zhang's intended UX)
-  # Set edit target so the existing save logic can be reused
+
   rv$ctx$edit_node_id <- nid
   showModal(modalDialog(
     title = paste("Edit node", nid),
@@ -594,6 +622,7 @@ observeEvent(input$ctx_add_node, {
   focus_and_select("edit_node_alpha")
 })
 
+# Delete the right-clicked node along with every edge that touches it.
 observeEvent(input$ctx_del_node, {
   runjs("document.getElementById('ctx-menu').style.display='none';")
   nid <- rv$ctx$node
@@ -607,6 +636,7 @@ observeEvent(input$ctx_del_node, {
   }
 })
 
+# Double-click on a node opens the same edit modal used for new nodes.
 observeEvent(input$dbl_node, {
   nid <- input$dbl_node
   nd <- rv$nodes %>% dplyr::filter(id == nid) %>% dplyr::slice(1)
@@ -624,6 +654,7 @@ observeEvent(input$dbl_node, {
   focus_and_select("edit_node_alpha")
 })
 
+# Validate and save a node edit: hypothesis unique and non-empty, alpha is a plain decimal in [0,1], total alpha stays <= 1.
 observeEvent(input$save_node_edit, {
   id <- rv$ctx$edit_node_id
   if (is.null(id)) return(invisible(NULL))
@@ -679,6 +710,7 @@ observeEvent(input$cancel_new_node, {
 })
 
 # ---------- Create edge ----------
+# Two-click flow: right-click a source node to stash it, click a target to pick it, then validate and save the weight.
 observeEvent(input$ctx_edge_start, {
   runjs("document.getElementById('ctx-menu').style.display='none';")
   src <- rv$ctx$node
@@ -761,6 +793,7 @@ observeEvent(input$save_new_edge, {
 })
 
 # ---------- Delete edge ----------
+# Edge deletion requires confirmation because it changes the transition matrix and invalidates the sequential state.
 observeEvent(input$ctx_del_edge, {
   runjs("document.getElementById('ctx-menu').style.display='none';")
   eid <- rv$ctx$edge
@@ -806,6 +839,7 @@ observeEvent(input$confirm_delete_edge, {
 })
 
 # ---------- Edit edge ----------
+# Double-click an edge to open the weight-edit modal; skipped during edge creation to avoid ambiguous clicks.
 observeEvent(input$dbl_edge, {
   if (!is.null(rv$pending_source)) return(invisible(NULL))
   eid <- input$dbl_edge
@@ -846,6 +880,7 @@ observeEvent(input$save_edge_edit, {
 
 # ---- Design-tab action handlers ----
 
+# Manually reject a hypothesis: calls into the test object, refreshes the UI, rebuilds the boundary preview, returns TRUE on success.
 reject_hypothesis_in_graph <- function(selected_hypothesis) {
   req(rv$ts_object, selected_hypothesis)
   tryCatch({
@@ -871,20 +906,24 @@ manual_reject_hypothesis <- function(selected_hypothesis) {
   }
 }
 
+# "Reject selected" button on the Design tab.
 observeEvent(input$design_reject_ts, {
   manual_reject_hypothesis(input$design_graph_selected)
 })
 
+# "Run" button: initialize a fresh GraphicalTesting object from the current graph (implementation in sequential_state.R).
 observeEvent(input$design_run_ts, {
   req(nrow(rv$nodes) > 0)
   initialize_batch_gs_object(reset_history = TRUE)
 })
 
+# "Clear results" button: drop runtime state but keep the design intact.
 observeEvent(input$design_clear_results, {
   reset_group_sequential_runtime_state()
   rv$gs_force_first_actionable_round <- TRUE
 })
 
+# "Auto layout" button: re-position nodes using auto_layout_nodes().
 observeEvent(input$design_auto_layout, {
   if (nrow(rv$nodes)) {
     rv$nodes <- auto_layout_nodes(rv$nodes)
@@ -895,6 +934,7 @@ observeEvent(input$design_auto_layout, {
 
 # ---- Sequential result outputs ----
 
+# Results table with one row per hypothesis (observed p, allocated alpha, decision, stage, rank, spending function).
 output$ts_result_table <- renderDT({
   req(rv$ts_summary)
   quiet_jsonlite_warning({
@@ -930,6 +970,7 @@ output$ts_log <- renderText({
 
 # ---- Import / Export handlers ----
 
+# Write a JSON bundle of nodes, edges, and the group-sequential plan/schedule/history for download.
 output$download_graph <- downloadHandler(
   filename = function() paste0("graph-", Sys.Date(), ".json"),
   content = function(file) {
@@ -963,6 +1004,7 @@ output$download_graph <- downloadHandler(
   }
 )
 
+# Import a JSON graph 
 observeEvent(input$upload_graph, {
   req(input$upload_graph)
   dat <- fromJSON(input$upload_graph$datapath, simplifyDataFrame = TRUE)
@@ -1023,7 +1065,7 @@ observeEvent(input$upload_graph, {
 
   # --- Normalize edges: resolve label-based from/to to numeric IDs ---
   if (!is.null(edges) && nrow(edges)) {
-    # Build lookup from hypothesis label to node id
+    
     label_to_id <- stats::setNames(nodes$id, nodes$hypothesis)
 
     if (is.character(edges$from)) {
@@ -1044,13 +1086,12 @@ observeEvent(input$upload_graph, {
     if (is.null(edges$weight)) {
       edges$weight <- rep(0, nrow(edges))
     }
-    # Generate edge IDs when missing
     if (is.null(edges$id)) {
       edges$id <- seq_len(nrow(edges))
     } else {
       edges$id <- as.integer(edges$id)
     }
-    # Drop edges with unresolved endpoints
+    
     valid_edges <- !is.na(edges$from) & !is.na(edges$to)
     if (any(!valid_edges)) {
       showNotification(
@@ -1059,7 +1100,7 @@ observeEvent(input$upload_graph, {
       )
     }
     edges <- edges[valid_edges, , drop = FALSE]
-    # Keep only the columns the app expects
+    
     edges <- edges[, intersect(c("id", "from", "to", "weight"), names(edges)), drop = FALSE]
   } else {
     edges <- tibble::tibble(id = integer(), from = integer(), to = integer(), weight = numeric())
