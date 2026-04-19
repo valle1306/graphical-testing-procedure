@@ -1,3 +1,5 @@
+# Build the finalized graph transition matrix in hypothesis order so the
+# testing object and the frozen design state share the same indexing.
 build_transition_matrix_from_graph <- function() {
   n <- nrow(rv$nodes)
   mat <- matrix(0, n, n)
@@ -16,11 +18,15 @@ build_transition_matrix_from_graph <- function() {
   mat
 }
 
+# Initialize the live testing object from the current finalized design inputs.
+# This is the bridge between editable design tables and runtime analysis state.
 initialize_batch_gs_object <- function(reset_history = FALSE) {
   plan_tbl <- collect_gs_hypothesis_plan(persist = TRUE)
   schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = TRUE)
   validation <- validate_gs_analysis_schedule(schedule_tbl = schedule_tbl, plan_tbl = plan_tbl, notify = TRUE)
   if (!isTRUE(validation$ok)) {
+    # Keep runtime state empty when the finalized design tables no longer
+    # produce a valid schedule.
     set_ts_log(validation$message)
     set_gs_round_feedback(validation$message, type = "error")
     rv$ts_object <- NULL
@@ -31,6 +37,8 @@ initialize_batch_gs_object <- function(reset_history = FALSE) {
   rv$transition <- build_transition_matrix_from_graph()
   transition_validation <- validate_transition_matrix(rv$transition, rv$nodes$hypothesis)
   if (!isTRUE(transition_validation$valid)) {
+    # Do not carry forward a graphical design whose transition structure
+    # no longer matches the hypotheses available to the runtime object.
     set_ts_log(transition_validation$message)
     set_gs_round_feedback(transition_validation$message, type = "error")
     showNotification(transition_validation$message, type = "error", duration = 8)
@@ -58,9 +66,13 @@ initialize_batch_gs_object <- function(reset_history = FALSE) {
       message = function(m) invokeRestart("muffleMessage")
     )
     if (isTRUE(reset_history)) {
+      # Replay and import paths rebuild the runtime object first, then restore
+      # submitted history against a clean analysis timeline.
       rv$gs_analysis_history <- empty_gs_analysis_history()
       rv$gs_stage_history <- empty_gs_stage_history()
     }
+    # Lock the runtime object to the exact finalized plan/schedule pair that
+    # produced it before refreshing derived status and boundary preview state.
     rv$gs_applied_design_signature <- gs_current_design_signature(plan_tbl, schedule_tbl)
     bump_ts_state()
     refresh_ts_state()
@@ -82,6 +94,8 @@ initialize_batch_gs_object <- function(reset_history = FALSE) {
   })
 }
 
+# Collect one submitted global analysis round from the current round-entry UI.
+# The returned rows are sanitized runtime records ready to append to history.
 collect_round_submission <- function() {
   selected_round <- read_scalar_integer_input("gs_analysis_round", default = NA_integer_)
 
@@ -103,6 +117,8 @@ collect_round_submission <- function() {
     force_first_actionable = isTRUE(rv$gs_force_first_actionable_round)
   )
   if (!identical(round_value, selected_round)) {
+    # Programmatic round selection can redirect the submission UI to the first
+    # actionable round; recompute the round state against that target.
     state <- gs_analysis_round_state(
       preview_tbl = preview_tbl,
       history_tbl = rv$gs_analysis_history,
@@ -134,6 +150,8 @@ collect_round_submission <- function() {
     1L
   }
 
+  # Only hypotheses that are still ready in the selected global round should
+  # produce runtime submission rows.
   stage_rows <- lapply(seq_len(nrow(ready_rows)), function(i) {
     schedule_key <- ready_rows$schedule_key[[i]]
     p_value <- read_scalar_numeric_input(paste0("gs_round_p_", schedule_key))
@@ -173,6 +191,8 @@ collect_round_submission <- function() {
     history_tbl = rv$gs_analysis_history
   )
   if (!isTRUE(runtime_validation$ok)) {
+    # Preserve monotone cumulative spending for custom runtime looks before any
+    # new rows enter frozen submitted history.
     set_gs_round_feedback(runtime_validation$message, type = "error")
     stop(runtime_validation$message)
   }
@@ -202,6 +222,9 @@ collect_round_submission <- function() {
   )
 }
 
+# Rebuild runtime state from frozen submitted history after import or reset.
+# This preserves submitted decisions as historical facts rather than
+# recalculating them from the current live boundary preview.
 replay_group_sequential_history <- function(history_tbl) {
   history_tbl <- sanitize_gs_analysis_history_tbl(history_tbl)
   if (!nrow(history_tbl)) {
@@ -219,6 +242,8 @@ replay_group_sequential_history <- function(history_tbl) {
       dplyr::arrange(hypothesis, hypothesis_stage)
     rejected_rows <- batch_rows %>%
       dplyr::filter(vapply(decision, normalize_gs_decision_label, character(1)) == "Reject")
+    # Rejections are replayed in submission order so recycled alpha matches the
+    # frozen historical path that produced the saved runtime state.
     invisible(apply_frozen_gs_rejections(rv$ts_object, rejected_rows$hypothesis))
     bump_ts_state()
   }
@@ -230,6 +255,8 @@ replay_group_sequential_history <- function(history_tbl) {
   TRUE
 }
 
+# Export the finalized design tables together with the frozen submitted
+# analysis history and a legacy-compatible settings view.
 serialize_group_sequential_export <- function() {
   plan_tbl <- collect_gs_hypothesis_plan(persist = TRUE)
   schedule_tbl <- collect_gs_analysis_schedule(plan_tbl = plan_tbl, persist = TRUE)
@@ -244,6 +271,8 @@ serialize_group_sequential_export <- function() {
   )
 }
 
+# Build a modern hypothesis plan from legacy import settings when the dedicated
+# plan table is missing.
 derive_group_sequential_plan_from_legacy <- function(gs_settings) {
   if (is.null(gs_settings) || !nrow(gs_settings)) {
     return(build_default_gs_hypothesis_plan(rv$nodes, empty_gs_hypothesis_plan()))
@@ -281,6 +310,8 @@ derive_group_sequential_plan_from_legacy <- function(gs_settings) {
   )
 }
 
+# Recover schedule timing from legacy settings, but fall back to the current
+# default schedule whenever imported timing is missing or invalid.
 derive_group_sequential_schedule_from_legacy <- function(plan_tbl, gs_settings) {
   default_tbl <- build_default_gs_analysis_schedule(plan_tbl)
   if (is.null(gs_settings) || !nrow(gs_settings)) {
@@ -304,6 +335,8 @@ derive_group_sequential_schedule_from_legacy <- function(plan_tbl, gs_settings) 
   sanitize_gs_analysis_schedule_tbl(dplyr::bind_rows(rows))
 }
 
+# Load imported design/runtime state into the current app session while
+# preserving the existing finalized-design and replay workflow guards.
 load_group_sequential_design_from_import <- function(dat) {
   imported_plan <- dat$gs_hypothesis_plan
   imported_schedule <- dat$gs_analysis_schedule
@@ -353,6 +386,8 @@ load_group_sequential_design_from_import <- function(dat) {
   set_gs_analysis_schedule_round_signature(schedule_tbl)
   rv$gs_settings <- legacy_settings_from_group_sequential_design(plan_tbl, schedule_tbl)
 
+  # Import resets the wizard/runtime ownership first; any saved history is then
+  # replayed against that clean design state.
   reset_group_sequential_runtime_state()
   rv$gs_design_finalized <- FALSE
   rv$gs_applied_design_signature <- ""
@@ -363,6 +398,8 @@ load_group_sequential_design_from_import <- function(dat) {
   if (nrow(history_tbl)) {
     replay_ok <- tryCatch(replay_group_sequential_history(history_tbl), error = function(e) e)
     if (inherits(replay_ok, "error") || !isTRUE(replay_ok)) {
+      # A failed replay should keep the imported design but drop the stale
+      # frozen runtime history rather than leaving partially restored state.
       rv$gs_analysis_history <- empty_gs_analysis_history()
       rv$gs_stage_history <- empty_gs_stage_history()
       rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
