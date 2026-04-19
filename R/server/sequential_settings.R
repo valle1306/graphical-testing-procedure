@@ -1,3 +1,5 @@
+# ---- Hypothesis plan builders ----
+
 build_default_gs_hypothesis_plan <- function(
   nodes_tbl = rv$nodes,
   existing_tbl = isolate(rv$gs_hypothesis_plan)
@@ -98,6 +100,8 @@ collect_gs_hypothesis_plan <- function(persist = FALSE) {
     out
   }, note = sprintf("persist=%s", isTRUE(persist)))
 }
+
+# ---- Analysis schedule builders ----
 
 build_default_gs_analysis_schedule <- function(plan_tbl = rv$gs_hypothesis_plan) {
   plan_tbl <- sanitize_gs_hypothesis_plan_tbl(plan_tbl)
@@ -213,6 +217,8 @@ collect_gs_analysis_schedule <- function(plan_tbl = collect_gs_hypothesis_plan(p
     out
   }, note = sprintf("persist=%s rows=%s", isTRUE(persist), nrow(plan_tbl)))
 }
+
+# ---- Schedule validation ----
 
 validate_gs_analysis_schedule <- function(
   schedule_tbl = collect_gs_analysis_schedule(persist = FALSE),
@@ -332,7 +338,12 @@ validate_gs_analysis_schedule <- function(
   )
 }
 
+# ---- Reactive synchronization ----
+
 observe({
+  # Keep the finalized design-side plan, schedule, and legacy settings aligned
+  # with the current node set; the empty-node guard avoids churn from rebuilding
+  # design state when the graph has been cleared.
   node_signature <- paste(rv$nodes$id, rv$nodes$hypothesis, collapse = "|")
   if (!nzchar(node_signature) && !nrow(rv$nodes)) {
     rv$gs_hypothesis_plan <- empty_gs_hypothesis_plan()
@@ -351,6 +362,9 @@ observe({
 })
 
 observe({
+  # Pull live wizard inputs back into rv$gs_hypothesis_plan and the derived
+  # default schedule; the equality guards prevent writing identical state and
+  # retriggering downstream observers.
   if (!nrow(rv$nodes)) {
     return()
   }
@@ -371,6 +385,9 @@ observe({
 })
 
 observe({
+  # Keep rv$gs_analysis_schedule and legacy settings synchronized with the
+  # collected schedule inputs; the empty-plan and same-table guards prevent
+  # unnecessary resets and replay when nothing materially changed.
   if (!nrow(rv$gs_hypothesis_plan)) {
     empty_schedule <- empty_gs_analysis_schedule()
     current_settings <- isolate(rv$gs_settings)
