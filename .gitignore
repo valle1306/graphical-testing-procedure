@@ -12,6 +12,7 @@ renv/
 # Local editor settings
 .vscode/
 .claude/
+AGENTS.md
 
 # Runtime artifacts
 *.log
