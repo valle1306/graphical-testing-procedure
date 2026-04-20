@@ -20,7 +20,11 @@ build_analysis_tab <- function() {
                 tags$h3(class = "gs-title", "Analysis"),
                 tags$p(
                   class = "gs-help",
-                  "Submit one full analysis round at a time. Enter one-sided p-values for every hypothesis scheduled at that round and the app will update the graph and alpha recycling together."
+                  "Submit one full analysis time at a time. Enter one-sided p-values for every hypothesis scheduled at that analysis time and the app will update the graph and alpha recycling together."
+                ),
+                tags$p(
+                  class = "gs-table-note",
+                  "Analysis Time = shared trial checkpoint. Interim Analysis (Look) = hypothesis-specific test at that checkpoint."
                 )
               ),
               div(
@@ -50,10 +54,10 @@ build_analysis_tab <- function() {
           12,
           div(
             class = "gs-card",
-            tags$h4(class = "gs-section-title", "Submit One Analysis Round"),
+            tags$h4(class = "gs-section-title", "Submit One Analysis Time"),
             tags$p(
               class = "gs-table-note",
-              "Choose a global analysis round, then enter one-sided p-values for every active hypothesis scheduled at that round."
+              "Choose an analysis time, then enter one-sided p-values for every active hypothesis scheduled at that analysis time."
             ),
             uiOutput("gs_analysis_round_ui"),
             uiOutput("gs_analysis_preview_feedback"),
@@ -71,7 +75,7 @@ build_analysis_tab <- function() {
             tags$h4(class = "gs-section-title", "Live Analysis State"),
             tags$p(
               class = "gs-table-note",
-              "Use this table to track each hypothesis, the latest submitted result, and the next scheduled global round."
+              "Use this table to track each hypothesis, the latest submitted result, and the next scheduled analysis time."
             ),
             div(class = "gs-table-shell", DTOutput("gs_live_analysis_state_table"))
           ),
@@ -82,7 +86,7 @@ build_analysis_tab <- function() {
             tags$p(
               class = "gs-table-note",
               style = "margin-top: 12px;",
-              "Submission is the saved batch. Round / Stage identifies the specific round and stage inside that batch. Alpha At Submission is frozen for that row and does not change after recycling."
+              "Submission is the saved batch. Analysis Time / Look identifies the specific checkpoint and hypothesis-specific look inside that batch. One hypothesis can appear more than once in the same submission when same-analysis alpha recycling triggers a retest. Alpha At Submission is frozen for each saved event row and does not change after recycling."
             ),
             div(
               style = "margin-top: 12px;",
