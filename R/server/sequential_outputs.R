@@ -176,14 +176,22 @@ output$gs_hypothesis_plan_ui <- renderUI({
       return(tags$p("Add at least one hypothesis in the Design tab before building the group sequential design."))
     }
     plan_tbl <- isolate(build_default_gs_hypothesis_plan(rv$nodes, rv$gs_hypothesis_plan))
+    show_max_info <- isTRUE(input$gs_plan_override_max_info) ||
+      any(abs(as.numeric(plan_tbl$planned_max_info) - 100) > 1e-12, na.rm = TRUE)
     tags$div(
       class = "gs-table-shell",
+      checkboxInput(
+        inputId = "gs_plan_override_max_info",
+        label = "Override planned maximum information",
+        value = show_max_info
+      ),
       tags$table(
         class = "gs-input-table",
         tags$thead(
           tags$tr(
             tags$th("Hypothesis"),
             tags$th("Planned Analyses (K)"),
+            if (isTRUE(show_max_info)) tags$th("Planned Max Info"),
             tags$th("Alpha Spending Function"),
             tags$th("Rule Parameters")
           )
@@ -205,6 +213,18 @@ output$gs_hypothesis_plan_ui <- renderUI({
                   width = "100%"
                 )
               ),
+              if (isTRUE(show_max_info)) {
+                tags$td(
+                  numericInput(
+                    inputId = paste0("gs_plan_max_info_", id),
+                    label = NULL,
+                    value = as.numeric(plan_tbl$planned_max_info[[i]]),
+                    min = 0,
+                    step = 1,
+                    width = "100%"
+                  )
+                )
+              },
               tags$td(
                 selectInput(
                   inputId = paste0("gs_plan_rule_", id),
@@ -218,7 +238,13 @@ output$gs_hypothesis_plan_ui <- renderUI({
             )
           })
         )
-      )
+      ),
+      if (!isTRUE(show_max_info)) {
+        tags$div(
+          class = "gs-inline-note",
+          "Planned maximum information stays at the internal default unless you override it."
+        )
+      }
     )
   }, note = sprintf("nodes=%s", nrow(rv$nodes)))
 })
@@ -276,7 +302,7 @@ output$gs_analysis_schedule_ui <- renderUI({
         tags$tr(
           tags$th("Analysis Time"),
           tags$th("Hypothesis"),
-          tags$th("Hypothesis Stage"),
+          tags$th("Interim Analysis (Look)"),
           tags$th("Information Fraction")
         )
       ),
@@ -301,11 +327,10 @@ output$gs_analysis_schedule_ui <- renderUI({
             ),
             tags$td(tags$strong(schedule_tbl$hypothesis[[i]])),
             tags$td(
-              sprintf(
-                "%s of %s%s",
-                schedule_tbl$hypothesis_stage[[i]],
-                schedule_tbl$planned_analyses[[i]],
-                ifelse(isTRUE(schedule_tbl$is_final[[i]]), " (final)", "")
+              gs_schedule_stage_label(
+                hypothesis_stage = schedule_tbl$hypothesis_stage[[i]],
+                planned_analyses = schedule_tbl$planned_analyses[[i]],
+                is_final = schedule_tbl$is_final[[i]]
               )
             ),
             tags$td(
@@ -324,7 +349,7 @@ output$gs_analysis_schedule_ui <- renderUI({
 })
 
 # Step 3 boundary-review table. This shows the computed design-time boundary
-# schedule the user is about to lock in, one row per (round, hypothesis, stage).
+# schedule the user is about to lock in, one row per (analysis time, hypothesis, look).
 output$gs_boundary_schedule_table <- renderDT({
   quiet_jsonlite_warning({
     preview_tbl <- rv$gs_boundary_preview
@@ -401,15 +426,15 @@ output$gs_analysis_round_ui <- renderUI({
     force_first_actionable = isTRUE(rv$gs_force_first_actionable_round)
   )
   if (is.na(display_round)) {
-    return(tags$p("Choose an actionable analysis round to enter one-sided p-values."))
+    return(tags$p("Choose an actionable analysis time to enter one-sided p-values."))
   }
 
   selectInput(
     "gs_analysis_round",
-    "Global Analysis Round",
+    "Analysis Time",
     choices = stats::setNames(
       as.character(state$actionable_rounds),
-      paste("Round", state$actionable_rounds)
+      paste("Analysis Time", state$actionable_rounds)
     ),
     selected = as.character(display_round),
     width = "100%"
@@ -446,7 +471,7 @@ observe({
   updateSelectInput(
     session,
     "gs_analysis_round",
-    choices = stats::setNames(as.character(state$actionable_rounds), paste("Round", state$actionable_rounds)),
+    choices = stats::setNames(as.character(state$actionable_rounds), paste("Analysis Time", state$actionable_rounds)),
     selected = as.character(target_round)
   )
 })
@@ -472,15 +497,18 @@ output$gs_round_feedback <- renderUI({
 })
 
 # Render the per-hypothesis entry table for the currently displayed analysis
-# round. This is the UI the user fills in before clicking "Submit Analysis Round".
+# time. This is the UI the user fills in before clicking "Submit Analysis Time".
 #
-# Each row comes from the remaining boundary-preview rows for the selected round.
-# Ready rows get a p-value input; non-ready rows are shown as informational only.
+# Rows come from the actionable boundary-preview rows for the selected analysis
+# time. Inactive rows at the same checkpoint stay out of the input table so the
+# user only sees hypotheses that can actually accept p-values right now.
 output$gs_round_entry_ui <- renderUI({
   preview_tbl <- rv$gs_boundary_preview
   if (is.null(preview_tbl) || !nrow(preview_tbl)) {
     return(tags$p("Define a valid boundary schedule before submitting analysis results."))
   }
+  plan_tbl <- collect_gs_hypothesis_plan(persist = FALSE)
+  max_info_lookup <- stats::setNames(as.numeric(plan_tbl$planned_max_info), as.character(plan_tbl$hypothesis))
 
   selected_round <- read_scalar_integer_input("gs_analysis_round", default = NA_integer_)
   state <- gs_analysis_round_state(
@@ -499,7 +527,7 @@ output$gs_round_entry_ui <- renderUI({
     force_first_actionable = isTRUE(rv$gs_force_first_actionable_round)
   )
   if (is.na(display_round)) {
-    return(tags$p("Choose an actionable analysis round to enter one-sided p-values."))
+    return(tags$p("Choose an actionable analysis time to enter one-sided p-values."))
   }
 
   display_state <- if (identical(display_round, state$selected_round)) {
@@ -512,7 +540,38 @@ output$gs_round_entry_ui <- renderUI({
     )
   }
   if (!nrow(display_state$remaining_rows)) {
-    return(tags$p(sprintf("No hypotheses are scheduled at analysis round %s.", display_round)))
+    return(tags$p(sprintf("No hypotheses are scheduled at analysis time %s.", display_round)))
+  }
+  if (!nrow(display_state$actionable_rows)) {
+    return(tags$p(sprintf("No active hypotheses are ready at analysis time %s.", display_round)))
+  }
+
+  history_tbl <- sanitize_gs_analysis_history_tbl(rv$gs_analysis_history)
+  last_result_lookup <- stats::setNames(
+    rep("No prior saved result", nrow(display_state$actionable_rows)),
+    display_state$actionable_rows$schedule_key
+  )
+  if (nrow(history_tbl)) {
+    last_history_tbl <- history_tbl %>%
+      dplyr::arrange(submission, analysis_round, hypothesis_stage) %>%
+      dplyr::group_by(hypothesis) %>%
+      dplyr::slice_tail(n = 1) %>%
+      dplyr::ungroup() %>%
+      dplyr::transmute(
+        hypothesis = as.character(hypothesis),
+        previous_saved_result = sprintf(
+          "%s: p %s vs %s -> %s",
+          gs_round_stage_label(analysis_round, hypothesis_stage, is_final = is_final),
+          format_plain_number(p_value),
+          format_plain_number(boundary_p),
+          as.character(decision)
+        )
+      )
+    matched_previous <- last_history_tbl$previous_saved_result[
+      match(display_state$actionable_rows$hypothesis, last_history_tbl$hypothesis)
+    ]
+    has_previous <- !is.na(matched_previous) & nzchar(matched_previous)
+    last_result_lookup[has_previous] <- matched_previous[has_previous]
   }
 
   tags$div(
@@ -522,66 +581,75 @@ output$gs_round_entry_ui <- renderUI({
       tags$thead(
         tags$tr(
           tags$th("Hypothesis"),
-          tags$th("Stage"),
+          tags$th("Interim Analysis (Look)"),
           tags$th("Current Alpha"),
           tags$th("Planned Information Fraction"),
+          tags$th("Planned Max Info"),
+          tags$th("Observed Info"),
+          tags$th("Previous Saved Result"),
           tags$th("Boundary p"),
           tags$th("Entered One-Sided p"),
           tags$th("Decision")
         )
       ),
       tags$tbody(
-        lapply(seq_len(nrow(display_state$remaining_rows)), function(i) {
-          key <- display_state$remaining_rows$schedule_key[[i]]
+        lapply(seq_len(nrow(display_state$actionable_rows)), function(i) {
+          key <- display_state$actionable_rows$schedule_key[[i]]
+          planned_max_info <- as.numeric(max_info_lookup[[display_state$actionable_rows$hypothesis[[i]]]])
+          if (!is.finite(planned_max_info) || planned_max_info <= 0) {
+            planned_max_info <- 100
+          }
+          default_observed_info <- display_state$actionable_rows$timing[[i]] * planned_max_info
           tags$tr(
-            tags$td(tags$strong(display_state$remaining_rows$hypothesis[[i]])),
+            tags$td(tags$strong(display_state$actionable_rows$hypothesis[[i]])),
             tags$td(
-              sprintf(
-                "%s of %s%s",
-                display_state$remaining_rows$hypothesis_stage[[i]],
-                display_state$remaining_rows$planned_analyses[[i]],
-                ifelse(isTRUE(display_state$remaining_rows$is_final[[i]]), " (final)", "")
+              gs_schedule_stage_label(
+                hypothesis_stage = display_state$actionable_rows$hypothesis_stage[[i]],
+                planned_analyses = display_state$actionable_rows$planned_analyses[[i]],
+                is_final = display_state$actionable_rows$is_final[[i]]
               )
             ),
-            tags$td(format_plain_number(display_state$remaining_rows$current_alpha[[i]])),
-            tags$td(format_plain_number(display_state$remaining_rows$timing[[i]])),
+            tags$td(format_plain_number(display_state$actionable_rows$current_alpha[[i]])),
+            tags$td(format_plain_number(display_state$actionable_rows$timing[[i]])),
+            tags$td(format_plain_number(planned_max_info)),
             tags$td(
-              if (is.na(display_state$remaining_rows$p_boundary[[i]])) {
+              numericInput(
+                inputId = paste0("gs_round_info_", key),
+                label = NULL,
+                value = as.numeric(default_observed_info),
+                min = 0,
+                step = 1,
+                width = "100%"
+              )
+            ),
+            tags$td(last_result_lookup[[key]]),
+            tags$td(
+              if (is.na(display_state$actionable_rows$p_boundary[[i]])) {
                 ""
               } else {
-                format_plain_number(display_state$remaining_rows$p_boundary[[i]])
+                format_plain_number(display_state$actionable_rows$p_boundary[[i]])
               }
             ),
             tags$td(
-              if (identical(display_state$remaining_rows$status[[i]], "Ready")) {
-                numericInput(
-                  inputId = paste0("gs_round_p_", key),
-                  label = NULL,
-                  value = NA_real_,
-                  min = 0,
-                  max = 1,
-                  step = 0.0001,
-                  width = "100%"
-                )
-              } else {
-                tags$div(class = "gs-muted", "Not applicable")
-              }
+              numericInput(
+                inputId = paste0("gs_round_p_", key),
+                label = NULL,
+                value = NA_real_,
+                min = 0,
+                max = 1,
+                step = 0.0001,
+                width = "100%"
+              )
             ),
-            tags$td(
-              if (identical(display_state$remaining_rows$status[[i]], "Ready")) {
-                "Computed on submit"
-              } else {
-                display_state$remaining_rows$status[[i]]
-              }
-            )
+            tags$td("Computed on submit")
           )
         })
       )
     ),
-    if (any(display_state$remaining_rows$status != "Ready")) {
+    if (nrow(display_state$remaining_rows) > nrow(display_state$actionable_rows)) {
       tags$div(
         class = "gs-inline-note",
-        "Only hypotheses that are still active in the graph and ready for one-sided testing accept p-values at this round."
+        "Only active, testable hypotheses are shown here. Inactive rows are hidden."
       )
     }
   )
@@ -603,7 +671,7 @@ output$gs_submit_round_ui <- renderUI({
   }
   tags$div(
     class = "gs-actions",
-    actionButton("gs_submit_round", "Submit Analysis Round", class = "btn btn-warning")
+    actionButton("gs_submit_round", "Submit Analysis Time", class = "btn btn-warning")
   )
 })
 
@@ -616,9 +684,9 @@ output$gs_submitted_analyses_table <- renderDT({
     display_tbl <- display_tbl %>%
       dplyr::mutate(
         Submission = vapply(Submission, gs_submission_chip_html, character(1)),
-        `Round / Stage` = vapply(
-          `Round / Stage`,
-          function(x) gs_chip_html(x, "round-stage", title = "Round / stage"),
+        `Analysis Time / Look` = vapply(
+          `Analysis Time / Look`,
+          function(x) gs_chip_html(x, "round-stage", title = "Analysis time / look"),
           character(1)
         ),
         Decision = vapply(Decision, gs_decision_chip_html, character(1))
@@ -635,7 +703,7 @@ output$gs_submitted_analyses_table <- renderDT({
 
 # Live analysis-state table. Unlike the submitted-history table, this view is a
 # current summary derived from the latest runtime state and points the user to
-# the next scheduled global round for each hypothesis.
+# the next scheduled analysis time for each hypothesis.
 output$gs_live_analysis_state_table <- renderDT({
   quiet_jsonlite_warning({
     status_tbl <- build_ts_status_table()
@@ -646,13 +714,13 @@ output$gs_live_analysis_state_table <- renderDT({
     )
     display_tbl <- display_tbl %>%
       dplyr::mutate(
-        `Last Submitted Round / Stage` = vapply(
-          `Last Submitted Round / Stage`,
+        `Last Submitted Analysis Time / Look` = vapply(
+          `Last Submitted Analysis Time / Look`,
           function(x) {
             if (!nzchar(gs_scalar_display_text(x))) {
               return("")
             }
-            gs_chip_html(x, "round-stage", title = "Latest submitted round / stage")
+            gs_chip_html(x, "round-stage", title = "Latest submitted analysis time / look")
           },
           character(1)
         ),
@@ -685,7 +753,7 @@ output$gs_analysis_design_summary <- renderUI({
           style = "color:#78350f; margin:0;",
           "Go to the Group Sequential Design tab and click ",
           tags$strong("Finalize Design"),
-          " before submitting analysis rounds."
+          " before submitting analysis times."
         )
       )
     )

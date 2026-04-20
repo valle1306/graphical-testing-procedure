@@ -107,10 +107,39 @@ gs_round_stage_label <- function(analysis_round, hypothesis_stage, is_final = FA
   keep <- !is.na(analysis_round) & is.finite(analysis_round) & !is.na(hypothesis_stage) & is.finite(hypothesis_stage)
   if (any(keep)) {
     out[keep] <- sprintf(
-      "Round %s / Stage %s%s",
+      "Analysis Time %s / Look %s%s",
       analysis_round[keep],
       hypothesis_stage[keep],
       ifelse(is_final[keep], " (final)", "")
+    )
+  }
+  out
+}
+
+# UI wording distinguishes hypothesis-specific interim looks from the final
+# look, even though both map back to the same stored hypothesis_stage integer.
+gs_schedule_stage_label <- function(hypothesis_stage, planned_analyses, is_final = FALSE) {
+  hypothesis_stage <- suppressWarnings(as.integer(unlist(hypothesis_stage, recursive = TRUE, use.names = FALSE)))
+  planned_analyses <- suppressWarnings(as.integer(unlist(planned_analyses, recursive = TRUE, use.names = FALSE)))
+  is_final <- as.logical(unlist(is_final, recursive = TRUE, use.names = FALSE))
+  if (!length(hypothesis_stage) || !length(planned_analyses)) {
+    return(character())
+  }
+  if (!length(is_final)) {
+    is_final <- FALSE
+  }
+  n <- max(length(hypothesis_stage), length(planned_analyses), length(is_final))
+  hypothesis_stage <- rep(hypothesis_stage, length.out = n)
+  planned_analyses <- rep(planned_analyses, length.out = n)
+  is_final <- rep(is_final, length.out = n)
+  out <- rep("", n)
+  keep <- !is.na(hypothesis_stage) & is.finite(hypothesis_stage) &
+    !is.na(planned_analyses) & is.finite(planned_analyses)
+  if (any(keep)) {
+    out[keep] <- ifelse(
+      is_final[keep],
+      sprintf("Final Analysis %s of %s", hypothesis_stage[keep], planned_analyses[keep]),
+      sprintf("Interim Analysis %s of %s", hypothesis_stage[keep], planned_analyses[keep])
     )
   }
   out
@@ -124,7 +153,7 @@ gs_round_stage_chip_html <- function(analysis_round, hypothesis_stage, is_final 
   gs_chip_html(
     gs_round_stage_label(analysis_round, hypothesis_stage, is_final = is_final),
     "round-stage",
-    title = "Round / stage"
+    title = "Analysis time / look"
   )
 }
 
@@ -220,14 +249,14 @@ normalize_gs_decision_label <- function(x) {
 
 empty_gs_boundary_review_display <- function() {
   tibble::tibble(
-    Round = integer(),
+    `Analysis Time` = integer(),
     Hypothesis = character(),
-    Stage = integer(),
+    `Interim Analysis (Look)` = integer(),
     `Total Analyses` = integer(),
     `Info Fraction` = character(),
     `Alpha Spending` = character(),
     `Current Alpha` = character(),
-    `Stage Alpha` = character(),
+    `Look Alpha` = character(),
     `Cumulative Alpha` = character(),
     `Boundary p` = character(),
     `Boundary z` = character(),
@@ -242,14 +271,14 @@ gs_boundary_review_display_tbl <- function(preview_tbl = rv$gs_boundary_preview)
   }
   preview_tbl %>%
     dplyr::transmute(
-      Round = analysis_round,
+      `Analysis Time` = analysis_round,
       Hypothesis = hypothesis,
-      Stage = hypothesis_stage,
+      `Interim Analysis (Look)` = hypothesis_stage,
       `Total Analyses` = planned_analyses,
       `Info Fraction` = format_plain_number(timing),
-      `Alpha Spending` = as.character(alpha_spending),
+      `Alpha Spending` = vapply(alpha_spending, gs_spending_rule_label, character(1)),
       `Current Alpha` = ifelse(is.na(current_alpha), "", format_plain_number(current_alpha)),
-      `Stage Alpha` = ifelse(is.na(stage_alpha), "", format_plain_number(stage_alpha)),
+      `Look Alpha` = ifelse(is.na(stage_alpha), "", format_plain_number(stage_alpha)),
       `Cumulative Alpha` = ifelse(is.na(cumulative_alpha_spent), "", format_plain_number(cumulative_alpha_spent)),
       `Boundary p` = ifelse(is.na(p_boundary), "", format_plain_number(p_boundary)),
       `Boundary z` = ifelse(is.na(z_boundary), "", format_plain_number(z_boundary)),
@@ -264,7 +293,7 @@ empty_gs_analysis_status_display <- function() {
     Decision = character(),
     `In Graph` = character(),
     Testable = character(),
-    `Next Global Round` = character()
+    `Next Analysis Time` = character()
   )
 }
 
@@ -286,7 +315,7 @@ gs_status_display_tbl <- function(
       Decision = as.character(decision),
       `In Graph` = ifelse(as.logical(in_graph), "Yes", "No"),
       Testable = ifelse(as.logical(testable), "Yes", "No"),
-      `Next Global Round` = ifelse(is.na(`Next Round`), "", as.character(`Next Round`))
+      `Next Analysis Time` = ifelse(is.na(`Next Round`), "", as.character(`Next Round`))
     )
 }
 
@@ -294,12 +323,12 @@ empty_gs_live_analysis_state_display <- function() {
   tibble::tibble(
     Hypothesis = character(),
     `Current Alpha` = character(),
-    `Last Submitted Round / Stage` = character(),
+    `Last Submitted Analysis Time / Look` = character(),
     `Last Observed p` = character(),
     Decision = character(),
     `In Graph` = character(),
     Testable = character(),
-    `Next Global Round` = character()
+    `Next Analysis Time` = character()
   )
 }
 
@@ -308,7 +337,7 @@ gs_last_history_by_hypothesis_tbl <- function(history_tbl = rv$gs_analysis_histo
   if (!nrow(history_tbl)) {
     return(tibble::tibble(
       hypothesis = character(),
-      last_round_stage = character(),
+      last_analysis_time_look = character(),
       last_p_value = character(),
       last_decision = character()
     ))
@@ -320,7 +349,7 @@ gs_last_history_by_hypothesis_tbl <- function(history_tbl = rv$gs_analysis_histo
     dplyr::ungroup() %>%
     dplyr::transmute(
       hypothesis = as.character(hypothesis),
-      last_round_stage = gs_round_stage_label(analysis_round, hypothesis_stage),
+      last_analysis_time_look = gs_round_stage_label(analysis_round, hypothesis_stage),
       last_p_value = format_plain_number(p_value),
       last_decision = as.character(decision)
     )
@@ -331,7 +360,7 @@ gs_submitted_analyses_display_tbl <- function(history_tbl = rv$gs_analysis_histo
   if (!nrow(history_tbl)) {
     return(tibble::tibble(
       Submission = character(),
-      `Round / Stage` = character(),
+      `Analysis Time / Look` = character(),
       Hypothesis = character(),
       `Alpha Spending` = character(),
       `Info Fraction` = character(),
@@ -345,9 +374,9 @@ gs_submitted_analyses_display_tbl <- function(history_tbl = rv$gs_analysis_histo
   history_tbl %>%
     dplyr::transmute(
       Submission = as.character(submission),
-      `Round / Stage` = gs_round_stage_label(analysis_round, hypothesis_stage, is_final = is_final),
+      `Analysis Time / Look` = gs_round_stage_label(analysis_round, hypothesis_stage, is_final = is_final),
       Hypothesis = as.character(hypothesis),
-      `Alpha Spending` = as.character(alpha_spending),
+      `Alpha Spending` = vapply(alpha_spending, gs_spending_rule_label, character(1)),
       `Info Fraction` = format_plain_number(information_fraction),
       `Alpha At Submission` = format_plain_number(current_alpha),
       P = format_plain_number(p_value),
@@ -374,7 +403,7 @@ gs_live_analysis_state_tbl <- function(
     dplyr::transmute(
       Hypothesis = as.character(hypothesis),
       `Current Alpha` = format_plain_number(current_alpha),
-      `Last Submitted Round / Stage` = dplyr::coalesce(last_round_stage, ""),
+      `Last Submitted Analysis Time / Look` = dplyr::coalesce(last_analysis_time_look, ""),
       `Last Observed p` = dplyr::coalesce(last_p_value, ""),
       Decision = dplyr::case_when(
         !is.na(last_decision) & nzchar(last_decision) ~ last_decision,
@@ -384,6 +413,12 @@ gs_live_analysis_state_tbl <- function(
       ),
       `In Graph` = ifelse(as.logical(in_graph), "Yes", "No"),
       Testable = ifelse(as.logical(testable), "Yes", "No"),
-      `Next Global Round` = ifelse(is.na(`Next Round`), "", as.character(`Next Round`))
+      # Rejected hypotheses are out of the graph, so a future scheduled time is
+      # no longer actionable and should display as blanked-out UI state.
+      `Next Analysis Time` = dplyr::case_when(
+        !as.logical(in_graph) ~ "—",
+        is.na(`Next Round`) ~ "—",
+        TRUE ~ as.character(`Next Round`)
+      )
     )
 }
