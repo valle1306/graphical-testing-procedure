@@ -31,33 +31,50 @@ set_gs_round_feedback <- function(text = NULL, type = c("success", "error")) {
 
 gs_round_submission_feedback_text <- function(
   analysis_round,
-  hypothesis_count,
+  saved_result_count,
+  hypothesis_count = saved_result_count,
   next_round = NA_integer_
 ) {
   analysis_round <- coerce_scalar_integer(analysis_round, default = NA_integer_, minimum = 1L)
+  saved_result_count <- coerce_scalar_integer(saved_result_count, default = NA_integer_, minimum = 0L)
   hypothesis_count <- coerce_scalar_integer(hypothesis_count, default = NA_integer_, minimum = 0L)
   next_round <- coerce_scalar_integer(next_round, default = NA_integer_, minimum = 1L)
 
-  if (is.na(analysis_round) || is.na(hypothesis_count)) {
+  if (is.na(analysis_round) || is.na(saved_result_count) || is.na(hypothesis_count)) {
     return("")
   }
 
-  noun <- if (identical(hypothesis_count, 1L)) "hypothesis" else "hypotheses"
+  result_noun <- if (identical(saved_result_count, 1L)) "saved result" else "saved results"
+  hypothesis_noun <- if (identical(hypothesis_count, 1L)) "hypothesis" else "hypotheses"
   message <- sprintf(
-    "Saved analysis round %s for %s %s.",
+    "Saved analysis time %s with %s %s across %s %s.",
     analysis_round,
+    saved_result_count,
+    result_noun,
     hypothesis_count,
-    noun
+    hypothesis_noun
   )
   if (!is.na(next_round) && !identical(next_round, analysis_round)) {
-    message <- sprintf("%s Now showing Round %s.", message, next_round)
+    message <- sprintf("%s Now showing Analysis Time %s.", message, next_round)
   }
   message
 }
 
+gs_spending_rule_label <- function(rule) {
+  normalized <- normalize_spending_rule(rule)
+  dplyr::case_when(
+    identical(normalized, "OF") ~ "Lan-DeMets O'Brien-Fleming",
+    identical(normalized, "Pocock") ~ "Pocock",
+    identical(normalized, "HSD") ~ "Hwang-Shih-DeCani",
+    identical(normalized, "Haybittle-Peto") ~ "Haybittle-Peto",
+    identical(normalized, "Custom") ~ "Custom cumulative alpha",
+    TRUE ~ as.character(rule[[1]])
+  )
+}
+
 gs_rule_choices <- function(include_custom = TRUE) {
   choices <- c(
-    "O'Brien-Fleming" = "OF",
+    "Lan-DeMets O'Brien-Fleming" = "OF",
     "Pocock" = "Pocock",
     "Hwang-Shih-DeCani" = "HSD",
     "Haybittle-Peto" = "Haybittle-Peto"
@@ -114,6 +131,7 @@ gs_current_design_signature <- function(
         plan_tbl$id,
         plan_tbl$hypothesis,
         plan_tbl$planned_analyses,
+        format_plain_number(plan_tbl$planned_max_info),
         plan_tbl$alpha_spending,
         trimws(plan_tbl$custom_cumulative_alpha),
         format_plain_number(plan_tbl$hsd_gamma),
@@ -175,6 +193,7 @@ legacy_settings_from_group_sequential_design <- function(
       use_override = logical(),
       alpha_spending = character(),
       planned_analyses = integer(),
+      planned_max_info = numeric(),
       info_timing = character(),
       spending_values = character(),
       hsd_gamma = numeric(),
@@ -191,6 +210,7 @@ legacy_settings_from_group_sequential_design <- function(
       use_override = TRUE,
       alpha_spending = plan_tbl$alpha_spending[[i]],
       planned_analyses = plan_tbl$planned_analyses[[i]],
+      planned_max_info = plan_tbl$planned_max_info[[i]],
       info_timing = if (nrow(hypothesis_rows)) {
         paste(vapply(hypothesis_rows$information_fraction, format_plain_number, character(1)), collapse = ", ")
       } else {
@@ -210,25 +230,33 @@ legacy_settings_from_group_sequential_design <- function(
 
 build_round_submit_log <- function(history_rows) {
   if (is.null(history_rows) || !nrow(history_rows)) {
-    return("No analysis rows were submitted.")
+    return("No analysis-time rows were submitted.")
   }
-  decision_summary <- paste(
+  saved_result_count <- nrow(history_rows)
+  hypothesis_count <- dplyr::n_distinct(history_rows$hypothesis)
+  detail_lines <- vapply(seq_len(nrow(history_rows)), function(i) {
     sprintf(
-      "%s stage %s: %s",
-      history_rows$hypothesis,
-      history_rows$hypothesis_stage,
-      tolower(history_rows$decision)
-    ),
-    collapse = "; "
-  )
+      "%s: alpha at submission %s, boundary p %s, decision %s.",
+      gs_round_stage_label(
+        history_rows$analysis_round[[i]],
+        history_rows$hypothesis_stage[[i]],
+        is_final = history_rows$is_final[[i]]
+      ),
+      format_plain_number(history_rows$current_alpha[[i]]),
+      format_plain_number(history_rows$boundary_p[[i]]),
+      as.character(history_rows$decision[[i]])
+    )
+  }, character(1))
   c(
     sprintf(
-      "Submitted group sequential analysis round %s for %s hypothesis%s.",
+      "Submitted group sequential analysis time %s with %s saved result%s across %s %s.",
       history_rows$analysis_round[[1]],
-      nrow(history_rows),
-      ifelse(nrow(history_rows) == 1L, "", "es")
+      saved_result_count,
+      ifelse(saved_result_count == 1L, "", "s"),
+      hypothesis_count,
+      ifelse(hypothesis_count == 1L, "hypothesis", "hypotheses")
     ),
-    sprintf("Decisions: %s.", decision_summary),
+    detail_lines,
     format_alpha_snapshot()
   )
 }
@@ -281,22 +309,6 @@ latest_gs_history_decision_map <- function(
     result[latest_rows$hypothesis] <- vapply(latest_rows$decision, normalize_gs_decision_label, character(1))
   }
   result
-}
-
-apply_frozen_gs_rejections <- function(ts_object, rejected_hypotheses) {
-  rejected_hypotheses <- rejected_hypotheses[!is.na(rejected_hypotheses)]
-  rejected_hypotheses <- unique(trimws(as.character(rejected_hypotheses)))
-  rejected_hypotheses <- rejected_hypotheses[nzchar(rejected_hypotheses)]
-  if (is.null(ts_object) || !length(rejected_hypotheses)) {
-    return(invisible(FALSE))
-  }
-  for (hyp in rejected_hypotheses) {
-    withCallingHandlers(
-      ts_object$reject_a_hypothesis(hyp),
-      message = function(m) invokeRestart("muffleMessage")
-    )
-  }
-  invisible(TRUE)
 }
 
 gs_round_choice_values <- function(schedule_tbl = rv$gs_analysis_schedule) {
@@ -462,7 +474,7 @@ gs_analysis_round_state <- function(
 }
 
 gs_analysis_round_closed_state_message <- function() {
-  "All actionable analysis rounds have been submitted."
+  "All actionable analysis times have been submitted."
 }
 
 gs_custom_alpha_profile <- function(plan_row, design_alpha, current_alpha = design_alpha) {
@@ -563,7 +575,7 @@ validate_gs_runtime_alpha_spent <- function(
       return(list(
         ok = FALSE,
         message = sprintf(
-          "%s stage %s is missing a valid cumulative alpha-spending fraction.",
+          "%s look %s is missing a valid cumulative alpha-spending fraction.",
           ready_rows$hypothesis[[i]],
           ready_rows$hypothesis_stage[[i]]
         )
@@ -591,7 +603,7 @@ validate_gs_runtime_alpha_spent <- function(
       return(list(
         ok = FALSE,
         message = sprintf(
-          "%s stage %s must increase cumulative alpha spending beyond the previous submitted look.",
+          "%s look %s must increase cumulative alpha spending beyond the previous submitted look.",
           ready_rows$hypothesis[[i]],
           ready_rows$hypothesis_stage[[i]]
         )
