@@ -25,7 +25,7 @@ legacy_gs_settings <- data.frame(
 
 normalize_rule <- function(value) {
   if (identical(value, "OF")) {
-    return("O'Brien-Fleming")
+    return("Lan-DeMets O'Brien-Fleming")
   }
   if (identical(value, "Pocock")) {
     return("Pocock")
@@ -94,7 +94,7 @@ row.names(derived_schedule) <- NULL
 
 stopifnot(nrow(normalized_plan) == 3L)
 stopifnot(identical(normalized_plan$planned_analyses, c(2L, 1L, 3L)))
-stopifnot(normalized_plan$alpha_spending[1] == "O'Brien-Fleming")
+stopifnot(normalized_plan$alpha_spending[1] == "Lan-DeMets O'Brien-Fleming")
 stopifnot(normalized_plan$alpha_spending[3] == "Custom cumulative alpha")
 stopifnot(abs(normalized_plan$haybittle_p1[1] - 0.0003) < 1e-12)
 stopifnot(derived_schedule$analysis_round[derived_schedule$hypothesis == "H2"][[1]] == 3L)

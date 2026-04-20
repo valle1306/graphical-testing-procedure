@@ -46,7 +46,7 @@ shiny::testServer(server, {
     notify = FALSE
   )
   stopifnot(!isTRUE(zero_case$ok))
-  stopifnot(identical(zero_case$message, "H1 information fractions must stay within (0, 1]."))
+  stopifnot(identical(zero_case$message, "Information fractions for interim analyses must be in (0, 1) and incremental."))
 
   one_case <- validate_gs_analysis_schedule(
     schedule_tbl = make_schedule_tbl(c(1, 1, 1)),
@@ -54,7 +54,7 @@ shiny::testServer(server, {
     notify = FALSE
   )
   stopifnot(!isTRUE(one_case$ok))
-  stopifnot(identical(one_case$message, "H1 stage 1 information fraction must be strictly between 0 and 1 for non-final analyses."))
+  stopifnot(identical(one_case$message, "Information fractions for interim analyses must be in (0, 1) and incremental."))
 
   middle_endpoint_case <- validate_gs_analysis_schedule(
     schedule_tbl = make_schedule_tbl(c(0.4, 1, 1)),
@@ -62,7 +62,7 @@ shiny::testServer(server, {
     notify = FALSE
   )
   stopifnot(!isTRUE(middle_endpoint_case$ok))
-  stopifnot(identical(middle_endpoint_case$message, "H1 stage 2 information fraction must be strictly between 0 and 1 for non-final analyses."))
+  stopifnot(identical(middle_endpoint_case$message, "Information fractions for interim analyses must be in (0, 1) and incremental."))
 
   valid_case <- validate_gs_analysis_schedule(
     schedule_tbl = make_schedule_tbl(c(1 / 3, 2 / 3, 1)),
@@ -73,7 +73,7 @@ shiny::testServer(server, {
 })
 
 cat("Information fraction validation verification passed.\n")
-cat("- Stage 1 = 0 is rejected.\n")
-cat("- Stage 1 = 1 is rejected for a non-final analysis.\n")
-cat("- Any non-final stage = 1 is rejected.\n")
+cat("- Interim-analysis fraction = 0 is rejected.\n")
+cat("- Interim-analysis fraction = 1 is rejected.\n")
+cat("- Any non-final fraction = 1 is rejected.\n")
 cat("- Strictly increasing fractions ending at 1 remain valid.\n")

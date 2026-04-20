@@ -14,6 +14,7 @@ suppressPackageStartupMessages(library(dplyr))
 
 source(file.path(project_root, "R", "server", "common_helpers.R"), local = TRUE)
 observe <- function(...) invisible(NULL)
+observeEvent <- function(...) invisible(NULL)
 source(file.path(project_root, "R", "server", "sequential_settings.R"), local = TRUE)
 
 same_sanitized_table <- function(left, right, sanitizer) {
