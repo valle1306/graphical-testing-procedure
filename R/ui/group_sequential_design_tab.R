@@ -321,6 +321,10 @@ build_group_sequential_design_tab <- function() {
                   class = "gs-table-note",
                   "Review the design-time one-sided boundaries. When everything looks correct, finalize the design to proceed to the Analysis tab."
                 ),
+                tags$p(
+                  class = "gs-inline-note",
+                  "This table is a design-time preview only. When you later submit one Analysis Time, TrialSimulator resolves the live batch, including any same-analysis alpha recycling, and the Submitted Analyses table freezes the package-truth boundary used for each saved result."
+                ),
                 uiOutput("gs_boundary_preview_feedback"),
                 div(class = "gs-table-shell", DTOutput("gs_boundary_schedule_table")),
                 uiOutput("gs_finalize_feedback"),
