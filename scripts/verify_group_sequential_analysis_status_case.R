@@ -29,6 +29,7 @@ format_plain_number <- function(x) {
   out
 }
 observe <- function(...) invisible(NULL)
+observeEvent <- function(...) invisible(NULL)
 
 source(file.path(project_root, "R", "server", "common_helpers.R"), local = TRUE)
 source(file.path(project_root, "R", "server", "sequential_settings.R"), local = TRUE)
@@ -111,29 +112,29 @@ stopifnot(length(warning_messages) == 0L)
 stopifnot(grepl("gs-chip-submission", gs_submission_chip_html(2L), fixed = TRUE))
 stopifnot(grepl("Submission 2", gs_submission_chip_html(2L), fixed = TRUE))
 stopifnot(grepl("gs-chip-round-stage", gs_round_stage_chip_html(2L, 2L), fixed = TRUE))
-stopifnot(grepl("Round 2 / Stage 2", gs_round_stage_chip_html(2L, 2L), fixed = TRUE))
+stopifnot(grepl("Analysis Time 2 / Look 2", gs_round_stage_chip_html(2L, 2L), fixed = TRUE))
 stopifnot(grepl("gs-chip-reject", gs_decision_chip_html("Reject"), fixed = TRUE))
 stopifnot(grepl("gs-chip-keep", gs_decision_chip_html("Do not reject"), fixed = TRUE))
 stopifnot(grepl("gs-chip-pending", gs_decision_chip_html("Pending"), fixed = TRUE))
 stopifnot(identical(
-  gs_round_submission_feedback_text(1L, 1L),
-  "Saved analysis round 1 for 1 hypothesis."
-))
-stopifnot(identical(
-  gs_round_submission_feedback_text(1L, 2L),
-  "Saved analysis round 1 for 2 hypotheses."
+  gs_round_submission_feedback_text(1L, 1L, 1L),
+  "Saved analysis time 1 with 1 saved result across 1 hypothesis."
 ))
 stopifnot(identical(
   gs_round_submission_feedback_text(1L, 2L, 2L),
-  "Saved analysis round 1 for 2 hypotheses. Now showing Round 2."
+  "Saved analysis time 1 with 2 saved results across 2 hypotheses."
+))
+stopifnot(identical(
+  gs_round_submission_feedback_text(1L, 3L, 2L, 2L),
+  "Saved analysis time 1 with 3 saved results across 2 hypotheses. Now showing Analysis Time 2."
 ))
 stopifnot(identical(
   gs_round_stage_label(c(2L, 2L), c(1L, 2L), is_final = c(FALSE, TRUE)),
-  c("Round 2 / Stage 1", "Round 2 / Stage 2 (final)")
+  c("Analysis Time 2 / Look 1", "Analysis Time 2 / Look 2 (final)")
 ))
 stopifnot(identical(
   gs_analysis_round_closed_state_message(),
-  "All actionable analysis rounds have been submitted."
+  "All actionable analysis times have been submitted."
 ))
 
 empty_submitted_display <- gs_submitted_analyses_display_tbl(empty_gs_analysis_history())
@@ -141,7 +142,7 @@ stopifnot(identical(
   names(empty_submitted_display),
   c(
     "Submission",
-    "Round / Stage",
+    "Analysis Time / Look",
     "Hypothesis",
     "Alpha Spending",
     "Info Fraction",
@@ -158,14 +159,14 @@ empty_boundary_review_display <- gs_boundary_review_display_tbl(empty_gs_boundar
 stopifnot(identical(
   names(empty_boundary_review_display),
   c(
-    "Round",
+    "Analysis Time",
     "Hypothesis",
-    "Stage",
+    "Interim Analysis (Look)",
     "Total Analyses",
     "Info Fraction",
     "Alpha Spending",
     "Current Alpha",
-    "Stage Alpha",
+    "Look Alpha",
     "Cumulative Alpha",
     "Boundary p",
     "Boundary z",
@@ -194,8 +195,12 @@ mismatch_history <- sanitize_gs_analysis_history_tbl(tibble::tibble(
 ))
 mismatch_display <- gs_submitted_analyses_display_tbl(mismatch_history)
 stopifnot(identical(
-  as.character(mismatch_display$`Round / Stage`),
-  c("Round 2 / Stage 1", "Round 2 / Stage 2 (final)")
+  as.character(mismatch_display$`Analysis Time / Look`),
+  c("Analysis Time 2 / Look 1", "Analysis Time 2 / Look 2 (final)")
+))
+stopifnot(identical(
+  build_round_submit_log(mismatch_history)[[1]],
+  "Submitted group sequential analysis time 2 with 2 saved results across 2 hypotheses."
 ))
 
 mismatch_status_tbl <- tibble::tibble(
@@ -210,7 +215,8 @@ mismatch_live <- gs_live_analysis_state_tbl(
   schedule_tbl = empty_gs_analysis_schedule(),
   history_tbl = mismatch_history
 )
-stopifnot(identical(as.character(mismatch_live$`Last Submitted Round / Stage`), "Round 2 / Stage 1"))
+stopifnot(identical(as.character(mismatch_live$`Last Submitted Analysis Time / Look`), "Analysis Time 2 / Look 1"))
+stopifnot(identical(as.character(mismatch_live$`Next Analysis Time`), "—"))
 
 display_plan_tbl <- sanitize_gs_hypothesis_plan_tbl(tibble::tibble(
   id = 1:3,
@@ -478,14 +484,14 @@ remaining_rounds <- gs_remaining_analysis_rounds(schedule_tbl = schedule_tbl, hi
 stopifnot(is.null(rv$gs_boundary_preview_message))
 stopifnot(all(c("analysis_round", "hypothesis_stage", "schedule_key", "is_final", "max_info") %in% names(preview_after)))
 stopifnot(all(c(
-  "Round",
+  "Analysis Time",
   "Hypothesis",
-  "Stage",
+  "Interim Analysis (Look)",
   "Total Analyses",
   "Info Fraction",
   "Alpha Spending",
   "Current Alpha",
-  "Stage Alpha",
+  "Look Alpha",
   "Cumulative Alpha",
   "Boundary p",
   "Boundary z",
@@ -494,25 +500,25 @@ stopifnot(all(c(
 stopifnot(all(c(
   "Hypothesis",
   "Current Alpha",
-  "Last Submitted Round / Stage",
+  "Last Submitted Analysis Time / Look",
   "Last Observed p",
   "Decision",
   "In Graph",
   "Testable",
-  "Next Global Round"
+  "Next Analysis Time"
 ) %in% names(live_state)))
 stopifnot(abs(as.numeric(h1_after_stage2$current_alpha) - 0.02) < 1e-12)
 stopifnot(abs(as.numeric(h1_after_stage2$cumulative_alpha_spent) - 0.01) < 1e-12)
 stopifnot(abs(round2$alpha_spent[[1]] - 0.5) < 1e-12)
 stopifnot(identical(as.integer(remaining_rounds), c(3L, 4L)))
-stopifnot(identical(as.character(h1_live_row$`Last Submitted Round / Stage`), "Round 2 / Stage 2"))
+stopifnot(identical(as.character(h1_live_row$`Last Submitted Analysis Time / Look`), "Analysis Time 2 / Look 2"))
 stopifnot(identical(as.character(h1_live_row$`Last Observed p`), "0.7"))
 stopifnot(identical(as.character(h1_live_row$Decision), "Do not reject"))
-stopifnot(identical(as.character(h1_live_row$`Next Global Round`), "3"))
+stopifnot(identical(as.character(h1_live_row$`Next Analysis Time`), "3"))
 stopifnot(identical(as.character(h2_live_row$Decision), "Reject"))
 stopifnot(identical(as.character(h2_live_row$`In Graph`), "No"))
 stopifnot(nrow(live_state_empty_history) == 4L)
-stopifnot(all(live_state_empty_history$`Last Submitted Round / Stage` == ""))
+stopifnot(all(live_state_empty_history$`Last Submitted Analysis Time / Look` == ""))
 stopifnot(all(c("analysis_round", "hypothesis_stage", "schedule_key", "is_final", "max_info") %in% names(preview_after_round2)))
 
 rv$ts_object <- NULL
@@ -544,10 +550,10 @@ reset_h1_row <- reset_live_state %>% dplyr::filter(Hypothesis == "H1") %>% dplyr
 reset_h3_row <- reset_live_state %>% dplyr::filter(Hypothesis == "H3") %>% dplyr::slice(1)
 stopifnot(identical(reset_target_round, 1L))
 stopifnot(identical(reset_round_state$next_actionable_round, 1L))
-stopifnot(all(reset_live_state$`Last Submitted Round / Stage` == ""))
+stopifnot(all(reset_live_state$`Last Submitted Analysis Time / Look` == ""))
 stopifnot(all(reset_live_state$`Last Observed p` == ""))
 stopifnot(identical(as.character(reset_h1_row$Decision), "Pending"))
-stopifnot(identical(as.character(reset_h1_row$`Next Global Round`), "1"))
+stopifnot(identical(as.character(reset_h1_row$`Next Analysis Time`), "1"))
 stopifnot(identical(as.character(reset_h3_row$Decision), "Not testable"))
 stopifnot(all(reset_display_state$remaining_rows$analysis_round == 1L))
 
@@ -555,13 +561,13 @@ cat("Group sequential analysis-status regression scaffold\n\n")
 cat("Expected behavior:\n")
 cat("- Mixed Custom + OF submissions do not invalidate future boundary preview rows.\n")
 cat("- Custom cumulative alpha is rescaled by the current recycled alpha using the original cumulative proportions.\n")
-cat("- Round 2 with H1 p = 0.7 submits successfully and advances the next round to 3.\n")
+cat("- Analysis Time 2 with H1 p = 0.7 submits successfully and advances the next analysis time to 3.\n")
 cat("- Live Analysis State stays renderable and carries the latest per-hypothesis result.\n")
 cat("- Custom-alpha helper coercion no longer emits seq_len(length.out=...) warnings.\n")
-cat("- Analysis reset resolves the round selector back to the first actionable round and clears live results.\n")
-cat("\nLive Analysis State after round 2:\n")
+cat("- Analysis reset resolves the selector back to the first actionable analysis time and clears live results.\n")
+cat("\nLive Analysis State after Analysis Time 2:\n")
 print(live_state)
-cat("\nRemaining rounds after round 2:\n")
+cat("\nRemaining analysis times after Analysis Time 2:\n")
 print(remaining_rounds)
 cat("\nH1 preview rows after H2 rejection recycled alpha:\n")
 print(preview_after %>% dplyr::filter(hypothesis == "H1") %>% dplyr::arrange(hypothesis_stage))
