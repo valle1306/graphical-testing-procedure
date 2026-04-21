@@ -118,16 +118,8 @@ observeEvent(input$gs_submit_round, {
   # place so the live object, frozen history, boundary preview, and UI state
   # stay in sync.
   tryCatch({
-    # Identify the hypotheses rejected in this batch and apply those rejections
-    # to the live GraphicalTesting object first. This is the step that moves
-    # alpha through the graph for future rounds.
-    reject_hypotheses <- submission$history_rows$hypothesis[
-      vapply(submission$history_rows$decision, normalize_gs_decision_label, character(1)) == "Reject"
-    ]
-    invisible(apply_frozen_gs_rejections(rv$ts_object, reject_hypotheses))
-
-    # Freeze the submitted round into the modern history table, then rebuild
-    # the legacy stage-history shape that older display code still expects.
+    # collect_round_submission() already called GraphicalTesting$test(), so the
+    # live object now contains the package-truth decisions for this batch.
     rv$gs_analysis_history <- sanitize_gs_analysis_history_tbl(
       dplyr::bind_rows(rv$gs_analysis_history, submission$history_rows)
     )
@@ -158,7 +150,8 @@ observeEvent(input$gs_submit_round, {
     set_gs_round_feedback(
       gs_round_submission_feedback_text(
         analysis_round = submission$history_rows$analysis_round[[1]],
-        hypothesis_count = nrow(submission$history_rows),
+        saved_result_count = nrow(submission$history_rows),
+        hypothesis_count = dplyr::n_distinct(submission$history_rows$hypothesis),
         next_round = next_display_round
       ),
       type = "success"
@@ -296,7 +289,7 @@ observeEvent(input$gs_go_to_analysis, {
 observeEvent(input$gs_edit_design, {
   if (nrow(rv$gs_analysis_history)) {
     showNotification(
-      "Cannot edit design after submitting analysis rounds. Reset analysis state first.",
+      "Cannot edit design after submitting analysis times. Reset analysis state first.",
       type = "error", duration = 8
     )
     return(invisible(NULL))

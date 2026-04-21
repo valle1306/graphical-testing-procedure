@@ -103,7 +103,7 @@ build_gs_boundary_schedule <- function(
               hypothesis_stage = hypothesis_stage,
               schedule_key = schedule_key,
               is_final = is_final,
-              max_info = rep(100, n())
+              max_info = rep(plan_tbl$planned_max_info[[i]], n())
             )
 
           if (!identical(current_status, "Ready")) {

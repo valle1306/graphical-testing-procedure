@@ -16,6 +16,12 @@ build_default_gs_hypothesis_plan <- function(
     } else {
       1L
     }
+    planned_max_info <- if (!is.na(existing_idx) && "planned_max_info" %in% names(existing_tbl)) {
+      as.numeric(existing_tbl$planned_max_info[[existing_idx]])
+    } else {
+      100
+    }
+    if (!is.finite(planned_max_info) || planned_max_info <= 0) planned_max_info <- 100
     alpha_spending <- if (!is.na(existing_idx)) {
       normalize_spending_rule(existing_tbl$alpha_spending[[existing_idx]])
     } else {
@@ -42,6 +48,7 @@ build_default_gs_hypothesis_plan <- function(
       id = as.integer(nodes_tbl$id[[i]]),
       hypothesis = as.character(nodes_tbl$hypothesis[[i]]),
       planned_analyses = planned_analyses,
+      planned_max_info = planned_max_info,
       alpha_spending = alpha_spending,
       custom_cumulative_alpha = custom_value,
       hsd_gamma = hsd_gamma_value,
@@ -66,6 +73,10 @@ collect_gs_hypothesis_plan <- function(persist = FALSE) {
       if (is.na(planned_analyses) || planned_analyses < 1L) {
         planned_analyses <- plan_tbl$planned_analyses[[i]]
       }
+      planned_max_info <- read_scalar_numeric_input(paste0("gs_plan_max_info_", id), reactive = FALSE)
+      if (is.na(planned_max_info) || planned_max_info <= 0) {
+        planned_max_info <- plan_tbl$planned_max_info[[i]]
+      }
       rule <- read_scalar_character_input(paste0("gs_plan_rule_", id))
       if (is.null(rule)) {
         rule <- plan_tbl$alpha_spending[[i]]
@@ -87,6 +98,7 @@ collect_gs_hypothesis_plan <- function(persist = FALSE) {
         id = id,
         hypothesis = plan_tbl$hypothesis[[i]],
         planned_analyses = as.integer(planned_analyses),
+        planned_max_info = as.numeric(planned_max_info),
         alpha_spending = rule,
         custom_cumulative_alpha = custom_value,
         hsd_gamma = hsd_gamma_value,
@@ -171,7 +183,85 @@ merge_gs_schedule_with_existing <- function(
   sanitize_gs_analysis_schedule_tbl(dplyr::bind_rows(rows))
 }
 
-collect_gs_analysis_schedule <- function(plan_tbl = collect_gs_hypothesis_plan(persist = FALSE), persist = FALSE) {
+cascade_gs_hypothesis_rounds <- function(base_rounds, requested_rounds) {
+  base_rounds <- suppressWarnings(as.integer(base_rounds))
+  requested_rounds <- suppressWarnings(as.integer(requested_rounds))
+  if (!length(base_rounds)) {
+    return(as.integer(base_rounds))
+  }
+  if (length(requested_rounds) != length(base_rounds)) {
+    requested_rounds <- base_rounds
+  }
+  invalid_requested <- !is.finite(requested_rounds) | is.na(requested_rounds) | requested_rounds < 1L
+  requested_rounds[invalid_requested] <- base_rounds[invalid_requested]
+
+  cascaded_rounds <- as.integer(base_rounds)
+  changed_idx <- which(requested_rounds != base_rounds)
+  if (!length(changed_idx)) {
+    return(cascaded_rounds)
+  }
+
+  for (idx in changed_idx) {
+    cascaded_rounds[[idx]] <- max(requested_rounds[[idx]], idx)
+
+    if (idx > 1L) {
+      for (j in seq.int(idx - 1L, 1L)) {
+        cascaded_rounds[[j]] <- min(cascaded_rounds[[j]], cascaded_rounds[[j + 1L]] - 1L)
+      }
+    }
+
+    if (idx < length(cascaded_rounds)) {
+      for (j in seq.int(idx + 1L, length(cascaded_rounds))) {
+        cascaded_rounds[[j]] <- max(cascaded_rounds[[j]], cascaded_rounds[[j - 1L]] + 1L)
+      }
+    }
+  }
+
+  as.integer(cascaded_rounds)
+}
+
+cascade_gs_schedule_rounds <- function(
+  requested_tbl,
+  base_tbl
+) {
+  requested_tbl <- sanitize_gs_analysis_schedule_tbl(requested_tbl)
+  base_tbl <- sanitize_gs_analysis_schedule_tbl(base_tbl)
+  if (!nrow(requested_tbl)) {
+    return(requested_tbl)
+  }
+
+  rows <- lapply(unique(requested_tbl$hypothesis_id), function(hypothesis_id) {
+    hypothesis_rows <- requested_tbl %>%
+      dplyr::filter(hypothesis_id == !!hypothesis_id) %>%
+      dplyr::arrange(hypothesis_stage)
+    base_rows <- base_tbl %>%
+      dplyr::filter(hypothesis_id == !!hypothesis_id) %>%
+      dplyr::arrange(hypothesis_stage)
+
+    same_shape <- nrow(base_rows) == nrow(hypothesis_rows) &&
+      nrow(hypothesis_rows) > 0L &&
+      identical(base_rows$schedule_key, hypothesis_rows$schedule_key) &&
+      identical(base_rows$planned_analyses, hypothesis_rows$planned_analyses)
+
+    if (!same_shape) {
+      return(hypothesis_rows)
+    }
+
+    hypothesis_rows$analysis_round <- cascade_gs_hypothesis_rounds(
+      base_rounds = base_rows$analysis_round,
+      requested_rounds = hypothesis_rows$analysis_round
+    )
+    hypothesis_rows
+  })
+
+  sanitize_gs_analysis_schedule_tbl(dplyr::bind_rows(rows))
+}
+
+collect_gs_analysis_schedule <- function(
+  plan_tbl = collect_gs_hypothesis_plan(persist = FALSE),
+  persist = FALSE,
+  reactive = FALSE
+) {
   profile_reactivity("collect_gs_analysis_schedule", {
     default_tbl <- merge_gs_schedule_with_existing(
       build_default_gs_analysis_schedule(plan_tbl),
@@ -189,12 +279,15 @@ collect_gs_analysis_schedule <- function(plan_tbl = collect_gs_hypothesis_plan(p
       analysis_round <- read_scalar_integer_input(
         paste0("gs_schedule_round_", key),
         default = default_tbl$analysis_round[[i]],
-        reactive = FALSE
+        reactive = reactive
       )
       if (is.na(analysis_round) || analysis_round < 1L) {
         analysis_round <- default_tbl$analysis_round[[i]]
       }
-      info_fraction <- read_scalar_numeric_input(paste0("gs_schedule_info_", key), reactive = FALSE)
+      info_fraction <- read_scalar_numeric_input(
+        paste0("gs_schedule_info_", key),
+        reactive = reactive
+      )
       if (is.na(info_fraction)) {
         info_fraction <- default_tbl$information_fraction[[i]]
       }
@@ -210,6 +303,10 @@ collect_gs_analysis_schedule <- function(plan_tbl = collect_gs_hypothesis_plan(p
       )
     })
     out <- sanitize_gs_analysis_schedule_tbl(dplyr::bind_rows(rows))
+    out <- cascade_gs_schedule_rounds(
+      requested_tbl = out,
+      base_tbl = default_tbl
+    )
     if (isTRUE(persist)) {
       rv$gs_analysis_schedule <- out
       set_gs_analysis_schedule_round_signature(out)
@@ -257,22 +354,22 @@ validate_gs_analysis_schedule <- function(
       }
       return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
     }
+    if (!is.finite(plan_tbl$planned_max_info[[i]]) || plan_tbl$planned_max_info[[i]] <= 0) {
+      msg <- sprintf("%s must have a positive planned maximum information value.", plan_tbl$hypothesis[[i]])
+      if (isTRUE(notify)) {
+        showNotification(msg, type = "error", duration = 8)
+      }
+      return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
+    }
     if (any(!is.finite(hypothesis_rows$analysis_round)) || any(hypothesis_rows$analysis_round < 1L)) {
-      msg <- sprintf("%s analysis rounds must be positive integers.", plan_tbl$hypothesis[[i]])
+      msg <- sprintf("%s analysis times must be positive integers.", plan_tbl$hypothesis[[i]])
       if (isTRUE(notify)) {
         showNotification(msg, type = "error", duration = 8)
       }
       return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
     }
     if (any(diff(hypothesis_rows$analysis_round) <= 0L)) {
-      msg <- sprintf("%s analysis rounds must increase from one stage to the next.", plan_tbl$hypothesis[[i]])
-      if (isTRUE(notify)) {
-        showNotification(msg, type = "error", duration = 8)
-      }
-      return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
-    }
-    if (any(!is.finite(hypothesis_rows$information_fraction)) || any(hypothesis_rows$information_fraction <= 0) || any(hypothesis_rows$information_fraction > 1 + 1e-8)) {
-      msg <- sprintf("%s information fractions must stay within (0, 1].", plan_tbl$hypothesis[[i]])
+      msg <- sprintf("%s analysis times must increase from one look to the next.", plan_tbl$hypothesis[[i]])
       if (isTRUE(notify)) {
         showNotification(msg, type = "error", duration = 8)
       }
@@ -281,24 +378,29 @@ validate_gs_analysis_schedule <- function(
     if (expected_analyses > 1L) {
       non_final_rows <- hypothesis_rows %>% dplyr::filter(!is_final)
       invalid_idx <- which(
-        non_final_rows$information_fraction <= 0 |
+        !is.finite(non_final_rows$information_fraction) |
+          is.na(non_final_rows$information_fraction) |
+          non_final_rows$information_fraction <= 0 |
           non_final_rows$information_fraction >= 1
       )
       if (length(invalid_idx)) {
-        invalid_stage <- non_final_rows$hypothesis_stage[[invalid_idx[[1]]]]
-        msg <- sprintf(
-          "%s stage %s information fraction must be strictly between 0 and 1 for non-final analyses.",
-          plan_tbl$hypothesis[[i]],
-          invalid_stage
-        )
+        msg <- "Information fractions for interim analyses must be in (0, 1) and incremental."
         if (isTRUE(notify)) {
           showNotification(msg, type = "error", duration = 8)
         }
         return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
       }
     }
-    if (any(diff(hypothesis_rows$information_fraction) <= 0)) {
+    info_delta <- diff(hypothesis_rows$information_fraction)
+    if (any(!is.finite(info_delta) | is.na(info_delta) | info_delta <= 0)) {
       msg <- "Information fractions for interim analyses must be in (0, 1) and incremental."
+      if (isTRUE(notify)) {
+        showNotification(msg, type = "error", duration = 8)
+      }
+      return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
+    }
+    if (any(!is.finite(hypothesis_rows$information_fraction)) || any(is.na(hypothesis_rows$information_fraction))) {
+      msg <- sprintf("%s must end at information fraction 1.0.", plan_tbl$hypothesis[[i]])
       if (isTRUE(notify)) {
         showNotification(msg, type = "error", duration = 8)
       }
@@ -384,32 +486,50 @@ observe({
   rv$gs_settings <- legacy_settings_from_group_sequential_design(plan_tbl, schedule_tbl)
 })
 
-observe({
-  # Keep rv$gs_analysis_schedule and legacy settings synchronized with the
-  # collected schedule inputs; the empty-plan and same-table guards prevent
-  # unnecessary resets and replay when nothing materially changed.
-  if (!nrow(rv$gs_hypothesis_plan)) {
-    empty_schedule <- empty_gs_analysis_schedule()
-    current_settings <- isolate(rv$gs_settings)
-    has_settings_rows <- !is.null(current_settings) && nrow(current_settings) > 0
-    schedule_changed <- !same_gs_analysis_schedule_tbl(empty_schedule, isolate(rv$gs_analysis_schedule))
-    if (schedule_changed) {
-      rv$gs_analysis_schedule <- empty_schedule
-      set_gs_analysis_schedule_round_signature(empty_schedule)
+observeEvent(
+  {
+    plan_tbl <- rv$gs_hypothesis_plan
+    if (!nrow(plan_tbl)) {
+      return(list())
     }
-    if (schedule_changed || has_settings_rows) {
-      rv$gs_settings <- legacy_settings_from_group_sequential_design()
+    schedule_keys <- build_default_gs_analysis_schedule(plan_tbl)$schedule_key
+    if (!length(schedule_keys)) {
+      return(list())
     }
-    return()
-  }
-  schedule_tbl <- collect_gs_analysis_schedule(
-    plan_tbl = isolate(rv$gs_hypothesis_plan),
-    persist = FALSE
-  )
-  if (same_gs_analysis_schedule_tbl(schedule_tbl, isolate(rv$gs_analysis_schedule))) {
-    return()
-  }
-  rv$gs_analysis_schedule <- schedule_tbl
-  set_gs_analysis_schedule_round_signature(schedule_tbl)
-  rv$gs_settings <- legacy_settings_from_group_sequential_design(rv$gs_hypothesis_plan, schedule_tbl)
-})
+    c(
+      lapply(schedule_keys, function(key) input[[paste0("gs_schedule_round_", key)]]),
+      lapply(schedule_keys, function(key) input[[paste0("gs_schedule_info_", key)]])
+    )
+  },
+  {
+    # Keep rv$gs_analysis_schedule and legacy settings synchronized with the
+    # current Step 2 inputs, but only when those schedule fields actually
+    # change. observeEvent isolates the handler so rv writes do not loop back.
+    if (!nrow(rv$gs_hypothesis_plan)) {
+      empty_schedule <- empty_gs_analysis_schedule()
+      current_settings <- isolate(rv$gs_settings)
+      has_settings_rows <- !is.null(current_settings) && nrow(current_settings) > 0
+      schedule_changed <- !same_gs_analysis_schedule_tbl(empty_schedule, isolate(rv$gs_analysis_schedule))
+      if (schedule_changed) {
+        rv$gs_analysis_schedule <- empty_schedule
+        set_gs_analysis_schedule_round_signature(empty_schedule)
+      }
+      if (schedule_changed || has_settings_rows) {
+        rv$gs_settings <- legacy_settings_from_group_sequential_design()
+      }
+      return()
+    }
+    schedule_tbl <- collect_gs_analysis_schedule(
+      plan_tbl = isolate(rv$gs_hypothesis_plan),
+      persist = FALSE,
+      reactive = FALSE
+    )
+    if (same_gs_analysis_schedule_tbl(schedule_tbl, isolate(rv$gs_analysis_schedule))) {
+      return()
+    }
+    rv$gs_analysis_schedule <- schedule_tbl
+    set_gs_analysis_schedule_round_signature(schedule_tbl)
+    rv$gs_settings <- legacy_settings_from_group_sequential_design(rv$gs_hypothesis_plan, schedule_tbl)
+  },
+  ignoreInit = TRUE
+)

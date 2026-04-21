@@ -74,7 +74,8 @@ server <- function(input, output, session) {
       return(out)
     }
     formatted <- format(value[keep], trim = TRUE, scientific = FALSE, nsmall = 0)
-    formatted <- sub("([0-9])0+$", "\\1", formatted)
+    has_decimal <- grepl(".", formatted, fixed = TRUE)
+    formatted[has_decimal] <- sub("0+$", "", formatted[has_decimal])
     out[keep] <- sub("\\.$", "", formatted)
     out
   }
@@ -269,6 +270,11 @@ server <- function(input, output, session) {
           session,
           paste0("gs_plan_k_", id),
           value = planned_analyses
+        )
+        updateNumericInput(
+          session,
+          paste0("gs_plan_max_info_", id),
+          value = as.numeric(plan_tbl$planned_max_info[[i]])
         )
         updateSelectInput(
           session,

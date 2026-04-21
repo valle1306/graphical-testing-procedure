@@ -31,6 +31,7 @@ format_plain_number <- function(x) {
 
 source(file.path(project_root, "R", "server", "common_helpers.R"), local = TRUE)
 observe <- function(...) invisible(NULL)
+observeEvent <- function(...) invisible(NULL)
 source(file.path(project_root, "R", "server", "sequential_settings.R"), local = TRUE)
 source(file.path(project_root, "R", "server", "sequential_boundaries.R"), local = TRUE)
 

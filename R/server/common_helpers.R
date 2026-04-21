@@ -24,6 +24,22 @@ for (helper_spec in helper_source_specs) {
   }
 }
 
+missing_tibble_column <- function(template_col, n) {
+  if (is.integer(template_col)) {
+    return(rep(NA_integer_, n))
+  }
+  if (is.numeric(template_col)) {
+    return(rep(NA_real_, n))
+  }
+  if (is.logical(template_col)) {
+    return(rep(NA, n))
+  }
+  if (is.character(template_col)) {
+    return(rep("", n))
+  }
+  rep(NA, n)
+}
+
 empty_gs_boundary_preview <- function() {
   tibble::tibble(
     hypothesis = character(),
@@ -65,6 +81,7 @@ empty_gs_hypothesis_plan <- function() {
     id = integer(),
     hypothesis = character(),
     planned_analyses = integer(),
+    planned_max_info = numeric(),
     alpha_spending = character(),
     custom_cumulative_alpha = character(),
     hsd_gamma = numeric(),
@@ -99,6 +116,7 @@ empty_gs_analysis_history <- function() {
     information_fraction = numeric(),
     current_alpha = numeric(),
     cumulative_alpha_spent = numeric(),
+    observed_info = numeric(),
     p_value = numeric(),
     boundary_p = numeric(),
     boundary_z = numeric(),
@@ -116,6 +134,11 @@ sanitize_gs_hypothesis_plan_tbl <- function(df) {
   out$id <- as.integer(out$id)
   out$hypothesis <- as.character(out$hypothesis)
   out$planned_analyses <- as.integer(out$planned_analyses)
+  if (!"planned_max_info" %in% names(out)) {
+    out$planned_max_info <- rep(100, nrow(out))
+  }
+  out$planned_max_info <- suppressWarnings(as.numeric(out$planned_max_info))
+  out$planned_max_info[!is.finite(out$planned_max_info) | out$planned_max_info <= 0] <- 100
   out$alpha_spending <- vapply(out$alpha_spending, normalize_spending_rule, character(1))
   if (!"custom_cumulative_alpha" %in% names(out)) {
     out$custom_cumulative_alpha <- rep("", nrow(out))
@@ -132,7 +155,7 @@ sanitize_gs_hypothesis_plan_tbl <- function(df) {
   out$haybittle_p1 <- suppressWarnings(as.numeric(out$haybittle_p1))
   out$haybittle_p1[is.na(out$haybittle_p1)] <- 3e-04
   out %>%
-    dplyr::select(id, hypothesis, planned_analyses, alpha_spending, custom_cumulative_alpha, hsd_gamma, haybittle_p1)
+    dplyr::select(id, hypothesis, planned_analyses, planned_max_info, alpha_spending, custom_cumulative_alpha, hsd_gamma, haybittle_p1)
 }
 
 sanitize_gs_analysis_schedule_tbl <- function(df) {
@@ -175,7 +198,7 @@ sanitize_gs_analysis_history_tbl <- function(df) {
   defaults <- empty_gs_analysis_history()
   for (nm in names(defaults)) {
     if (!nm %in% names(out)) {
-      out[[nm]] <- defaults[[nm]]
+      out[[nm]] <- missing_tibble_column(defaults[[nm]], nrow(out))
     }
   }
   out$submission <- as.integer(out$submission)
@@ -188,6 +211,7 @@ sanitize_gs_analysis_history_tbl <- function(df) {
   out$information_fraction <- as.numeric(out$information_fraction)
   out$current_alpha <- as.numeric(out$current_alpha)
   out$cumulative_alpha_spent <- as.numeric(out$cumulative_alpha_spent)
+  out$observed_info <- as.numeric(out$observed_info)
   out$p_value <- as.numeric(out$p_value)
   out$boundary_p <- as.numeric(out$boundary_p)
   out$boundary_z <- as.numeric(out$boundary_z)
@@ -207,7 +231,7 @@ sanitize_gs_boundary_preview_tbl <- function(df) {
   defaults <- empty_gs_boundary_preview()
   for (nm in names(defaults)) {
     if (!nm %in% names(out)) {
-      out[[nm]] <- defaults[[nm]]
+      out[[nm]] <- missing_tibble_column(defaults[[nm]], nrow(out))
     }
   }
   out$hypothesis <- as.character(out$hypothesis)

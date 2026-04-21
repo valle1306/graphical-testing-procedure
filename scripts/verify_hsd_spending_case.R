@@ -52,7 +52,7 @@ for (gamma in c(-8, -4, -2, -1, 0.5, 1, 2, 4)) {
 }
 cat("  PASS: all gamma values (-8 to 4) produce correct boundaries\n")
 
-# Test 3: HSD appears in rule choices and normalizes correctly
+# Test 3: HSD public label and normalization stay compatible
 cat("Test 3: Rule choices and normalization...\n")
 choices <- gs_rule_choices()
 stopifnot("Hwang-Shih-DeCani" %in% names(choices))
@@ -60,7 +60,7 @@ stopifnot(choices[["Hwang-Shih-DeCani"]] == "HSD")
 stopifnot(normalize_spending_rule("Hwang-Shih-DeCani") == "HSD")
 stopifnot(normalize_spending_rule("Lan-DeMets Hwang-Shih-DeCani") == "HSD")
 stopifnot(normalize_spending_rule("HSD") == "HSD")
-cat("  PASS: HSD in choices and normalization\n")
+cat("  PASS: HSD label and normalization stay compatible\n")
 
 
 # Test 4: HSD runtime code maps to asUser

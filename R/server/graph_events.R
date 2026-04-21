@@ -15,7 +15,7 @@ build_graph_nodes <- function() {
       x = as.numeric(x),
       y = as.numeric(y),
       alpha_display = as.numeric(allocations[hypothesis]),
-      label = paste0(hypothesis, "\nalpha=", format_plain_number(alpha_display))
+      label = paste0(hypothesis, "\nAlpha=", format_plain_number(alpha_display))
     )
   result$color <- "#8ecae6"
   font_colors <- rep("#0f172a", nrow(result))

@@ -73,7 +73,7 @@ build_design_tab <- function() {
         actionButton("design_reject_ts", "Reject Selected", class = "btn btn-outline-warning"),
         actionButton("design_clear_results", "Clear Results", class = "btn btn-info"),
         actionButton("design_auto_layout", "Auto Layout", class = "btn btn-outline-secondary"),
-        tags$span(class = "design-note", "Use these controls for classic graphical testing. Open Group Sequential Design to plan interim analyses, and Analysis to submit one-sided results by round.")
+        tags$span(class = "design-note", "Use these controls for classic graphical testing. Open Group Sequential Design to plan interim analyses, and Analysis to submit one-sided results by analysis time.")
       ),
       
       fluidRow(
@@ -110,7 +110,7 @@ build_design_tab <- function() {
             class = "design-output-card",
             tags$p(
               style = "color:#6c757d; margin-bottom: 12px;",
-              "Build the graph here. Group Sequential Design adds the study-design tables and boundary schedule. Analysis submits one-sided results one round at a time."
+              "Build the graph here. Group Sequential Design adds the study-design tables and boundary schedule. Analysis submits one-sided results one analysis time at a time."
             ),
             tags$div(style = "font-weight: 600; margin-bottom: 8px;", "Output"),
             div(class = "design-output-log", verbatimTextOutput("design_ts_log"))

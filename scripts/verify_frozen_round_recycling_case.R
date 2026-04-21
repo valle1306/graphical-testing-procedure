@@ -31,6 +31,7 @@ format_plain_number <- function(x) {
 }
 
 observe <- function(...) invisible(NULL)
+observeEvent <- function(...) invisible(NULL)
 
 source(file.path(project_root, "R", "server", "common_helpers.R"), local = TRUE)
 source(file.path(project_root, "R", "server", "sequential_settings.R"), local = TRUE)
@@ -88,58 +89,79 @@ simulate_frozen_round <- function(
     dplyr::arrange(hypothesis, hypothesis_stage) %>%
     dplyr::mutate(hypothesis = as.character(hypothesis))
   stopifnot(nrow(round_rows) == length(hypotheses))
-
-  current_alpha <- get_all_alpha(graph, round_rows$hypothesis)
-  boundary_tbls <- lapply(seq_len(nrow(round_rows)), function(i) {
-    plan_row <- plan_tbl %>%
-      dplyr::filter(hypothesis == round_rows$hypothesis[[i]]) %>%
-      dplyr::slice(1)
-    hypothesis_schedule <- schedule_tbl %>%
-      dplyr::filter(hypothesis == round_rows$hypothesis[[i]]) %>%
-      dplyr::arrange(hypothesis_stage)
-    compute_boundary_schedule(
-      total_alpha = current_alpha[[round_rows$hypothesis[[i]]]],
-      spending_type = plan_row$alpha_spending[[1]],
-      timing = hypothesis_schedule$information_fraction
+  alpha_lookup <- stats::setNames(as.character(plan_tbl$alpha_spending), as.character(plan_tbl$hypothesis))
+  trajectory_before <- tibble::as_tibble(graph$get_trajectory())
+  stage_df <- round_rows %>%
+    dplyr::transmute(
+      order = as.integer(analysis_round),
+      hypotheses = as.character(hypothesis),
+      p = as.numeric(p_value),
+      info = as.integer(round(100 * information_fraction)),
+      is_final = as.logical(is_final),
+      max_info = as.integer(100),
+      alpha_spent = NA_real_
     )
-  })
-
-  history_rows <- tibble::tibble(
-    submission = rep(as.integer(submission), nrow(round_rows)),
-    schedule_key = round_rows$schedule_key,
-    analysis_round = round_rows$analysis_round,
-    hypothesis = round_rows$hypothesis,
-    hypothesis_stage = round_rows$hypothesis_stage,
-    alpha_spending = rep("OF", nrow(round_rows)),
-    runtime_spending_code = rep(gs_runtime_spending_code("OF"), nrow(round_rows)),
-    information_fraction = round_rows$information_fraction,
-    current_alpha = as.numeric(current_alpha[round_rows$hypothesis]),
-    cumulative_alpha_spent = vapply(seq_len(nrow(round_rows)), function(i) {
-      boundary_tbls[[i]]$cumulative_alpha_spent[[round_rows$hypothesis_stage[[i]]]]
-    }, numeric(1)),
-    p_value = as.numeric(round_rows$p_value),
-    boundary_p = vapply(seq_len(nrow(round_rows)), function(i) {
-      boundary_tbls[[i]]$p_boundary[[round_rows$hypothesis_stage[[i]]]]
-    }, numeric(1)),
-    boundary_z = vapply(seq_len(nrow(round_rows)), function(i) {
-      boundary_tbls[[i]]$z_boundary[[round_rows$hypothesis_stage[[i]]]]
-    }, numeric(1)),
-    decision = ifelse(
-      as.numeric(round_rows$p_value) <= vapply(seq_len(nrow(round_rows)), function(i) {
-        boundary_tbls[[i]]$p_boundary[[round_rows$hypothesis_stage[[i]]]]
-      }, numeric(1)) + 1e-12,
-      "Reject",
-      "Do not reject"
-    ),
-    is_final = round_rows$is_final,
-    max_info = rep(100, nrow(round_rows))
+  withCallingHandlers(
+    graph$test(as.data.frame(stage_df, stringsAsFactors = FALSE)),
+    message = function(m) invokeRestart("muffleMessage")
   )
-  history_rows <- sanitize_gs_analysis_history_tbl(history_rows)
-
-  reject_hypotheses <- history_rows$hypothesis[
-    vapply(history_rows$decision, normalize_gs_decision_label, character(1)) == "Reject"
-  ]
-  invisible(apply_frozen_gs_rejections(graph, reject_hypotheses))
+  trajectory_after <- tibble::as_tibble(graph$get_trajectory())
+  trajectory_before_keys <- if (nrow(trajectory_before)) {
+    trajectory_before %>%
+      dplyr::transmute(
+        analysis_round = as.integer(order),
+        hypothesis = as.character(hypothesis),
+        hypothesis_stage = as.integer(stages)
+      )
+  } else {
+    tibble::tibble(
+      analysis_round = integer(),
+      hypothesis = character(),
+      hypothesis_stage = integer()
+    )
+  }
+  batch_results <- trajectory_after %>%
+    dplyr::transmute(
+      .package_result_order = dplyr::row_number(),
+      analysis_round = as.integer(order),
+      hypothesis = as.character(hypothesis),
+      hypothesis_stage = as.integer(stages),
+      runtime_spending_code = as.character(typeOfDesign),
+      current_alpha = as.numeric(alpha),
+      cumulative_alpha_spent = as.numeric(alphaSpent),
+      p_value = as.numeric(obs_p_value),
+      boundary_p = as.numeric(stageLevels),
+      boundary_z = as.numeric(criticalValues),
+      decision = ifelse(
+        tolower(as.character(decision)) == "reject",
+        "Reject",
+        "Do not reject"
+      )
+    ) %>%
+    dplyr::anti_join(
+      trajectory_before_keys,
+      by = c("analysis_round", "hypothesis", "hypothesis_stage")
+    ) %>%
+    dplyr::filter(analysis_round == round_number)
+  history_rows <- round_rows %>%
+    dplyr::transmute(
+      submission = as.integer(submission),
+      schedule_key = schedule_key,
+      analysis_round = analysis_round,
+      hypothesis = hypothesis,
+      hypothesis_stage = hypothesis_stage,
+      alpha_spending = unname(alpha_lookup[hypothesis]),
+      information_fraction = information_fraction,
+      is_final = is_final,
+      max_info = 100
+    ) %>%
+    dplyr::left_join(
+      batch_results,
+      by = c("analysis_round", "hypothesis", "hypothesis_stage")
+    ) %>%
+    dplyr::arrange(.package_result_order) %>%
+    dplyr::select(-.package_result_order) %>%
+    sanitize_gs_analysis_history_tbl()
 
   list(
     history_rows = history_rows,
@@ -235,15 +257,15 @@ round2 <- simulate_frozen_round(
 )
 rv$gs_analysis_history <- sanitize_gs_analysis_history_tbl(dplyr::bind_rows(rv$gs_analysis_history, round2$history_rows))
 
-stopifnot(identical(unname(round2$history_rows$decision), c("Reject", "Do not reject")))
+stopifnot(identical(unname(round2$history_rows$decision), c("Reject", "Reject")))
 stopifnot(abs(round2$alpha_after["H1"] - 0) < 1e-12)
-stopifnot(abs(round2$alpha_after["H2"] - 0.0225) < 1e-12)
-stopifnot(abs(round2$alpha_after["H3"] - 0.0025) < 1e-12)
+stopifnot(abs(round2$alpha_after["H2"] - 0) < 1e-12)
+stopifnot(abs(round2$alpha_after["H3"] - 0.025) < 1e-12)
 
 h2_round2_history <- round2$history_rows %>%
   dplyr::filter(hypothesis == "H2") %>%
   dplyr::slice(1)
-stopifnot(abs(as.numeric(h2_round2_history$current_alpha) - 0.015) < 1e-12)
+stopifnot(abs(as.numeric(h2_round2_history$current_alpha) - 0.0225) < 1e-12)
 
 status_after_round2 <- build_ts_status_table()
 preview_after_round2 <- build_gs_boundary_schedule(
@@ -262,25 +284,26 @@ round2_state_after_recycling <- gs_analysis_round_state(
   selected_round = 2L
 )
 
-h2_preview_row <- preview_after_round2 %>%
-  dplyr::filter(hypothesis == "H2", hypothesis_stage == 2L) %>%
-  dplyr::slice(1)
 h3_preview_row <- preview_after_round2 %>%
   dplyr::filter(hypothesis == "H3", hypothesis_stage == 1L) %>%
   dplyr::slice(1)
 h2_live_row <- live_state_after_round2 %>%
   dplyr::filter(Hypothesis == "H2") %>%
   dplyr::slice(1)
+h1_live_row <- live_state_after_round2 %>%
+  dplyr::filter(Hypothesis == "H1") %>%
+  dplyr::slice(1)
 h3_live_row <- live_state_after_round2 %>%
   dplyr::filter(Hypothesis == "H3") %>%
   dplyr::slice(1)
 
-stopifnot(abs(as.numeric(h2_preview_row$current_alpha) - 0.0225) < 1e-12)
-stopifnot(abs(as.numeric(h3_preview_row$current_alpha) - 0.0025) < 1e-12)
+stopifnot(abs(as.numeric(h3_preview_row$current_alpha) - 0.025) < 1e-12)
 stopifnot(identical(as.character(h3_preview_row$status), "Ready"))
-stopifnot(identical(as.character(h2_live_row$`Current Alpha`), "0.0225"))
-stopifnot(identical(as.character(h2_live_row$Decision), "Do not reject"))
-stopifnot(identical(as.character(h3_live_row$`Current Alpha`), "0.0025"))
+stopifnot(identical(as.character(h1_live_row$`Next Analysis Time`), "—"))
+stopifnot(abs(as.numeric(h2_live_row$`Current Alpha`) - 0) < 1e-12)
+stopifnot(identical(as.character(h2_live_row$Decision), "Reject"))
+stopifnot(identical(as.character(h2_live_row$`Next Analysis Time`), "—"))
+stopifnot(abs(as.numeric(h3_live_row$`Current Alpha`) - 0.025) < 1e-12)
 stopifnot(identical(as.character(h3_live_row$Decision), "Pending"))
 stopifnot(identical(round2_state_after_recycling$actionable_rounds, 2L))
 stopifnot(identical(round2_state_after_recycling$next_actionable_round, 2L))
@@ -289,50 +312,39 @@ stopifnot(identical(as.character(round2_state_after_recycling$actionable_rows$hy
 
 combined_history <- dplyr::bind_rows(round1$history_rows, round2$history_rows)
 latest_decisions <- latest_gs_history_decision_map(combined_history, c("H1", "H2", "H3"))
-stopifnot(identical(unname(latest_decisions), c("Reject", "Do not reject", "Pending")))
+stopifnot(identical(unname(latest_decisions), c("Reject", "Reject", "Pending")))
 
-expected_summary <- c("Reject", "Do not reject")
-stopifnot(identical(unname(round2$summary_rows$decision), expected_summary))
-stopifnot(identical(round2$summary_rows$max_allocated_alpha, c(0.01, 0.015)))
+expected_summary <- stats::setNames(round2$summary_rows$decision, round2$summary_rows$hypothesis)
+expected_alpha <- stats::setNames(round2$summary_rows$max_allocated_alpha, round2$summary_rows$hypothesis)
+stopifnot(identical(unname(expected_summary[c("H1", "H2")]), c("Reject", "Reject")))
+stopifnot(abs(expected_alpha[["H1"]] - 0.01) < 1e-12)
+stopifnot(abs(expected_alpha[["H2"]] - 0.0225) < 1e-12)
 
-# Control case: if both hypotheses reject, the full alpha can recycle onward.
-control_graph <- build_graphical_testing_object(nodes_tbl, transition)
-control_round1_inputs <- dplyr::select(schedule_tbl, -expected_p_value) %>%
+retest_graph <- build_graphical_testing_object(nodes_tbl, transition)
+retest_schedule_tbl <- schedule_tbl
+retest_schedule_tbl$p_value <- NA_real_
+retest_round1_inputs <- retest_schedule_tbl %>%
   dplyr::filter(analysis_round == 1L, hypothesis %in% c("H1", "H2")) %>%
-  dplyr::mutate(p_value = c(0.01, 0.01))
-control_schedule <- dplyr::select(schedule_tbl, -expected_p_value)
-control_schedule$p_value <- NA_real_
-control_schedule$p_value[match(control_round1_inputs$schedule_key, control_schedule$schedule_key)] <- control_round1_inputs$p_value
-invisible(simulate_frozen_round(
-  graph = control_graph,
+  dplyr::mutate(p_value = c(0.00027, 0.00056))
+retest_schedule_tbl$p_value[match(retest_round1_inputs$schedule_key, retest_schedule_tbl$schedule_key)] <- retest_round1_inputs$p_value
+retest_round1 <- simulate_frozen_round(
+  graph = retest_graph,
   submission = 1L,
   round_number = 1L,
   hypotheses = c("H1", "H2"),
   plan_tbl = plan_tbl,
-  schedule_tbl = control_schedule
-))
-
-control_round2_inputs <- dplyr::select(schedule_tbl, -expected_p_value) %>%
-  dplyr::filter(analysis_round == 2L, hypothesis %in% c("H1", "H2")) %>%
-  dplyr::mutate(p_value = c(0.0001, 0.0001))
-control_schedule$p_value <- NA_real_
-control_schedule$p_value[match(control_round2_inputs$schedule_key, control_schedule$schedule_key)] <- control_round2_inputs$p_value
-control_round2 <- simulate_frozen_round(
-  graph = control_graph,
-  submission = 2L,
-  round_number = 2L,
-  hypotheses = c("H1", "H2"),
-  plan_tbl = plan_tbl,
-  schedule_tbl = control_schedule
+  schedule_tbl = retest_schedule_tbl
 )
-stopifnot(identical(unname(control_round2$history_rows$decision), c("Reject", "Reject")))
-stopifnot(abs(control_round2$alpha_after["H3"] - 0.025) < 1e-12)
+stopifnot(identical(as.character(retest_round1$history_rows$hypothesis), c("H1", "H2", "H1")))
+stopifnot(identical(as.character(retest_round1$history_rows$decision), c("Do not reject", "Reject", "Reject")))
+stopifnot(abs(as.numeric(retest_round1$history_rows$current_alpha[[3]]) - 0.0175) < 1e-12)
 
 cat("Frozen round recycling verification case\n")
-cat("- Round 2 keeps H2 non-rejected when its p-value misses the pre-submit boundary.\n")
-cat("- H2 keeps Alpha At Submission = 0.015 while post-submit current alpha increases to 0.0225.\n")
-cat("- H3 stays at 0.0025 after mixed round-2 outcomes and only reaches 0.025 when both H1 and H2 reject.\n")
+cat("- Round 2 rejects H2 after H1 recycles alpha within the same analysis round.\n")
+cat("- H2 history stores the package-tested alpha of 0.0225, not the stale pre-submit 0.015.\n")
+cat("- H3 becomes ready at alpha 0.025 after the round-2 package decisions are committed.\n")
 cat("- The boundary preview, live analysis state, and round-entry helper all agree on the post-submit state.\n")
+cat("- Same-analysis recycling keeps package event order in frozen history (H1, H2, H1 retest).\n")
 cat("\nRound 2 summary rows:\n")
 print(round2$summary_rows)
 cat("\nBoundary preview after round 2:\n")
@@ -341,5 +353,3 @@ cat("\nLive analysis state after round 2:\n")
 print(live_state_after_round2)
 cat("\nRound-entry state after round 2:\n")
 print(round2_state_after_recycling$remaining_rows %>% dplyr::select(hypothesis, hypothesis_stage, current_alpha, status, analysis_round))
-cat("\nControl alpha after round 2:\n")
-print(control_round2$alpha_after)

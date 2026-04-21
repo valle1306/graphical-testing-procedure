@@ -55,6 +55,22 @@ Rscript scripts/install_packages.R
 
 This installs packages into a local `.Rlibs/` folder so they do not affect your global R setup.
 
+## Codex Workflow
+
+- Root agent instructions live in `AGENTS.md`.
+- Planning, architecture, review, and patch-budget guidance live in `docs/`.
+- For repo-wide verification, run:
+
+```bash
+Rscript scripts/run_verify_all.R
+```
+
+- For manual Shiny debugging, run:
+
+```bash
+Rscript scripts/run_shiny_debug.R
+```
+
 ## How To Use The App
 
 ### 1. Home
@@ -77,17 +93,18 @@ Use the `Design` tab for the classic graphical multiple-testing procedure.
 Use the `Group Sequential Design` tab to define the planned one-sided interim analysis workflow.
 
 - Step 1 sets planned looks and alpha-spending rules for each hypothesis.
-- Step 2 assigns each hypothesis stage to an analysis time and information fraction.
+- Step 2 assigns each hypothesis look to an analysis time and information fraction.
 - Step 3 reviews the derived one-sided boundaries, including total analyses and alpha spending, before you lock the design.
+- The boundary-review table is design-time only; the `Submitted Analyses` table freezes the package-truth boundary and alpha used when each analysis time is actually submitted.
 - Click `Finalize Design` when the plan and boundary review are ready.
 
 ### 4. Analysis
 
-Use the `Analysis` tab to submit one full global analysis round at a time.
+Use the `Analysis` tab to submit one full analysis time at a time.
 
-- Choose the current global analysis round.
-- Enter one-sided p-values for every active hypothesis scheduled at that round.
-- Click `Submit Analysis Round` to apply the batch, recycle alpha on rejection, and refresh the remaining boundaries.
+- Choose the current analysis time.
+- Enter one-sided p-values for every active hypothesis scheduled at that analysis time.
+- Click `Submit Analysis Time` to apply the batch, recycle alpha on rejection, and refresh the remaining boundaries.
 - Use `Reset Analysis State` to clear submitted analysis data while keeping the current design tables.
 - Open `Open live graph and activity` when you want the live graph or the sequential activity log without leaving the tab.
 
@@ -101,6 +118,8 @@ You can test the import feature with:
 ## Repository Layout
 
 - [app.R](app.R): main app entrypoint.
+- [AGENTS.md](AGENTS.md): repo-level Codex instructions.
+- [docs/](docs): planning, architecture, review, and patch-budget guidance.
 - [www/](www): app media assets.
 - [scripts/](scripts): install and verification scripts.
 - [examples/](examples): sample input files.
