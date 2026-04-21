@@ -1,15 +1,35 @@
-# ── Shared empty-table constructors ─────────────────────────────────────────
 
-## sources the boundary construction and display helper functions if they aren't already 
-## in the environment, since those are used by multiple server modules. 
-## This avoids circular sourcing dependencies between the helper files.
-
+# ── Safety stub for the profiling helper ────────────────────────────────────
+# Elsewhere in the app there is a real `profile_reactivity()` function that
+# wraps a chunk of code, runs it, and records how long it took. That tool is
+# useful when we are hunting for slow spots, but it is not always loaded
+# (for example, when this file is sourced on its own during development).
+#
+# To keep the rest of this script working in either situation, we check whether
+# `profile_reactivity` already exists as a function in the environment. If it
+# does NOT exist, we define a tiny harmless replacement here:
+#   - It accepts the same arguments (`label`, `expr`, optional `note`) so any
+#     caller can use it without changing their code.
+#   - It calls `force(expr)`, which simply runs the expression that was passed
+#     in and returns its result. No timing, no logging — just "do the thing".
+# This pattern is sometimes called a "no-op stub": it satisfies the interface
+# without doing any extra work.
 if (!exists("profile_reactivity", mode = "function")) {
   profile_reactivity <- function(label, expr, note = NULL) {
     force(expr)
   }
 }
 
+# ── On-demand loading of sibling helper files ───────────────────────────────
+# The server side of this Shiny app is split across several helper files that
+# each focus on one topic (boundary math, on-screen display strings, runtime
+# alpha lookups, etc.). The functions in *this* file rely on a few helpers
+# from those other files. So before we use them, we need to be sure those
+# files have been loaded into memory.
+#
+# `helper_source_specs` is just a list of three small lists, each describing
+# one sibling file: which function to look for, and which file to load if it
+# is missing.
 helper_source_specs <- list(
   list(symbol = "normalize_spending_rule", path = "sequential_boundary_helpers.R"),
   list(symbol = "gs_scalar_display_text", path = "sequential_display_helpers.R"),
@@ -24,6 +44,18 @@ for (helper_spec in helper_source_specs) {
   }
 }
 
+# ── Empty-table "blueprints" (schema constructors) ──────────────────────────
+# The next several functions all do the SAME kind of thing: each one returns
+# a zero-row tibble (a tidyverse-flavoured data frame) with a fixed set of
+# columns and a known data type for each column.
+
+# The empty parentheses mean "make this column type, with zero values inside".
+
+# ---------------------------------------------------------------------------
+# empty_gs_boundary_preview()
+# ---------------------------------------------------------------------------
+
+# Helper for creating a missing tibble column that matches the template type.
 missing_tibble_column <- function(template_col, n) {
   if (is.integer(template_col)) {
     return(rep(NA_integer_, n))
@@ -61,6 +93,10 @@ empty_gs_boundary_preview <- function() {
   )
 }
 
+# ---------------------------------------------------------------------------
+# empty_gs_stage_history()
+# ---------------------------------------------------------------------------
+
 empty_gs_stage_history <- function() {
   tibble::tibble(
     submission = integer(),
@@ -75,6 +111,10 @@ empty_gs_stage_history <- function() {
     decision = character()
   )
 }
+
+# ---------------------------------------------------------------------------
+# empty_gs_hypothesis_plan()
+# ---------------------------------------------------------------------------
 
 empty_gs_hypothesis_plan <- function() {
   tibble::tibble(
@@ -91,6 +131,9 @@ empty_gs_hypothesis_plan <- function() {
 
 # ── Shared display helpers ──────────────────────────────────────────────────
 
+# ---------------------------------------------------------------------------
+# empty_gs_analysis_schedule()
+# ---------------------------------------------------------------------------
 empty_gs_analysis_schedule <- function() {
   tibble::tibble(
     schedule_key = character(),
@@ -104,6 +147,9 @@ empty_gs_analysis_schedule <- function() {
   )
 }
 
+# ---------------------------------------------------------------------------
+# empty_gs_analysis_history()
+# ---------------------------------------------------------------------------
 empty_gs_analysis_history <- function() {
   tibble::tibble(
     submission = integer(),
@@ -126,6 +172,23 @@ empty_gs_analysis_history <- function() {
   )
 }
 
+# ── "Sanitize" helpers (defensive cleaners) ─────────────────────────────────
+# The next four functions are "cleaners". They take a data frame coming from
+# somewhere we don't fully trust (a saved file, the editable UI grid, an
+# imported CSV, etc.) and return a tidy, predictable version that exactly
+# matches the empty-table blueprints above.
+#
+# Each cleaner does roughly the same three-step job:
+#   1. If the input is missing or empty → return the empty blueprint.
+#   2. If any expected columns are missing → add them, filled with sensible
+#      defaults so downstream code never crashes on a missing column.
+#   3. Force every column to its expected data type (text, integer, ...) so
+#      arithmetic and joins behave consistently.
+# At the end, keep only the expected columns, in the expected order.
+
+# ---------------------------------------------------------------------------
+# sanitize_gs_hypothesis_plan_tbl(df)
+# ---------------------------------------------------------------------------
 sanitize_gs_hypothesis_plan_tbl <- function(df) {
   if (is.null(df) || !nrow(df)) {
     return(empty_gs_hypothesis_plan())
@@ -158,6 +221,9 @@ sanitize_gs_hypothesis_plan_tbl <- function(df) {
     dplyr::select(id, hypothesis, planned_analyses, planned_max_info, alpha_spending, custom_cumulative_alpha, hsd_gamma, haybittle_p1)
 }
 
+# ---------------------------------------------------------------------------
+# sanitize_gs_analysis_schedule_tbl(df)
+# ---------------------------------------------------------------------------
 sanitize_gs_analysis_schedule_tbl <- function(df) {
   if (is.null(df) || !nrow(df)) {
     return(empty_gs_analysis_schedule())
@@ -190,6 +256,9 @@ sanitize_gs_analysis_schedule_tbl <- function(df) {
     )
 }
 
+# ---------------------------------------------------------------------------
+# sanitize_gs_analysis_history_tbl(df)
+# ---------------------------------------------------------------------------
 sanitize_gs_analysis_history_tbl <- function(df) {
   if (is.null(df) || !nrow(df)) {
     return(empty_gs_analysis_history())
@@ -223,6 +292,9 @@ sanitize_gs_analysis_history_tbl <- function(df) {
     dplyr::select(names(defaults))
 }
 
+# ---------------------------------------------------------------------------
+# sanitize_gs_boundary_preview_tbl(df)
+# ---------------------------------------------------------------------------
 sanitize_gs_boundary_preview_tbl <- function(df) {
   if (is.null(df) || !nrow(df)) {
     return(empty_gs_boundary_preview())
@@ -257,7 +329,10 @@ sanitize_gs_boundary_preview_tbl <- function(df) {
 
 
 # ── Auto-layout helper ──────────────────────────────────────────────────────
-
+# Purpose: when the user looks at the visual graph of hypotheses (the
+# circles-and-arrows diagram), every node needs an (x, y) screen position.
+# This function computes those positions automatically so the diagram is
+# tidy without the user having to drag nodes around.
 auto_layout_nodes <- function(nodes_tbl) {
   if (!nrow(nodes_tbl)) return(nodes_tbl)
   n <- nrow(nodes_tbl)
@@ -298,7 +373,6 @@ auto_layout_nodes <- function(nodes_tbl) {
     nodes_tbl$x[secondary] <- assign_row(secondary)
     nodes_tbl$y[secondary] <- v_spacing
   }
-
   nodes_tbl$x <- round(nodes_tbl$x)
   nodes_tbl$y <- round(nodes_tbl$y)
   nodes_tbl

@@ -1,4 +1,12 @@
 # Shared runtime helpers
+# This file holds the "runtime" layer for the group-sequential tab: the
+# functions that answer questions like "what alpha does each hypothesis start
+# with?", "which analysis rounds are still open?", "what feedback message
+# should we show after a round submission?", and "is the user's custom alpha
+# schedule monotonic?". Nothing here touches the UI directly — these helpers
+# are called by the event handlers in sequential_events.R and by the state
+# reducers in sequential_state.R.
+
 
 gs_design_alpha_lookup <- function(
   nodes_tbl = if (exists("rv", inherits = TRUE) && !is.null(rv$nodes)) rv$nodes else NULL,
@@ -28,6 +36,7 @@ set_gs_round_feedback <- function(text = NULL, type = c("success", "error")) {
   )
   invisible(NULL)
 }
+
 
 gs_round_submission_feedback_text <- function(
   analysis_round,
@@ -84,6 +93,7 @@ gs_rule_choices <- function(include_custom = TRUE) {
   }
   choices
 }
+
 
 gs_runtime_spending_code <- function(rule) {
   normalized <- normalize_spending_rule(rule)

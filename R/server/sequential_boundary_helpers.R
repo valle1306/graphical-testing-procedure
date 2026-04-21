@@ -1,5 +1,14 @@
-# Boundary computation helpers (moved from common_helpers.R)
+# ── Boundary computation helpers (moved from common_helpers.R) ──────────────
+# Every function here helps turn user inputs (spending rule, total alpha,
+# timing of peeks) into a table of z-score / p-value cut-offs for each peek.
+# Top-level entry point: `compute_boundary_schedule()` at the bottom.
 
+# ---------------------------------------------------------------------------
+# normalize_spending_rule(x)
+# ---------------------------------------------------------------------------
+# Collapses every synonym ("asOF", "O'Brien-Fleming", "Lan-DeMets O'Brien-
+# Fleming", ...) into one short tag ("OF", "Pocock", "HSD", "Custom") so the
+# rest of the file can do simple equality checks.
 normalize_spending_rule <- function(x) {
   value <- trimws(as.character(x[[1]]))
   dplyr::case_when(
@@ -15,6 +24,12 @@ normalize_spending_rule <- function(x) {
   )
 }
 
+# ---------------------------------------------------------------------------
+# parse_numeric_sequence(text_value)
+# ---------------------------------------------------------------------------
+# Turns a free-text string like "0.01, 0.02; 0.03" (commas, semicolons,
+# spaces, tabs, or newlines all allowed) into a numeric vector.
+# Returns numeric(0) if the input is empty.
 parse_numeric_sequence <- function(text_value) {
   if (is.null(text_value) || !length(text_value)) {
     return(numeric(0))
@@ -28,6 +43,19 @@ parse_numeric_sequence <- function(text_value) {
   suppressWarnings(as.numeric(pieces))
 }
 
+# ---------------------------------------------------------------------------
+# parse_custom_cumulative_alpha(text_value, planned_analyses, total_alpha,
+#                               allow_legacy_proportions, allow_total_mismatch)
+# ---------------------------------------------------------------------------
+# Validates a user-supplied "custom cumulative alpha" list.
+# Rules it checks:
+#   * Count matches planned_analyses.
+#   * Every value is finite, between 0 and 1, and strictly increasing.
+#   * If `total_alpha` is given: the final value must equal it (or, when
+#     `allow_legacy_proportions = TRUE`, values that are proportions ending
+#     at 1 get rescaled by total_alpha).
+# Returns a list: `ok = TRUE/FALSE`, a message (if not ok), plus the raw
+# values, absolute alpha values, and proportions (cumulative / total_alpha).
 parse_custom_cumulative_alpha <- function(
   text_value,
   planned_analyses,
@@ -83,6 +111,14 @@ parse_custom_cumulative_alpha <- function(
   )
 }
 
+# ---------------------------------------------------------------------------
+# parse_information_timing(text_value, planned_analyses)
+# ---------------------------------------------------------------------------
+# Validates the list of "how far through the study" values (timing of each
+# peek). Values must be positive and strictly increasing. If the user gave
+# raw information counts (e.g., 50, 100, 150), we divide by the max so the
+# list ends at 1 (fraction of total information).
+# Returns list(ok, message) on failure, or list(ok = TRUE, values = ...).
 parse_information_timing <- function(text_value, planned_analyses) {
   planned_analyses <- suppressWarnings(as.integer(planned_analyses[[1]]))
   if (is.na(planned_analyses) || planned_analyses < 1L) {
@@ -110,6 +146,12 @@ parse_information_timing <- function(text_value, planned_analyses) {
   list(ok = TRUE, values = values)
 }
 
+# ---------------------------------------------------------------------------
+# parse_spending_proportions(text_value, planned_analyses)
+# ---------------------------------------------------------------------------
+# "Is this text a valid list of cumulative proportions between 0 and 1 that increases
+#  over planned_analyses peeks?" — parse_spending_proportions answers yes/no + 
+#  returns the cleaned numbers.
 parse_spending_proportions <- function(text_value, planned_analyses) {
   parse_custom_cumulative_alpha(
     text_value = text_value,
@@ -119,6 +161,14 @@ parse_spending_proportions <- function(text_value, planned_analyses) {
     allow_total_mismatch = FALSE
   )
 }
+
+# ---------------------------------------------------------------------------
+# normalize_imported_custom_cumulative_alpha(plan_tbl, nodes_tbl)
+# ---------------------------------------------------------------------------
+# normalize_imported_custom_cumulative_alpha walks through an imported hypothesis plan and, 
+# for every hypothesis using the "Custom" spending rule, rewrites its stored cumulative-alpha
+# text into absolute values (rescaling legacy saves that stored proportions ending at 1) 
+# so downstream code always sees one consistent format.
 
 normalize_imported_custom_cumulative_alpha <- function(plan_tbl, nodes_tbl = NULL) {
   plan_tbl <- sanitize_gs_hypothesis_plan_tbl(plan_tbl)
@@ -153,6 +203,16 @@ normalize_imported_custom_cumulative_alpha <- function(plan_tbl, nodes_tbl = NUL
   sanitize_gs_hypothesis_plan_tbl(dplyr::bind_rows(rows))
 }
 
+# ── Correlation + boundary math ─────────────────────────────────────────────
+
+# ---------------------------------------------------------------------------
+# build_information_correlation(timing)
+# ---------------------------------------------------------------------------
+# Peeks at the data are correlated because later peeks include all the data
+# from earlier ones. For two peeks at timing t_i and t_j (with t_i <= t_j),
+# the correlation of their z-statistics is sqrt(t_i / t_j).
+# This function returns the full k-by-k correlation matrix used by the
+# multivariate-normal probability calls below.
 build_information_correlation <- function(timing) {
   timing <- as.numeric(timing)
   k <- length(timing)
@@ -167,6 +227,13 @@ build_information_correlation <- function(timing) {
   corr
 }
 
+# ---------------------------------------------------------------------------
+# compute_cumulative_alpha_from_z(z_values, timing)
+# ---------------------------------------------------------------------------
+# Given the z-score boundary for each peek, returns the total probability
+# of crossing AT OR BEFORE peek k, for every k. Peek 1 is just 1 - pnorm(z1);
+# later peeks need a multivariate-normal probability (via mvtnorm::pmvnorm)
+# because we must account for the chance we already stopped earlier.
 compute_cumulative_alpha_from_z <- function(z_values, timing) {
   corr <- build_information_correlation(timing)
   vapply(seq_along(z_values), function(k) {
@@ -183,6 +250,17 @@ compute_cumulative_alpha_from_z <- function(z_values, timing) {
   }, numeric(1))
 }
 
+# ---------------------------------------------------------------------------
+# solve_custom_stage_boundary(previous_z, target_stage_alpha, corr_prefix)
+# ---------------------------------------------------------------------------
+# Used only when the user chose the "Custom cumulative alpha" rule in Step 1
+# of the Group-Sequential wizard. There is no closed-form formula for that
+# case, so for each peek after the first we have to SEARCH for the z-score
+# cutoff that exactly spends `target_stage_alpha` of extra error at this peek
+# (given we already survived the previous peeks at `previous_z`).
+# Uses stats::uniroot — a binary-search root finder. The while-loops widen
+# the search window (up to +/- 40) if the sign change is not bracketed yet.
+# Called once per peek (peek 2 onwards) by solve_custom_boundaries().
 solve_custom_stage_boundary <- function(previous_z, target_stage_alpha, corr_prefix) {
   stage_index <- length(previous_z) + 1L
   if (!is.finite(target_stage_alpha) || target_stage_alpha <= 0) {
@@ -215,6 +293,19 @@ solve_custom_stage_boundary <- function(previous_z, target_stage_alpha, corr_pre
   stats::uniroot(boundary_fn, interval = c(lower, upper), tol = 1e-8)$root
 }
 
+# ---------------------------------------------------------------------------
+# solve_custom_boundaries(cumulative_alpha, timing)
+# ---------------------------------------------------------------------------
+# Turns a user-supplied cumulative-alpha list + timing list into the full
+# per-peek boundary table (same columns that Step 3 "Boundary Review" shows).
+# Steps:
+#   1. `stage_alpha` = extra spent at each peek = differences of the cumul.
+#   2. Peek 1 boundary is simple: qnorm(1 - cumulative_alpha[1]).
+#   3. Each later peek calls solve_custom_stage_boundary() with the z-values
+#      already solved for earlier peeks.
+# Returns a tibble with columns: analysis, timing, stage_alpha,
+# cumulative_alpha_spent, z_boundary, p_boundary.
+# Called by compute_boundary_schedule() when spending_type == "Custom".
 solve_custom_boundaries <- function(cumulative_alpha, timing) {
   cumulative_alpha <- as.numeric(cumulative_alpha)
   stage_alpha <- c(cumulative_alpha[[1]], diff(cumulative_alpha))
@@ -240,6 +331,16 @@ solve_custom_boundaries <- function(cumulative_alpha, timing) {
   )
 }
 
+# ---------------------------------------------------------------------------
+# compute_boundary_schedule(total_alpha, spending_type, timing,
+#                           spending_values, hsd_gamma, haybittle_p1)
+# ---------------------------------------------------------------------------
+# The core "boundary engine" of the Group-Sequential Design wizard.
+# compute_boundary_schedule is the main entry point: given a total alpha, a spending 
+# rule, and the timing of each planned peek, it dispatches to the right engine — gsDesign 
+# for OF/Pocock/HSD, HP() for Haybittle-Peto, solve_custom_boundaries() for Custom, or a 
+# trivial single-peek shortcut — and returns one row per analysis with stage_alpha, 
+# cumulative_alpha_spent, z_boundary, and p_boundary
 compute_boundary_schedule <- function(
   total_alpha,
   spending_type,
