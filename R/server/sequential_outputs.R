@@ -585,7 +585,7 @@ output$gs_round_entry_ui <- renderUI({
           tags$th("Current Alpha"),
           tags$th("Planned Information Fraction"),
           tags$th("Planned Max Info"),
-          tags$th("Observed Info"),
+          tags$th("Observed Event Count"),
           tags$th("Previous Saved Result"),
           tags$th("Boundary p"),
           tags$th("Entered One-Sided p"),
@@ -599,7 +599,12 @@ output$gs_round_entry_ui <- renderUI({
           if (!is.finite(planned_max_info) || planned_max_info <= 0) {
             planned_max_info <- 100
           }
-          default_observed_info <- display_state$actionable_rows$timing[[i]] * planned_max_info
+          # The runtime path records a whole-number observed count, while the
+          # planned information fraction remains design-only guidance.
+          default_observed_info <- max(
+            1L,
+            as.integer(round(display_state$actionable_rows$timing[[i]] * planned_max_info))
+          )
           tags$tr(
             tags$td(tags$strong(display_state$actionable_rows$hypothesis[[i]])),
             tags$td(
@@ -613,13 +618,19 @@ output$gs_round_entry_ui <- renderUI({
             tags$td(format_plain_number(display_state$actionable_rows$timing[[i]])),
             tags$td(format_plain_number(planned_max_info)),
             tags$td(
-              numericInput(
-                inputId = paste0("gs_round_info_", key),
-                label = NULL,
-                value = as.numeric(default_observed_info),
-                min = 0,
-                step = 1,
-                width = "100%"
+              tagList(
+                numericInput(
+                  inputId = paste0("gs_round_info_", key),
+                  label = NULL,
+                  value = as.numeric(default_observed_info),
+                  min = 0,
+                  step = 1,
+                  width = "100%"
+                ),
+                tags$div(
+                  class = "gs-inline-note",
+                  "Actual whole-number event/patient count for this look."
+                )
               )
             ),
             tags$td(last_result_lookup[[key]]),
@@ -651,7 +662,11 @@ output$gs_round_entry_ui <- renderUI({
         class = "gs-inline-note",
         "Only active, testable hypotheses are shown here. Inactive rows are hidden."
       )
-    }
+    },
+    tags$div(
+      class = "gs-inline-note",
+      "Observed Event Count is the actual whole-number count at that look. Planned Information Fraction is design guidance only."
+    )
   )
 })
 
