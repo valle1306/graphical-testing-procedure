@@ -302,6 +302,8 @@ shiny::testServer(server, {
     fixed = TRUE
   )))
 
+  # Build a minimal one-hypothesis runtime design so replay checks stay focused
+  # on history reconstruction instead of earlier UI setup in this script.
   configure_single_hypothesis_runtime_case <- function(planned_analyses, info_fraction, analysis_round, is_final) {
     rv$nodes <- tibble::tibble(id = 1L, x = 0, y = 0, hypothesis = "H1", alpha = 0.025)
     rv$edges <- tibble::tibble(id = integer(), from = integer(), to = integer(), weight = numeric())
@@ -363,6 +365,49 @@ shiny::testServer(server, {
   stopifnot(abs(as.numeric(final_row$max_info) - 120) < 1e-12)
   stopifnot(isTRUE(replay_group_sequential_history(final_submission$history_rows)))
   stopifnot(abs(as.numeric(rv$gs_analysis_history$max_info[[1]]) - 120) < 1e-12)
+
+  configure_single_hypothesis_runtime_case(
+    planned_analyses = 3L,
+    info_fraction = c(1 / 3, 2 / 3, 1),
+    analysis_round = c(1L, 2L, 3L),
+    is_final = c(FALSE, FALSE, TRUE)
+  )
+  # Legacy imports can omit observed_info; replay should reconstruct the
+  # integer count rather than passing a fractional value to TrialSimulator.
+  legacy_history <- sanitize_gs_analysis_history_tbl(tibble::tibble(
+    submission = 1L,
+    schedule_key = "1__1",
+    analysis_round = 1L,
+    hypothesis = "H1",
+    hypothesis_stage = 1L,
+    alpha_spending = "OF",
+    runtime_spending_code = "asOF",
+    information_fraction = 1 / 3,
+    current_alpha = 0.025,
+    cumulative_alpha_spent = 0.001,
+    observed_info = NA_real_,
+    p_value = 0.5,
+    boundary_p = 0.001,
+    boundary_z = 3,
+    decision = "Do not reject",
+    is_final = FALSE,
+    max_info = 100
+  ))
+  legacy_replay <- tryCatch(replay_group_sequential_history(legacy_history), error = function(e) e)
+  stopifnot(isTRUE(legacy_replay))
+  stopifnot(nrow(rv$gs_analysis_history) == 1L)
+  stopifnot(abs(as.numeric(rv$gs_analysis_history$observed_info[[1]]) - 33) < 1e-12)
+  stopifnot(abs(as.numeric(rv$gs_analysis_history$max_info[[1]]) - 100) < 1e-12)
+
+  invalid_legacy_history <- legacy_history
+  invalid_legacy_history$observed_info <- 12.5
+  invalid_legacy_replay <- tryCatch(replay_group_sequential_history(invalid_legacy_history), error = function(e) e)
+  stopifnot(inherits(invalid_legacy_replay, "error"))
+  stopifnot(identical(
+    invalid_legacy_replay$message,
+    "Saved observed information for H1 look 1 must be a positive whole-number count."
+  ))
+  stopifnot(nrow(rv$gs_analysis_history) == 0L)
 })
 
 cat("Group sequential reactivity regression passed.\n")
@@ -373,3 +418,4 @@ cat("- Editing one analysis time updates schedule state immediately and auto-cas
 cat("- Analysis entry defaults observed counts to whole numbers and labels them as actual runtime counts.\n")
 cat("- Runtime submission rejects non-integer observed information counts before TrialSimulator is called.\n")
 cat("- Final-look submissions carry the actual observed count into frozen runtime max info for replay.\n")
+cat("- Legacy replay reconstructs missing observed_info and rejects saved non-integer observed_info values.\n")
