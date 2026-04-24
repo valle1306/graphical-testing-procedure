@@ -271,14 +271,21 @@ shiny::testServer(server, {
 
   round_entry_html <- output$gs_round_entry_ui$html
   stopifnot(grepl("gs_round_info_1__1", round_entry_html, fixed = TRUE))
+  stopifnot(grepl("Observed Event Count", round_entry_html, fixed = TRUE))
+  stopifnot(grepl("Actual whole-number event/patient count for this look.", round_entry_html, fixed = TRUE))
+  stopifnot(grepl(
+    "Observed Event Count is the actual whole-number count at that look. Planned Information Fraction is design guidance only.",
+    round_entry_html,
+    fixed = TRUE
+  ))
   stopifnot(grepl("value=\"120\"", round_entry_html, fixed = TRUE))
 
   stopifnot(isTRUE(initialize_batch_gs_object(reset_history = TRUE)))
   session$setInputs(
     gs_analysis_round = "1",
-    gs_round_info_1__1 = 120,
+    gs_round_info_1__1 = 33,
     gs_round_p_1__1 = 0.5,
-    gs_round_info_2__1 = 100,
+    gs_round_info_2__1 = 33,
     gs_round_p_2__1 = 0.5
   )
   flush_session()
@@ -287,7 +294,7 @@ shiny::testServer(server, {
   h1_submission <- submission$history_rows %>%
     dplyr::filter(hypothesis == "H1") %>%
     dplyr::slice(1)
-  stopifnot(abs(as.numeric(h1_submission$observed_info) - 120) < 1e-12)
+  stopifnot(abs(as.numeric(h1_submission$observed_info) - 33) < 1e-12)
   stopifnot(abs(as.numeric(h1_submission$max_info) - 240) < 1e-12)
   stopifnot(any(grepl(
     "Analysis Time 1 / Look 1: alpha at submission 0.01",
@@ -339,6 +346,8 @@ shiny::testServer(server, {
     analysis_round = c(1L, 2L, 3L),
     is_final = c(FALSE, FALSE, TRUE)
   )
+  interim_round_entry_html <- output$gs_round_entry_ui$html
+  stopifnot(grepl("value=\"33\"", interim_round_entry_html, fixed = TRUE))
   session$setInputs(gs_round_info_1__1 = 33.33333, gs_round_p_1__1 = 0.5)
   flush_session()
   decimal_error <- tryCatch(collect_round_submission(), error = function(e) e)
@@ -361,5 +370,6 @@ cat("- No-op plan inputs do not rewrite stored plan/schedule state.\n")
 cat("- Invalid transient K input falls back to stored state without boundary recompute.\n")
 cat("- Changing H1 K rebuilds only H1 schedule rows and keeps other hypotheses untouched.\n")
 cat("- Editing one analysis time updates schedule state immediately and auto-cascades later looks.\n")
+cat("- Analysis entry defaults observed counts to whole numbers and labels them as actual runtime counts.\n")
 cat("- Runtime submission rejects non-integer observed information counts before TrialSimulator is called.\n")
 cat("- Final-look submissions carry the actual observed count into frozen runtime max info for replay.\n")
