@@ -294,6 +294,66 @@ shiny::testServer(server, {
     build_round_submit_log(submission$history_rows),
     fixed = TRUE
   )))
+
+  configure_single_hypothesis_runtime_case <- function(planned_analyses, info_fraction, analysis_round, is_final) {
+    rv$nodes <- tibble::tibble(id = 1L, x = 0, y = 0, hypothesis = "H1", alpha = 0.025)
+    rv$edges <- tibble::tibble(id = integer(), from = integer(), to = integer(), weight = numeric())
+    rv$gs_hypothesis_plan <- sanitize_gs_hypothesis_plan_tbl(tibble::tibble(
+      id = 1L, hypothesis = "H1", planned_analyses = planned_analyses, planned_max_info = 100,
+      alpha_spending = "OF", custom_cumulative_alpha = "", hsd_gamma = -4, haybittle_p1 = 0.0003
+    ))
+    rv$gs_analysis_schedule <- sanitize_gs_analysis_schedule_tbl(tibble::tibble(
+      schedule_key = paste0("1__", seq_along(info_fraction)),
+      analysis_round = analysis_round,
+      hypothesis = "H1",
+      hypothesis_id = 1L,
+      hypothesis_stage = seq_along(info_fraction),
+      planned_analyses = planned_analyses,
+      information_fraction = info_fraction,
+      is_final = is_final
+    ))
+    rv$gs_analysis_history <- empty_gs_analysis_history()
+    rv$ts_object <- NULL
+    rv$ts_summary <- NULL
+    rv$planned_max_info <- numeric(0)
+    set_gs_analysis_schedule_round_signature(rv$gs_analysis_schedule)
+    runtime_inputs <- list(
+      gs_plan_k_1 = planned_analyses,
+      gs_plan_max_info_1 = 100,
+      gs_plan_rule_1 = "OF"
+    )
+    for (i in seq_along(info_fraction)) {
+      runtime_inputs[[paste0("gs_schedule_round_1__", i)]] <- analysis_round[[i]]
+      runtime_inputs[[paste0("gs_schedule_info_1__", i)]] <- as.character(info_fraction[[i]])
+    }
+    runtime_inputs$gs_analysis_round <- as.character(analysis_round[[1]])
+    do.call(session$setInputs, runtime_inputs)
+    rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
+    flush_session()
+    stopifnot(isTRUE(initialize_batch_gs_object(reset_history = TRUE)))
+  }
+
+  configure_single_hypothesis_runtime_case(
+    planned_analyses = 3L,
+    info_fraction = c(1 / 3, 2 / 3, 1),
+    analysis_round = c(1L, 2L, 3L),
+    is_final = c(FALSE, FALSE, TRUE)
+  )
+  session$setInputs(gs_round_info_1__1 = 33.33333, gs_round_p_1__1 = 0.5)
+  flush_session()
+  decimal_error <- tryCatch(collect_round_submission(), error = function(e) e)
+  stopifnot(inherits(decimal_error, "error"))
+  stopifnot(identical(decimal_error$message, "Enter a positive whole-number observed information count for H1 look 1."))
+
+  configure_single_hypothesis_runtime_case(planned_analyses = 1L, info_fraction = 1, analysis_round = 1L, is_final = TRUE)
+  session$setInputs(gs_round_info_1__1 = 120, gs_round_p_1__1 = 0.5)
+  flush_session()
+  final_submission <- collect_round_submission()
+  final_row <- final_submission$history_rows %>% dplyr::slice(1)
+  stopifnot(abs(as.numeric(final_row$observed_info) - 120) < 1e-12)
+  stopifnot(abs(as.numeric(final_row$max_info) - 120) < 1e-12)
+  stopifnot(isTRUE(replay_group_sequential_history(final_submission$history_rows)))
+  stopifnot(abs(as.numeric(rv$gs_analysis_history$max_info[[1]]) - 120) < 1e-12)
 })
 
 cat("Group sequential reactivity regression passed.\n")
@@ -301,4 +361,5 @@ cat("- No-op plan inputs do not rewrite stored plan/schedule state.\n")
 cat("- Invalid transient K input falls back to stored state without boundary recompute.\n")
 cat("- Changing H1 K rebuilds only H1 schedule rows and keeps other hypotheses untouched.\n")
 cat("- Editing one analysis time updates schedule state immediately and auto-cascades later looks.\n")
-cat("- Non-default planned max info drives the default observed info and stays frozen in submitted history.\n")
+cat("- Runtime submission rejects non-integer observed information counts before TrialSimulator is called.\n")
+cat("- Final-look submissions carry the actual observed count into frozen runtime max info for replay.\n")

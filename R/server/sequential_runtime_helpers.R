@@ -37,6 +37,18 @@ set_gs_round_feedback <- function(text = NULL, type = c("success", "error")) {
   invisible(NULL)
 }
 
+gs_require_observed_info_count <- function(observed_info, hypothesis, hypothesis_stage) {
+  observed_info <- suppressWarnings(as.numeric(observed_info))
+  hypothesis_stage <- coerce_scalar_integer(hypothesis_stage, default = NA_integer_, minimum = 1L)
+  if (!is.finite(observed_info) || observed_info <= 0 || abs(observed_info - round(observed_info)) > 1e-8) {
+    stop(sprintf(
+      "Enter a positive whole-number observed information count for %s look %s.",
+      as.character(hypothesis[[1]]),
+      hypothesis_stage
+    ))
+  }
+  as.integer(round(observed_info))
+}
 
 gs_round_submission_feedback_text <- function(
   analysis_round,

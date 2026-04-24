@@ -161,10 +161,11 @@ collect_round_submission <- function() {
     if (is.na(p_value) || p_value < 0 || p_value > 1) {
       stop(sprintf("Enter a one-sided p-value between 0 and 1 for %s look %s.", ready_rows$hypothesis[[i]], ready_rows$hypothesis_stage[[i]]))
     }
-    observed_info <- read_scalar_numeric_input(paste0("gs_round_info_", schedule_key))
-    if (is.na(observed_info) || observed_info <= 0) {
-      stop(sprintf("Enter a positive observed information value for %s look %s.", ready_rows$hypothesis[[i]], ready_rows$hypothesis_stage[[i]]))
-    }
+    observed_info <- gs_require_observed_info_count(
+      observed_info = read_scalar_numeric_input(paste0("gs_round_info_", schedule_key)),
+      hypothesis = ready_rows$hypothesis[[i]],
+      hypothesis_stage = ready_rows$hypothesis_stage[[i]]
+    )
     runtime_code <- gs_runtime_spending_code(ready_rows$alpha_spending[[i]])
     planned_max_info <- as.numeric(max_info_lookup[[ready_rows$hypothesis[[i]]]])
     if (!is.finite(planned_max_info) || planned_max_info <= 0) {
@@ -176,7 +177,7 @@ collect_round_submission <- function() {
       p = as.numeric(p_value),
       info = as.numeric(observed_info),
       is_final = isTRUE(ready_rows$is_final[[i]]),
-      max_info = as.numeric(planned_max_info),
+      max_info = if (isTRUE(ready_rows$is_final[[i]])) as.numeric(observed_info) else as.numeric(planned_max_info),
       alpha_spent = if (identical(runtime_code, "asUser")) {
         if (isTRUE(ready_rows$is_final[[i]])) {
           1.0
