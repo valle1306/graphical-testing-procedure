@@ -47,6 +47,9 @@ initialize_batch_gs_object <- function(reset_history = FALSE) {
     return(FALSE)
   }
 
+  # TrialSimulator's runtime object uses package-specific spending codes. The
+  # app's boundary preview keeps the design-time rule names and computes those
+  # boundaries separately from this initialization step.
   rv$alpha_spending <- vapply(plan_tbl$alpha_spending, gs_runtime_spending_code, character(1))
   rv$planned_max_info <- as.numeric(plan_tbl$planned_max_info)
 
@@ -161,10 +164,13 @@ collect_round_submission <- function() {
     if (is.na(p_value) || p_value < 0 || p_value > 1) {
       stop(sprintf("Enter a one-sided p-value between 0 and 1 for %s look %s.", ready_rows$hypothesis[[i]], ready_rows$hypothesis_stage[[i]]))
     }
-    observed_info <- read_scalar_numeric_input(paste0("gs_round_info_", schedule_key))
-    if (is.na(observed_info) || observed_info <= 0) {
-      stop(sprintf("Enter a positive observed information value for %s look %s.", ready_rows$hypothesis[[i]], ready_rows$hypothesis_stage[[i]]))
-    }
+    # This is a live TrialSimulator input, not the design-time information
+    # fraction that the boundary preview used to build the planned look table.
+    observed_info <- gs_require_observed_info_count(
+      observed_info = read_scalar_numeric_input(paste0("gs_round_info_", schedule_key)),
+      hypothesis = ready_rows$hypothesis[[i]],
+      hypothesis_stage = ready_rows$hypothesis_stage[[i]]
+    )
     runtime_code <- gs_runtime_spending_code(ready_rows$alpha_spending[[i]])
     planned_max_info <- as.numeric(max_info_lookup[[ready_rows$hypothesis[[i]]]])
     if (!is.finite(planned_max_info) || planned_max_info <= 0) {
@@ -176,7 +182,11 @@ collect_round_submission <- function() {
       p = as.numeric(p_value),
       info = as.numeric(observed_info),
       is_final = isTRUE(ready_rows$is_final[[i]]),
-      max_info = as.numeric(planned_max_info),
+      # TrialSimulator replays a final look against the submitted terminal
+      # count. The design-time boundary preview still comes from the finalized
+      # plan; only the frozen runtime history switches max_info at the final
+      # look to preserve the package's replay contract.
+      max_info = if (isTRUE(ready_rows$is_final[[i]])) as.numeric(observed_info) else as.numeric(planned_max_info),
       alpha_spent = if (identical(runtime_code, "asUser")) {
         if (isTRUE(ready_rows$is_final[[i]])) {
           1.0
@@ -236,7 +246,9 @@ collect_round_submission <- function() {
   batch_results <- trajectory_after %>%
     dplyr::transmute(
       # Preserve the package-emitted event order so same-analysis retests stay
-      # in the frozen history exactly as GraphicalTesting processed them.
+      # in the frozen history exactly as GraphicalTesting processed them. These
+      # boundary/decision columns come from TrialSimulator's runtime result,
+      # not from the app's design-time preview table.
       .package_result_order = dplyr::row_number(),
       analysis_round = as.integer(order),
       hypothesis = as.character(hypothesis),
