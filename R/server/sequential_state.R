@@ -177,6 +177,8 @@ collect_round_submission <- function() {
       p = as.numeric(p_value),
       info = as.numeric(observed_info),
       is_final = isTRUE(ready_rows$is_final[[i]]),
+      # Final looks must replay the submitted final count; interim looks still
+      # use the finalized design's planned max info.
       max_info = if (isTRUE(ready_rows$is_final[[i]])) as.numeric(observed_info) else as.numeric(planned_max_info),
       alpha_spent = if (identical(runtime_code, "asUser")) {
         if (isTRUE(ready_rows$is_final[[i]])) {

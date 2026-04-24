@@ -37,6 +37,8 @@ set_gs_round_feedback <- function(text = NULL, type = c("success", "error")) {
   invisible(NULL)
 }
 
+# TrialSimulator expects an integer event/patient count at runtime submission,
+# not the planned information fraction or a derived decimal.
 gs_require_observed_info_count <- function(observed_info, hypothesis, hypothesis_stage) {
   observed_info <- suppressWarnings(as.numeric(observed_info))
   hypothesis_stage <- coerce_scalar_integer(hypothesis_stage, default = NA_integer_, minimum = 1L)
