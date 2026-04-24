@@ -6,8 +6,10 @@
 # schedule monotonic?". Nothing here touches the UI directly — these helpers
 # are called by the event handlers in sequential_events.R and by the state
 # reducers in sequential_state.R.
-
-
+#
+# Runtime ownership note: these helpers feed and interpret the live
+# TrialSimulator::GraphicalTesting object. Design-time boundary construction
+# stays in the boundary helper files and does not use these runtime helpers.
 gs_design_alpha_lookup <- function(
   nodes_tbl = if (exists("rv", inherits = TRUE) && !is.null(rv$nodes)) rv$nodes else NULL,
   fallback = NULL
@@ -37,8 +39,10 @@ set_gs_round_feedback <- function(text = NULL, type = c("success", "error")) {
   invisible(NULL)
 }
 
-# TrialSimulator expects an integer event/patient count at runtime submission,
-# not the planned information fraction or a derived decimal.
+# TrialSimulator::GraphicalTesting$test() expects an integer event/patient
+# count in the runtime `info` column. The design-time boundary preview can use
+# information fractions, but the live submission path cannot pass those
+# fractions or a derived decimal through to TrialSimulator.
 gs_require_observed_info_count <- function(observed_info, hypothesis, hypothesis_stage) {
   observed_info <- suppressWarnings(as.numeric(observed_info))
   hypothesis_stage <- coerce_scalar_integer(hypothesis_stage, default = NA_integer_, minimum = 1L)
@@ -110,6 +114,8 @@ gs_rule_choices <- function(include_custom = TRUE) {
 
 
 gs_runtime_spending_code <- function(rule) {
+  # These are TrialSimulator runtime codes. The boundary-preview path keeps the
+  # human-readable rule names and routes through compute_boundary_schedule().
   normalized <- normalize_spending_rule(rule)
   dplyr::case_when(
     identical(normalized, "OF") ~ "asOF",
