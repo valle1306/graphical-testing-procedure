@@ -1,0 +1,296 @@
+\documentclass[article]{jss}
+
+%% -- LaTeX packages and custom commands ---------------------------------------
+
+\usepackage{lmodern}
+\usepackage{amsmath}
+
+\newcommand{\class}[1]{`\code{#1}'}
+\newcommand{\fct}[1]{\code{#1()}}
+
+%% -- Article metainformation --------------------------------------------------
+
+\author{
+  Phan Nguyen Huong Le\\ Rutgers University \And MengYang Yi\\ Johns Hopkins University \AND Philip He\\ Rutgers University, Daiichi Sankyo Inc.
+}
+\Plainauthor{Phan Nguyen Huong Le, MengYang Yi, Philip He}
+
+\title{Interactive Visualization of Graphical Multiple Testing Procedures: An \proglang{R} \pkg{shiny} Interface for Clinical Trial Design}
+\Plaintitle{Interactive Visualization of Graphical Multiple Testing Procedures: An R Shiny Interface for Clinical Trial Design}
+\Shorttitle{\pkg{graphMTP}: Interactive Visualization of Graphical Multiple Testing Procedures}
+
+\Abstract{
+Graphical multiple testing procedures are widely used in confirmatory clinical trials to control the family-wise error rate across multiple endpoints, treatment comparisons, and patient populations. Although the graphical framework unifies classical procedures such as Bonferroni, Holm, fixed-sequence, fallback, and gatekeeping strategies, specifying valid graphs and tracking significance-level reallocation after each rejection step can be computationally and conceptually
+difficult. These challenges become more pronounced in group sequential settings, where hypotheses are tested repeatedly across interim analyses. We present \pkg{graphMTP}, an interactive web-based interface implemented in \proglang{R} with \pkg{shiny}, \pkg{TrialSimulator}, and \pkg{visNetwork},
+for the design, visualization, and exploration of graphical multiple testing procedures. The software allows users to construct hypothesis graphs interactively, assign initial weights and transition weights with real-time constraint checking, and simulate rejection paths to visualize $\alpha$-propagation dynamically. By combining a visual interface with a statistically validated backend, \pkg{graphMTP} supports both the specification of complex testing strategies and their communication to interdisciplinary clinical trial teams. Fixed-design and group sequential examples illustrate how interactive visualization can improve workflow, interpretation, and reproducibility in multiplicity planning.}
+
+\Keywords{family-wise error rate, graphical multiple testing, group sequential design, \proglang{R}, \pkg{shiny}, \pkg{TrialSimulator}, \pkg{visNetwork}}
+\Plainkeywords{family-wise error rate, graphical multiple testing, group sequential design, R, shiny, TrialSimulator, visNetwork}
+
+\Address{
+  Phan Nguyen Huong Le\\
+  Department of Statistics\\
+  Rutgers University\\
+  Piscataway, New Jersey, USA\\
+  E-mail: \email{hpl14@scarletmail.rutgers.edu}
+}
+
+\Address{
+  MengYang Yi\\
+  Department of Biostatistics\\
+  Johns Hopkins University\\
+  Baltimore, Maryland, USA\\
+  E-mail: \email{your-jhu-email@jhu.edu}
+}
+
+\Address{
+  Philip He\\
+  Department of Statistics\\
+  Rutgers University\\
+  Piscataway, New Jersey, USA\\
+  \emph{and}\\
+  Daiichi Sankyo Inc.\\
+  Basking Ridge, New Jersey, USA\\
+  E-mail: \email{your-email-here}
+}
+
+\begin{document}
+
+\section{Introduction}
+
+Confirmatory clinical trials frequently involve the simultaneous evaluation of
+multiple hypotheses, including multiple endpoints, treatment comparisons, dose
+groups, and patient subpopulations. When several hypotheses are tested within a
+single study, the probability of making at least one false positive conclusion
+can exceed the nominal significance level unless multiplicity is handled
+appropriately \citep{FDA2017,EMA2017}. Strong control of the family-wise error
+rate (FWER) is therefore a central requirement in the design and analysis of
+confirmatory trials \citep{FDA2017,EMA2017}.
+
+Classical multiplicity-adjustment methods include procedures such as the
+Bonferroni correction, Holm's step-down procedure \citep{Holm1979}, and
+fixed-sequence testing \citep{Wiens2003}. While these approaches provide strong
+control of the FWER, they can be restrictive when complex hierarchical
+relationships exist among hypotheses. Modern clinical trials often involve
+structured testing strategies, such as gatekeeping procedures
+\citep{Dmitrienko2003}, fallback strategies \citep{Wiens2003}, or sequential
+testing across endpoints and patient populations. These settings require more
+flexible methods that can represent and manage dependencies among hypotheses
+while maintaining statistical validity.
+
+Graphical multiple testing procedures provide such a flexible and unified
+framework \citep{Bretz2009,Bretz2011}. In this framework, hypotheses are
+represented as nodes in a directed graph, and weighted edges determine how the
+significance level $\alpha$ is redistributed when a hypothesis is rejected.
+Each node is initially assigned a portion of the global significance level, and
+the resulting procedure can be interpreted through the closed testing principle
+of \citet{Marcus1976}. This representation unifies a broad class of multiple
+testing procedures while preserving strong FWER control
+\citep{Bretz2009,Bretz2011}. The framework has also been extended to group
+sequential designs with interim analyses, where alpha-spending functions
+govern the allocation of significance level across both hypotheses and time
+points \citep{LanDeMets1983,ProschanLanWittes2006,MaurerBretz2013}.
+
+Despite their methodological appeal, graphical procedures can be difficult to
+specify, validate, and communicate in practice. Users must ensure that initial
+alpha allocations and outgoing edge weights satisfy the required constraints,
+and they must understand how significance level propagates across the graph
+after each rejection step. These tasks are manageable for small examples, but
+they become substantially more difficult as the testing strategy grows more
+complex, especially when interim analyses and group sequential boundaries are
+incorporated.
+
+Existing software supports important parts of this workflow, but not the full
+interactive workflow considered here. The \pkg{gMCP} package implements
+graphical multiple testing procedures in \proglang{R} and has provided an
+earlier graphical user interface for Bonferroni-based graphical procedures
+\citep{Bretz2011,gMCP2024}. The more recent \pkg{graphicalMCP} package offers a
+code-based implementation of graph-based multiple comparison procedures
+\citep{graphicalMCP2024}. However, neither package natively supports the group
+sequential extension of \citet{MaurerBretz2013}, which requires additional
+integration with group sequential design tools such as \pkg{gsDesign}
+\citep{gsDesign2024}. As a result, there remains a need for a lightweight,
+browser-based interface that combines interactive graph construction, real-time
+validation, and dynamic visualization of rejection paths within a unified
+workflow.
+
+We address this need with \pkg{graphMTP}, an interactive \proglang{R}
+application built with \pkg{shiny} \citep{shiny2024} for constructing and
+exploring graphical multiple testing procedures in clinical trials. The
+application allows users to create hypothesis graphs visually, assign initial
+alpha weights, define transition rules, and simulate rejection sequences with
+immediate visual feedback. In addition, \pkg{graphMTP} integrates fixed-design
+graphical procedures with group sequential functionality through
+\pkg{TrialSimulator} \citep{TrialSimulator2024} and uses
+\pkg{visNetwork} \citep{visNetwork2023} for interactive graph visualization.
+The software is intended both as a practical design aid for statisticians and
+as a communication tool for interdisciplinary clinical trial teams.
+
+The contribution of this paper is twofold. First, we describe the design and
+implementation of \pkg{graphMTP} as open-source statistical software for the
+interactive specification and exploration of graphical multiple testing
+procedures. Second, we demonstrate through reproducible examples how the
+software can improve workflow, interpretation, and communication in multiplicity
+planning for clinical trials.
+
+The remainder of the paper is organized as follows.
+Section~\ref{sec:framework} reviews the statistical framework underlying
+graphical multiple testing procedures. Section~\ref{sec:software} describes the
+design and scope of \pkg{graphMTP}. Section~\ref{sec:implementation} presents
+the application architecture and implementation details.
+Section~\ref{sec:workflow} describes the user workflow and interface.
+Section~\ref{sec:examples} provides reproducible examples in fixed-design and
+group sequential settings. Section~\ref{sec:comparison} compares
+\pkg{graphMTP} with related software and discusses current limitations and
+future extensions. Section~\ref{sec:availability} concludes with software
+availability and reproducibility details.
+
+%--------------- STATS FRAMEWORK -----------------
+
+\section{Statistical framework}
+\label{sec:framework}
+
+This section briefly summarizes the statistical framework underlying
+\pkg{graphMTP}. We follow the notation and formulation of
+\citet{Marcus1976}, \citet{Bretz2009}, \citet{Bretz2011}, and
+\citet{MaurerBretz2013}.
+
+\subsection{Family-wise error rate and closed testing}
+
+Consider the problem of testing $m$ elementary null hypotheses
+$H_1, \ldots, H_m$, and let
+\[
+I = \{1, \ldots, m\}
+\]
+denote the associated index set. In confirmatory clinical trials, the
+family-wise error rate (FWER), defined as the probability of rejecting at least
+one true null hypothesis, is typically required to be controlled in the strong
+sense at a pre-specified level $\alpha$.
+
+A general principle for constructing such procedures is the closed testing
+principle of \citet{Marcus1976}. For every nonempty subset $J \subseteq I$,
+define the intersection hypothesis
+\[
+H_J = \bigcap_{j \in J} H_j.
+\]
+The corresponding closed testing procedure rejects an elementary hypothesis
+$H_i$, $i \in I$, if and only if all intersection hypotheses $H_J$ with
+$i \in J \subseteq I$ are rejected by their corresponding level-$\alpha$ tests.
+By construction, the resulting procedure controls the FWER in the strong sense
+at level $\alpha$. However, direct implementation becomes cumbersome as the
+number of hypotheses increases, because the closure contains $2^m - 1$
+nonempty intersection hypotheses.
+
+\subsection{Graphical multiple testing procedures}
+
+An important class of closed testing procedures is obtained by applying
+weighted Bonferroni tests to the intersection hypotheses
+\citep{Bretz2009,Bretz2011}. For each nonempty subset $J \subseteq I$, assume
+a collection of weights $w_j(J)$, $j \in J$, satisfying
+\[
+0 \leq w_j(J) \leq 1
+\qquad \text{and} \qquad
+\sum_{j \in J} w_j(J) \leq 1.
+\]
+The weighted Bonferroni test rejects $H_J$ if
+\[
+p_j \leq w_j(J)\alpha
+\]
+for at least one $j \in J$, where $p_j$ denotes the unadjusted $p$-value for
+$H_j$.
+
+Graphical multiple testing procedures provide a convenient representation of
+such weighting strategies. Following \citet{Bretz2011}, a graphical weighting
+strategy is specified through the weights $w_i(I)$, $i \in I$, for the global
+intersection hypothesis $H_I$, together with a transition matrix
+\[
+G = (g_{ij}),
+\]
+where
+\[
+0 \leq g_{ij} \leq 1, \qquad g_{ii} = 0,
+\qquad \text{and} \qquad \sum_{j=1}^m g_{ij} \leq 1
+\]
+for all $i,j \in I$. Here, $w_i(I)$ denotes the initial weight assigned to
+$H_i$, and $g_{ij}$ indicates the fraction of the local significance level at
+$H_i$ that is propagated to $H_j$ if $H_i$ is rejected.
+
+The full collection of weights $w_j(J)$ for the closure is induced from
+$w_i(I)$ and $G$ through the graph-updating algorithm described by
+\citet{Bretz2011}. Many standard multiple testing procedures, including
+weighted Bonferroni, Holm, fixed-sequence, fallback, and gatekeeping
+procedures, can be expressed within this framework
+\citep{Bretz2009,Bretz2011}.
+
+For Bonferroni-based graphical procedures, consonance and sequential rejection
+play an important role. In particular, if the monotonicity condition
+\[
+w_j(J) \leq w_j(J')
+\qquad \text{for all } J' \subseteq J \subseteq I
+\text{ and } j \in J'
+\]
+is satisfied, then the resulting closed testing procedure is consonant
+\citep{Hommel2007,Bretz2011}. This leads to a sequentially rejective shortcut
+procedure, so that the graphical multiple test can be carried out through
+iterative graph updates rather than explicit evaluation of all
+$2^m - 1$ intersection hypotheses.
+
+\subsection{Group sequential extension}
+
+The graphical framework has been extended to repeated testing over interim and
+final analyses by \citet{MaurerBretz2013}. Following their notation, consider
+testing $h > 1$ one-sided hypotheses $H_i$, $i \in I = \{1,\ldots,h\}$, in a
+group sequential trial with $k$ analysis time points $t = 1,\ldots,k$.
+
+Let $I_t$ denote the amount of statistical information available at time point
+$t$, and let $y_t = I_t / I_{\max}$ denote the corresponding information
+fraction, where $I_{\max}$ is the planned maximum information if early stopping
+does not occur. A family of spending functions is a nondecreasing function
+$a(\gamma,y)$ in the information time $y$, parameterized by the overall
+significance level $\gamma$, such that
+\[
+a(\gamma,0)=0
+\qquad \text{and} \qquad
+a(\gamma,1)=\gamma.
+\]
+
+Let $Z_t$ denote the test statistic for a single hypothesis at time point $t$,
+and let $p_t$ denote the corresponding nominal $p$-value. The nominal
+significance levels $\alpha_t^*(\gamma)$ are defined through
+\[
+\alpha_t(\gamma)
+=
+a(\gamma,y_t) - a(\gamma,y_{t-1})
+=
+P\left(
+\{p_t \leq \alpha_t^*(\gamma)\}
+\cap
+\bigcap_{s=1}^{t-1}
+\{p_s > \alpha_s^*(\gamma)\}
+\right),
+\]
+so that the cumulative probability of rejection up to time point $t$ is
+controlled by the chosen spending function \citep{LanDeMets1983,MaurerBretz2013}.
+
+For repeated testing of multiple hypotheses, Maurer and Bretz extend the
+Bonferroni-based graphical framework by applying weighted group sequential
+Bonferroni tests to the intersection hypotheses. For each $J \subseteq I$, the
+weights $w_i(J)$ determine the local significance levels for the hypotheses in
+$H_J$, and the corresponding nominal rejection boundaries at look $t$ are
+obtained from the relevant spending functions with $\gamma$ replaced by
+$w_i(J)\alpha$. Under mild monotonicity conditions on the spending functions,
+the resulting procedure remains sequentially rejective, allowing the graphical
+approach to be used in group sequential trials essentially in the same way as
+in the fixed-design case \citep{MaurerBretz2013}.
+
+
+
+\section{Availability and reproducibility} \label{sec:availability}
+The \pkg{graphMTP} application is available at
+\url{https://oncotrialdesign.shinyapps.io/graphMTP/}.
+Source code is available at
+\url{https://github.com/IDSWG-Oncology/graphMTP/}.
+
+\bibliography{references}
+
+\end{document}
