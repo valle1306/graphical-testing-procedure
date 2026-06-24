@@ -19,7 +19,7 @@ build_home_tab <- function() {
           font-size: 13px;      /* was 16px */
           line-height: 1.35;
         }
-        
+
         /* Hero header */
         .hero {
           display: flex;
@@ -39,7 +39,7 @@ build_home_tab <- function() {
         .brand { text-align: left; max-width: 780px; }
         .app-title { margin: 0 0 6px 0; font-weight: 600; }
         .app-subtitle { margin: 0; font-size: 16px; color: #6c757d; }
-      
+
         /* Stack vertically on small screens */
         @media (max-width: 992px) {
           .hero { flex-direction: column; text-align: center; }
@@ -48,7 +48,7 @@ build_home_tab <- function() {
         }
       "))
       ),
-      
+
       # Hero: logo on left, title/subtitle on right
       div(class = "hero",
           tags$video(
@@ -130,7 +130,7 @@ build_home_tab <- function() {
                           ),
                           tags$li(
                             tags$span("TrialSimulator R package: "),
-                            tags$a(href = "https://zhangh12.github.io/TrialSimulator/", 
+                            tags$a(href = "https://zhangh12.github.io/TrialSimulator/",
                                    "zhangh12.github.io/TrialSimulator/")
                           )
                         )

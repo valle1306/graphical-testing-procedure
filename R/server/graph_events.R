@@ -33,7 +33,7 @@ build_graph_nodes <- function() {
   result
 }
 
-# Turn rv$edges into display edges. 
+# Turn rv$edges into display edges.
 build_graph_edges <- function() {
   base_edges <- sanitize_edges_tbl(rv$edges)
   if (is.null(rv$ts_object) || !nrow(base_edges)) {
@@ -264,7 +264,7 @@ refresh_ts_state <- function() {
   invisible(NULL)
 }
 
-# wipes the live test object, result summary, boundary preview, and analysis history — 
+# wipes the live test object, result summary, boundary preview, and analysis history —
 # but keeps the graph design intact, so you can re-run analyses on the same setup.
 reset_group_sequential_runtime_state <- function(reset_log = TRUE) {
   rv$ts_object <- NULL
@@ -316,11 +316,11 @@ output$graph <- renderVisNetwork({
         manipulation = list(enabled = FALSE)
       ) %>%
       visInteraction(
-        selectConnectedEdges = FALSE, 
+        selectConnectedEdges = FALSE,
         hoverConnectedEdges = FALSE,
         dragNodes = TRUE,
         dragView = TRUE
-      ) %>% 
+      ) %>%
       visEvents(
         dragEnd = "
         function(params) {
@@ -339,29 +339,29 @@ output$graph <- renderVisNetwork({
         function(params) {
           params.event.preventDefault();
           Shiny.setInputValue('any_context', { }, {priority: 'event'});
-      
+
           var pointer = params.pointer;
           var nodeId = this.getNodeAt(pointer.DOM);
           var edgeId = null;
           if (!nodeId) {
             edgeId = this.getEdgeAt(pointer.DOM);
           }
-          
+
           var showNode = !!nodeId;
           var showEdge = !showNode && !!edgeId;
-          var showBlank = !showNode && !showEdge; 
-      
+          var showBlank = !showNode && !showEdge;
+
           Shiny.setInputValue('ctx_event', {
             node: nodeId || null,
             edge: edgeId || null,
             canvas: pointer.canvas
           }, {priority: 'event'});
-      
+
           var menu = document.getElementById('ctx-menu');
           menu.style.left = (params.event.clientX) + 'px';
           menu.style.top  = (params.event.clientY) + 'px';
           menu.style.display = 'block';
-      
+
           document.getElementById('ctx_add_node').style.display   = showBlank ? 'block' : 'none';
           document.getElementById('ctx_del_node').style.display   = showNode  ? 'block' : 'none';
           document.getElementById('ctx_edge_start').style.display = showNode  ? 'block' : 'none';
@@ -392,7 +392,7 @@ output$graph <- renderVisNetwork({
   )
 })
 
-# Read-only mirror shown on the Sequential tab 
+# Read-only mirror shown on the Sequential tab
 output$seq_graph <- renderVisNetwork({
   quiet_jsonlite_warning(
     visNetwork(build_graph_nodes(), build_graph_edges()) %>%
@@ -994,16 +994,16 @@ output$download_graph <- downloadHandler(
     )
 
     write_json(
-      export_data, 
-      file, 
-      pretty = TRUE, 
+      export_data,
+      file,
+      pretty = TRUE,
       auto_unbox = TRUE,
       keep_vec_names = FALSE
     )
   }
 )
 
-# Import a JSON graph 
+# Import a JSON graph
 observeEvent(input$upload_graph, {
   req(input$upload_graph)
   dat <- fromJSON(input$upload_graph$datapath, simplifyDataFrame = TRUE)
@@ -1064,7 +1064,7 @@ observeEvent(input$upload_graph, {
 
   # --- Normalize edges: resolve label-based from/to to numeric IDs ---
   if (!is.null(edges) && nrow(edges)) {
-    
+
     label_to_id <- stats::setNames(nodes$id, nodes$hypothesis)
 
     if (is.character(edges$from)) {
@@ -1090,7 +1090,7 @@ observeEvent(input$upload_graph, {
     } else {
       edges$id <- as.integer(edges$id)
     }
-    
+
     valid_edges <- !is.na(edges$from) & !is.na(edges$to)
     if (any(!valid_edges)) {
       showNotification(
@@ -1099,7 +1099,7 @@ observeEvent(input$upload_graph, {
       )
     }
     edges <- edges[valid_edges, , drop = FALSE]
-    
+
     edges <- edges[, intersect(c("id", "from", "to", "weight"), names(edges)), drop = FALSE]
   } else {
     edges <- tibble::tibble(id = integer(), from = integer(), to = integer(), weight = numeric())

@@ -54,7 +54,7 @@ ui <- navbarPage(
 )
 
 server <- function(input, output, session) {
-  
+
   focus_and_select <- function(input_id) {
     shinyjs::runjs(sprintf("
     $('#shiny-modal').one('shown.bs.modal', function(){
@@ -62,7 +62,7 @@ server <- function(input, output, session) {
       if (el) { el.focus(); el.select(); }
     });", input_id))
   }
-  
+
   format_plain_number <- function(x) {
     value <- suppressWarnings(as.numeric(x))
     if (!length(value)) {
@@ -79,7 +79,7 @@ server <- function(input, output, session) {
     out[keep] <- sub("\\.$", "", formatted)
     out
   }
-  
+
   read_scalar_character_input <- function(input_id, reactive = TRUE) {
     value <- if (isTRUE(reactive)) input[[input_id]] else isolate(input[[input_id]])
     if (is.null(value) || length(value) != 1 || is.na(value) || !nzchar(value)) {
@@ -87,7 +87,7 @@ server <- function(input, output, session) {
     }
     as.character(value)
   }
-  
+
   read_scalar_numeric_input <- function(input_id, reactive = TRUE) {
     raw_value <- if (isTRUE(reactive)) input[[input_id]] else isolate(input[[input_id]])
     if (is.null(raw_value) || length(raw_value) != 1) {
@@ -335,7 +335,7 @@ server <- function(input, output, session) {
     }
     invisible(list(plan = plan_tbl, schedule = schedule_tbl))
   }
-  
+
   quiet_jsonlite_warning <- function(expr) {
     withCallingHandlers(
       expr,
@@ -347,7 +347,7 @@ server <- function(input, output, session) {
       }
     )
   }
-  
+
   with_edge_label <- function(df) {
     if (nrow(df) == 0) return(df)
     key        <- paste(pmin(df$from, df$to), pmax(df$from, df$to), sep = "_")
@@ -436,30 +436,30 @@ server <- function(input, output, session) {
       )
     )
   }
-  
+
   next_hypothesis <- function(existing) {
     k <- 1L
     while (paste0("H", k) %in% existing) k <- k + 1L
     paste0("H", k)
   }
-  
+
   is_valid_alpha_str <- function(s) {
     if (is.null(s) || !is.character(s) || length(s) != 1) return(FALSE)
     grepl("^(0(\\.\\d+)?|1(\\.0+)?)$", s)
   }
-  
+
   is_valid_weight_str <- function(s) {
     if (is.null(s) || !is.character(s) || length(s) != 1) return(FALSE)
     grepl("^(0\\.[0-9]+|1(\\.0+)?)$", s)
   }
-  
+
   cancel_pending_js <- "Shiny.setInputValue('cancel_pending', Math.random(), {priority:'event'});"
   graph_view_cache <- new.env(parent = emptyenv())
   graph_view_cache$graph <- list(content_signature = NULL, position_map = stats::setNames(character(0), character(0)))
   graph_view_cache$seq_graph <- list(content_signature = NULL, position_map = stats::setNames(character(0), character(0)))
   boundary_preview_cache <- new.env(parent = emptyenv())
   boundary_preview_cache$key <- NULL
-  
+
   rv <- reactiveValues(
     nodes = tibble::tibble(
       id    = 1:3,
@@ -471,7 +471,7 @@ server <- function(input, output, session) {
     edges = tibble::tibble(
       id = integer(), from = integer(), to = integer(), weight = numeric()
     ),
-    ctx = list(node = NULL, edge = NULL, canvas = c(0,0), 
+    ctx = list(node = NULL, edge = NULL, canvas = c(0,0),
                edit_node_id = NULL, edit_edge_id = NULL, pending_delete_edge_id = NULL),
     pending_source = NULL,
     ts_object = NULL,
@@ -568,7 +568,7 @@ server <- function(input, output, session) {
     planned_max_info = numeric(0),
     transition = matrix(0, 0, 0)
   )
-  
+
   update_manual_reject_choices <- function(choices = rv$nodes$hypothesis) {
     selected_choice <- if (length(choices)) choices[[1]] else character(0)
     updateSelectInput(session, "design_graph_selected", choices = choices, selected = selected_choice)
@@ -589,12 +589,12 @@ server <- function(input, output, session) {
     }
     updateSelectInput(session, "gs_test_hypothesis", choices = choices, selected = selected_choice)
   }
-  
+
   tables_tick <- reactiveVal(0)
   bump_tables <- function() tables_tick(tables_tick() + 1)
   ts_state_tick <- reactiveVal(0)
   bump_ts_state <- function() ts_state_tick(ts_state_tick() + 1)
-  
+
   get_current_allocations <- function() {
     ts_state_tick()
     if (is.null(rv$ts_object)) {
@@ -615,7 +615,7 @@ server <- function(input, output, session) {
       rv$nodes$hypothesis
     )
   }
-  
+
   build_ts_status_table <- function() {
     ts_state_tick()
     if (!nrow(rv$nodes)) {
@@ -658,7 +658,7 @@ server <- function(input, output, session) {
     }
     status_tbl
   }
-  
+
   for (server_module in c(
     file.path("R", "server", "common_helpers.R"),
     file.path("R", "server", "graph_events.R"),

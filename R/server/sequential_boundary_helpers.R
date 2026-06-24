@@ -150,7 +150,7 @@ parse_information_timing <- function(text_value, planned_analyses) {
 # parse_spending_proportions(text_value, planned_analyses)
 # ---------------------------------------------------------------------------
 # "Is this text a valid list of cumulative proportions between 0 and 1 that increases
-#  over planned_analyses peeks?" — parse_spending_proportions answers yes/no + 
+#  over planned_analyses peeks?" — parse_spending_proportions answers yes/no +
 #  returns the cleaned numbers.
 parse_spending_proportions <- function(text_value, planned_analyses) {
   parse_custom_cumulative_alpha(
@@ -165,9 +165,9 @@ parse_spending_proportions <- function(text_value, planned_analyses) {
 # ---------------------------------------------------------------------------
 # normalize_imported_custom_cumulative_alpha(plan_tbl, nodes_tbl)
 # ---------------------------------------------------------------------------
-# normalize_imported_custom_cumulative_alpha walks through an imported hypothesis plan and, 
+# normalize_imported_custom_cumulative_alpha walks through an imported hypothesis plan and,
 # for every hypothesis using the "Custom" spending rule, rewrites its stored cumulative-alpha
-# text into absolute values (rescaling legacy saves that stored proportions ending at 1) 
+# text into absolute values (rescaling legacy saves that stored proportions ending at 1)
 # so downstream code always sees one consistent format.
 
 normalize_imported_custom_cumulative_alpha <- function(plan_tbl, nodes_tbl = NULL) {
@@ -336,10 +336,10 @@ solve_custom_boundaries <- function(cumulative_alpha, timing) {
 #                           spending_values, hsd_gamma, haybittle_p1)
 # ---------------------------------------------------------------------------
 # The core "boundary engine" of the Group-Sequential Design wizard.
-# compute_boundary_schedule is the main entry point: given a total alpha, a spending 
-# rule, and the timing of each planned peek, it dispatches to the right engine — gsDesign 
-# for OF/Pocock/HSD, HP() for Haybittle-Peto, solve_custom_boundaries() for Custom, or a 
-# trivial single-peek shortcut — and returns one row per analysis with stage_alpha, 
+# compute_boundary_schedule is the main entry point: given a total alpha, a spending
+# rule, and the timing of each planned peek, it dispatches to the right engine — gsDesign
+# for OF/Pocock/HSD, HP() for Haybittle-Peto, solve_custom_boundaries() for Custom, or a
+# trivial single-peek shortcut — and returns one row per analysis with stage_alpha,
 # cumulative_alpha_spent, z_boundary, and p_boundary
 compute_boundary_schedule <- function(
   total_alpha,

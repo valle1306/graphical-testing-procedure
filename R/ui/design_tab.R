@@ -61,7 +61,7 @@ build_design_tab <- function() {
     }
   "))),
       titlePanel("Graph Design"),
-      
+
       # Toggle button (small link above the row)
       div(style = "margin-bottom: 8px;",
           actionLink("toggle_panel", label = "Hide data panel")
@@ -75,11 +75,11 @@ build_design_tab <- function() {
         actionButton("design_auto_layout", "Auto Layout", class = "btn btn-outline-secondary"),
         tags$span(class = "design-note", "Use these controls for classic graphical testing. Open Group Sequential Design to plan interim analyses, and Analysis to submit one-sided results by analysis time.")
       ),
-      
+
       fluidRow(
         # ----- Left column: data panel (read-only tables + import/export) -----
         column(
-          width = 3, id = "left-col", 
+          width = 3, id = "left-col",
           h4("Nodes"),
           DTOutput("nodes_table"),
           tags$hr(),
@@ -91,7 +91,7 @@ build_design_tab <- function() {
         ),
         # ----- Right column: graph canvas -----
         column(
-          width = 9, id = "right-col", 
+          width = 9, id = "right-col",
           uiOutput("graph_ui"),
           tags$div(
             id = "ctx-menu",

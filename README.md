@@ -55,17 +55,15 @@ Rscript scripts/install_packages.R
 
 This installs packages into a local `.Rlibs/` folder so they do not affect your global R setup.
 
-## Codex Workflow
+## Development Verification
 
-- Root agent instructions live in `AGENTS.md`.
-- Planning, architecture, review, and patch-budget guidance live in `docs/`.
-- For repo-wide verification, run:
+For repo-wide verification, run:
 
 ```bash
 Rscript scripts/run_verify_all.R
 ```
 
-- For manual Shiny debugging, run:
+For manual Shiny debugging, run:
 
 ```bash
 Rscript scripts/run_shiny_debug.R
@@ -118,8 +116,6 @@ You can test the import feature with:
 ## Repository Layout
 
 - [app.R](app.R): main app entrypoint.
-- [AGENTS.md](AGENTS.md): repo-level Codex instructions.
-- [docs/](docs): planning, architecture, review, and patch-budget guidance.
 - [www/](www): app media assets.
 - [scripts/](scripts): install and verification scripts.
 - [examples/](examples): sample input files.

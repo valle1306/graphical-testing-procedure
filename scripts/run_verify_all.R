@@ -56,4 +56,3 @@ for (script in verify_scripts) {
 }
 
 cat("Verification summary:", length(passed), "/", length(verify_scripts), "passed.\n")
-
