@@ -392,8 +392,8 @@ replay_group_sequential_history <- function(history_tbl) {
       rv$ts_object$test(as.data.frame(stage_df, stringsAsFactors = FALSE)),
       message = function(m) invokeRestart("muffleMessage")
     )
-      bump_ts_state()
-    }
+    bump_ts_state()
+  }
   history_tbl <- sanitize_gs_analysis_history_tbl(dplyr::bind_rows(replayed_batches))
   rv$gs_analysis_history <- history_tbl
   rv$gs_stage_history <- gs_history_to_legacy_stage_history(history_tbl)
