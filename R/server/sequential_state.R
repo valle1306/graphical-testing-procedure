@@ -47,6 +47,9 @@ initialize_batch_gs_object <- function(reset_history = FALSE) {
     return(FALSE)
   }
 
+  # TrialSimulator's runtime object uses package-specific spending codes. The
+  # app's boundary preview keeps the design-time rule names and computes those
+  # boundaries separately from this initialization step.
   rv$alpha_spending <- vapply(plan_tbl$alpha_spending, gs_runtime_spending_code, character(1))
   rv$planned_max_info <- as.numeric(plan_tbl$planned_max_info)
 
@@ -161,10 +164,13 @@ collect_round_submission <- function() {
     if (is.na(p_value) || p_value < 0 || p_value > 1) {
       stop(sprintf("Enter a one-sided p-value between 0 and 1 for %s look %s.", ready_rows$hypothesis[[i]], ready_rows$hypothesis_stage[[i]]))
     }
-    observed_info <- read_scalar_numeric_input(paste0("gs_round_info_", schedule_key))
-    if (is.na(observed_info) || observed_info <= 0) {
-      stop(sprintf("Enter a positive observed information value for %s look %s.", ready_rows$hypothesis[[i]], ready_rows$hypothesis_stage[[i]]))
-    }
+    # This is a live TrialSimulator input, not the design-time information
+    # fraction that the boundary preview used to build the planned look table.
+    observed_info <- gs_require_observed_info_count(
+      observed_info = read_scalar_numeric_input(paste0("gs_round_info_", schedule_key)),
+      hypothesis = ready_rows$hypothesis[[i]],
+      hypothesis_stage = ready_rows$hypothesis_stage[[i]]
+    )
     runtime_code <- gs_runtime_spending_code(ready_rows$alpha_spending[[i]])
     planned_max_info <- as.numeric(max_info_lookup[[ready_rows$hypothesis[[i]]]])
     if (!is.finite(planned_max_info) || planned_max_info <= 0) {
@@ -176,7 +182,11 @@ collect_round_submission <- function() {
       p = as.numeric(p_value),
       info = as.numeric(observed_info),
       is_final = isTRUE(ready_rows$is_final[[i]]),
-      max_info = as.numeric(planned_max_info),
+      # TrialSimulator replays a final look against the submitted terminal
+      # count. The design-time boundary preview still comes from the finalized
+      # plan; only the frozen runtime history switches max_info at the final
+      # look to preserve the package's replay contract.
+      max_info = if (isTRUE(ready_rows$is_final[[i]])) as.numeric(observed_info) else as.numeric(planned_max_info),
       alpha_spent = if (identical(runtime_code, "asUser")) {
         if (isTRUE(ready_rows$is_final[[i]])) {
           1.0
@@ -236,7 +246,9 @@ collect_round_submission <- function() {
   batch_results <- trajectory_after %>%
     dplyr::transmute(
       # Preserve the package-emitted event order so same-analysis retests stay
-      # in the frozen history exactly as GraphicalTesting processed them.
+      # in the frozen history exactly as GraphicalTesting processed them. These
+      # boundary/decision columns come from TrialSimulator's runtime result,
+      # not from the app's design-time preview table.
       .package_result_order = dplyr::row_number(),
       analysis_round = as.integer(order),
       hypothesis = as.character(hypothesis),
@@ -301,7 +313,35 @@ replay_group_sequential_history <- function(history_tbl) {
   if (!isTRUE(initialize_batch_gs_object(reset_history = TRUE))) {
     return(FALSE)
   }
-  for (submission_id in sort(unique(history_tbl$submission))) {
+  # Legacy exports can omit observed_info, so replay reconstructs the integer
+  # count that TrialSimulator expects. Saved values that are present but invalid
+  # should still fail fast instead of silently falling back.
+  resolve_replayed_observed_info <- function(observed_info, max_info, information_fraction, hypothesis, hypothesis_stage) {
+    observed_info <- suppressWarnings(as.numeric(observed_info))
+    if (is.na(observed_info)) {
+      derived_info <- as.numeric(max_info) * as.numeric(information_fraction)
+      if (!is.finite(derived_info) || derived_info <= 0) {
+        stop(sprintf(
+          "Could not reconstruct observed information for %s look %s from saved history.",
+          as.character(hypothesis[[1]]),
+          as.integer(hypothesis_stage)
+        ))
+      }
+      return(as.numeric(round(derived_info)))
+    }
+    if (!is.finite(observed_info) || observed_info <= 0 || abs(observed_info - round(observed_info)) > 1e-8) {
+      stop(sprintf(
+        "Saved observed information for %s look %s must be a positive whole-number count.",
+        as.character(hypothesis[[1]]),
+        as.integer(hypothesis_stage)
+      ))
+    }
+    as.numeric(round(observed_info))
+  }
+  submission_ids <- sort(unique(history_tbl$submission))
+  replayed_batches <- vector("list", length(submission_ids))
+  for (i in seq_along(submission_ids)) {
+    submission_id <- submission_ids[[i]]
     batch_rows <- history_tbl %>%
       dplyr::filter(submission == submission_id) %>%
       dplyr::mutate(
@@ -310,11 +350,6 @@ replay_group_sequential_history <- function(history_tbl) {
       dplyr::arrange(analysis_round, hypothesis, hypothesis_stage) %>%
       dplyr::mutate(
         hypothesis = as.character(hypothesis),
-        observed_info = dplyr::if_else(
-          is.finite(observed_info) & observed_info > 0,
-          observed_info,
-          as.numeric(max_info) * as.numeric(information_fraction)
-        ),
         max_info = dplyr::if_else(
           is.finite(max_info) & max_info > 0,
           max_info,
@@ -334,6 +369,17 @@ replay_group_sequential_history <- function(history_tbl) {
           NA_real_
         )
       )
+    batch_rows$observed_info <- mapply(
+      resolve_replayed_observed_info,
+      observed_info = batch_rows$observed_info,
+      max_info = batch_rows$max_info,
+      information_fraction = batch_rows$information_fraction,
+      hypothesis = batch_rows$hypothesis,
+      hypothesis_stage = batch_rows$hypothesis_stage,
+      SIMPLIFY = TRUE,
+      USE.NAMES = FALSE
+    )
+    replayed_batches[[i]] <- batch_rows
     stage_df <- batch_rows %>%
       dplyr::transmute(
         order = as.integer(analysis_round),
@@ -350,6 +396,7 @@ replay_group_sequential_history <- function(history_tbl) {
     )
     bump_ts_state()
   }
+  history_tbl <- sanitize_gs_analysis_history_tbl(dplyr::bind_rows(replayed_batches))
   rv$gs_analysis_history <- history_tbl
   rv$gs_stage_history <- gs_history_to_legacy_stage_history(history_tbl)
   rv$gs_applied_design_signature <- gs_current_design_signature()
