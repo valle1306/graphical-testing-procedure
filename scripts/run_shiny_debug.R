@@ -1,5 +1,6 @@
 # Debug runner for the Shiny app
 options(shiny.trace = TRUE)
+options(gmt.debug.reactivity = TRUE)
 options(warn = 1)
 
 args <- commandArgs(trailingOnly = FALSE)

@@ -1,0 +1,100 @@
+build_analysis_tab <- function() {
+  tabPanel(
+    "Analysis",
+    fluidPage(
+      fluidRow(
+        column(
+          12,
+          uiOutput("gs_analysis_design_summary")
+        )
+      ),
+      fluidRow(
+        column(
+          12,
+          div(
+            class = "gs-card",
+            div(
+              style = "display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; align-items:flex-start;",
+              div(
+                style = "min-width:0; flex:1 1 320px;",
+                tags$h3(class = "gs-title", "Analysis"),
+                tags$p(
+                  class = "gs-help",
+                  "Submit one full analysis time at a time. Enter one-sided p-values for every hypothesis scheduled at that analysis time and the app will update the graph and alpha recycling together."
+                ),
+                tags$p(
+                  class = "gs-table-note",
+                  "Analysis Time = shared trial checkpoint. Interim Analysis (Look) = hypothesis-specific test at that checkpoint."
+                )
+              ),
+              div(
+                class = "gs-actions",
+                actionButton("gs_reset_analysis_state", "Reset Analysis State", class = "btn btn-outline-secondary")
+              )
+            ),
+            tags$details(
+              class = "gs-disclosure",
+              style = "margin-top: 12px; margin-bottom: 0;",
+              tags$summary("Open live graph and activity"),
+              div(
+                style = "margin-top: 12px;",
+                tabsetPanel(
+                  id = "gs_analysis_overview_panel",
+                  selected = "Graph",
+                  tabPanel("Graph", div(class = "gs-table-shell", visNetworkOutput("seq_graph", height = "360px"))),
+                  tabPanel("Activity", div(style = "background:#f8fafc; border:1px solid #e2e8f0; border-radius:10px; padding:10px 12px;", verbatimTextOutput("ts_log")))
+                )
+              )
+            )
+          )
+        )
+      ),
+      fluidRow(
+        column(
+          12,
+          div(
+            class = "gs-card",
+            tags$h4(class = "gs-section-title", "Submit One Analysis Time"),
+            tags$p(
+              class = "gs-table-note",
+              "Choose an analysis time, then enter one-sided p-values for every active hypothesis scheduled at that analysis time."
+            ),
+            uiOutput("gs_analysis_round_ui"),
+            uiOutput("gs_analysis_preview_feedback"),
+            uiOutput("gs_round_entry_ui"),
+            uiOutput("gs_submit_round_ui"),
+            uiOutput("gs_round_feedback")
+          )
+        )
+      ),
+      fluidRow(
+        column(
+          12,
+          div(
+            class = "gs-card",
+            tags$h4(class = "gs-section-title", "Live Analysis State"),
+            tags$p(
+              class = "gs-table-note",
+              "Use this table to track each hypothesis, the latest submitted result, and the next scheduled analysis time."
+            ),
+            div(class = "gs-table-shell", DTOutput("gs_live_analysis_state_table"))
+          ),
+          tags$details(
+            class = "gs-card",
+            style = "margin-top: 16px;",
+            tags$summary(style = "cursor:pointer; font-weight:600; color:#0f766e;", "Submitted Analyses"),
+            tags$p(
+              class = "gs-table-note",
+              style = "margin-top: 12px;",
+              "Submission is the saved batch. Analysis Time / Look identifies the specific checkpoint and hypothesis-specific look inside that batch. One hypothesis can appear more than once in the same submission when same-analysis alpha recycling triggers a retest. Alpha At Submission is frozen for each saved event row and does not change after recycling."
+            ),
+            div(
+              style = "margin-top: 12px;",
+              div(class = "gs-table-shell", DTOutput("gs_submitted_analyses_table"))
+            )
+          )
+        )
+      )
+    )
+  )
+}

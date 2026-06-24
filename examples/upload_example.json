@@ -1,91 +1,76 @@
 {
   "nodes": [
     {
-      "label": "H1",
+      "id": 1,
+      "hypothesis": "H1",
       "alpha": 0.01,
-      "title": "α = 0.01"
+      "x": -150,
+      "y": -100
     },
     {
-      "label": "H2",
+      "id": 2,
+      "hypothesis": "H2",
       "alpha": 0.04,
-      "title": "α = 0.04"
+      "x": 150,
+      "y": -100
     },
     {
-      "label": "H3",
+      "id": 3,
+      "hypothesis": "H3",
       "alpha": 0,
-      "title": "α = 0"
+      "x": -150,
+      "y": 100
     },
     {
-      "label": "H4",
+      "id": 4,
+      "hypothesis": "H4",
       "alpha": 0,
-      "title": "α = 0"
+      "x": 150,
+      "y": 100
     }
   ],
   "edges": [
     {
-      "from": "H1",
-      "to": "H2",
-      "weight": 0.25,
-      "label": "0.25",
-      "smooth": {
-        "enabled": false
-      }
+      "id": 1,
+      "from": 1,
+      "to": 2,
+      "weight": 0.25
     },
     {
-      "from": "H1",
-      "to": "H3",
-      "weight": 0.75,
-      "label": "0.75",
-      "smooth": {
-        "enabled": false
-      }
+      "id": 2,
+      "from": 1,
+      "to": 3,
+      "weight": 0.75
     },
     {
-      "from": "H2",
-      "to": "H1",
-      "weight": 0.25,
-      "label": "0.25",
-      "smooth": {
-        "enabled": true,
-        "type": "curvedCW"
-      }
+      "id": 3,
+      "from": 2,
+      "to": 1,
+      "weight": 0.25
     },
     {
-      "from": "H2",
-      "to": "H4",
-      "weight": 0.75,
-      "label": "0.75",
-      "smooth": {
-        "enabled": false
-      }
+      "id": 4,
+      "from": 2,
+      "to": 4,
+      "weight": 0.75
     },
     {
-      "from": "H3",
-      "to": "H2",
-      "weight": 0.5,
-      "label": "0.5",
-      "smooth": {
-        "enabled": false
-      }
+      "id": 5,
+      "from": 3,
+      "to": 2,
+      "weight": 0.5
     },
     {
-      "from": "H3",
-      "to": "H4",
-      "weight": 0.5,
-      "label": "0.5",
-      "smooth": {
-        "enabled": false
-      }
+      "id": 6,
+      "from": 3,
+      "to": 4,
+      "weight": 0.5
     },
     {
-      "from": "H4",
-      "to": "H2",
-      "weight": 1,
-      "label": "1",
-      "smooth": {
-        "enabled": true,
-        "type": "curvedCW"
-      }
+      "id": 7,
+      "from": 4,
+      "to": 2,
+      "weight": 1
     }
   ]
 }

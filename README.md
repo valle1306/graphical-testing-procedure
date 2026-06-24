@@ -1,13 +1,13 @@
 # Graphical Multiple Testing
 
 <p align="center">
-  <a href="https://u3fenv-valerie-le.shinyapps.io/graphical-testing-procedure/">
+  <a href="https://s6z1ql-valerie-le.shinyapps.io/graphical-testing-procedure/">
     <img src="www/logo.gif" width="200" alt="Graphical Multiple Testing logo">
   </a>
 </p>
 
 <p align="center">
-  <a href="https://u3fenv-valerie-le.shinyapps.io/graphical-testing-procedure/"><strong>Launch the app</strong></a>
+  <a href="https://s6z1ql-valerie-le.shinyapps.io/graphical-testing-procedure/"><strong>Launch the app</strong></a>
 </p>
 
 An interactive Shiny app for building graphical multiple-testing procedures and running one-sided group-sequential analyses with `TrialSimulator` and `gsDesign`.
@@ -16,13 +16,14 @@ An interactive Shiny app for building graphical multiple-testing procedures and 
 
 Use the hosted app here:
 
-- https://u3fenv-valerie-le.shinyapps.io/graphical-testing-procedure/
+- https://s6z1ql-valerie-le.shinyapps.io/graphical-testing-procedure/
 
 ## What This App Does
 
 - Build a graphical testing procedure with hypotheses, alphas, and transition weights.
 - Run the classic graphical rejection procedure from the `Design` tab.
-- Run planned one-sided sequential analyses from the `Sequential` tab.
+- Build and lock the group-sequential design from the `Group Sequential Design` tab.
+- Run planned one-sided sequential analyses from the `Analysis` tab.
 - Preview rejection boundaries at each planned analysis and watch alpha redistribution on the graph.
 
 ## Download The Repository
@@ -54,19 +55,20 @@ Rscript scripts/install_packages.R
 
 This installs packages into a local `.Rlibs/` folder so they do not affect your global R setup.
 
-## Run The App
+## Codex Workflow
+
+- Root agent instructions live in `AGENTS.md`.
+- Planning, architecture, review, and patch-budget guidance live in `docs/`.
+- For repo-wide verification, run:
 
 ```bash
-cd /path/to/graphical-testing-procedure
-Rscript scripts/run_shiny_debug.R
+Rscript scripts/run_verify_all.R
 ```
 
-By default the debug runner starts the app at `http://127.0.0.1:4567`.
-
-If you want to open it directly from the project root instead, use:
+- For manual Shiny debugging, run:
 
 ```bash
-Rscript -e "local_lib <- file.path(getwd(), '.Rlibs'); if (dir.exists(local_lib)) .libPaths(c(normalizePath(local_lib, winslash='/', mustWork=TRUE), .libPaths())); shiny::runApp(getwd(), host='127.0.0.1', port=4575, launch.browser=TRUE)"
+Rscript scripts/run_shiny_debug.R
 ```
 
 ## How To Use The App
@@ -86,26 +88,38 @@ Use the `Design` tab for the classic graphical multiple-testing procedure.
 - Use `Reject Selected` to reject one testable hypothesis.
 - Read the result in the `Output` box.
 
-### 3. Sequential
+### 3. Group Sequential Design
 
-Use the `Sequential` tab for group-sequential testing.
+Use the `Group Sequential Design` tab to define the planned one-sided interim analysis workflow.
 
-- `Test` is the default view for the common workflow.
-- Enter one hypothesis, its planned analysis number, and a one-sided p-value.
-- Click `Apply Test` to run the analysis, recycle alpha on rejection, and recalculate the remaining one-sided boundaries automatically.
-- Use `Plan` only when a hypothesis needs an exception to the shared spending rule or timing template.
-- Use `Review` to inspect the boundary preview and submitted sequential history.
-- Open `Open graph, status, and activity` when you want the live graph or the sequential activity log without leaving the tab.
+- Step 1 sets planned looks and alpha-spending rules for each hypothesis.
+- Step 2 assigns each hypothesis look to an analysis time and information fraction.
+- Step 3 reviews the derived one-sided boundaries, including total analyses and alpha spending, before you lock the design.
+- The boundary-review table is design-time only; the `Submitted Analyses` table freezes the package-truth boundary and alpha used when each analysis time is actually submitted.
+- Click `Finalize Design` when the plan and boundary review are ready.
+
+### 4. Analysis
+
+Use the `Analysis` tab to submit one full analysis time at a time.
+
+- Choose the current analysis time.
+- Enter one-sided p-values for every active hypothesis scheduled at that analysis time.
+- Click `Submit Analysis Time` to apply the batch, recycle alpha on rejection, and refresh the remaining boundaries.
+- Use `Reset Analysis State` to clear submitted analysis data while keeping the current design tables.
+- Open `Open live graph and activity` when you want the live graph or the sequential activity log without leaving the tab.
 
 ## Example File
 
 You can test the import feature with:
 
 - [examples/upload_example.json](examples/upload_example.json)
+- [examples/frozen_round_recycling_case.json](examples/frozen_round_recycling_case.json)
 
 ## Repository Layout
 
 - [app.R](app.R): main app entrypoint.
+- [AGENTS.md](AGENTS.md): repo-level Codex instructions.
+- [docs/](docs): planning, architecture, review, and patch-budget guidance.
 - [www/](www): app media assets.
 - [scripts/](scripts): install and verification scripts.
 - [examples/](examples): sample input files.

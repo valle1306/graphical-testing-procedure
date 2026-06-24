@@ -1,0 +1,15 @@
+{
+  "nodes": [
+    { "id": 1, "hypothesis": "H1", "alpha": 0.01, "x": -100, "y": 0 },
+    { "id": 2, "hypothesis": "H2", "alpha": 0.04, "x": 100, "y": 0 },
+    { "id": 3, "hypothesis": "H3", "alpha": 0, "x": 0, "y": 120 }
+  ],
+  "edges": [
+    { "id": 1, "from": 1, "to": 2, "weight": 0.5 },
+    { "id": 2, "from": 1, "to": 3, "weight": 0.5 },
+    { "id": 3, "from": 2, "to": 1, "weight": 0.5 },
+    { "id": 4, "from": 2, "to": 3, "weight": 0.5 },
+    { "id": 5, "from": 3, "to": 1, "weight": 0.5 },
+    { "id": 6, "from": 3, "to": 2, "weight": 0.5 }
+  ]
+}

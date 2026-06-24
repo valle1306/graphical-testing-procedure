@@ -63,6 +63,10 @@ app_files <- c(
   "alpha_spending_function.r",
   "Haybittle-Peto.r",
   file.path(
+    "R",
+    list.files(file.path(project_root, "R"), recursive = TRUE, all.files = FALSE, full.names = FALSE)
+  ),
+  file.path(
     "www",
     list.files(file.path(project_root, "www"), recursive = TRUE, all.files = FALSE, full.names = FALSE)
   )

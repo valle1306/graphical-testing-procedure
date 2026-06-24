@@ -11,6 +11,10 @@ renv/
 
 # Local editor settings
 .vscode/
+.claude/
+.codex/
+AGENTS.md
+agents.md
 
 # Runtime artifacts
 *.log
@@ -24,3 +28,6 @@ rsconnect/
 .DS_Store
 Thumbs.db
 .positai
+
+# Local planning docs
+docs/

@@ -1,0 +1,121 @@
+{
+  "nodes": [
+    { "id": 1, "x": -110, "y": 0, "hypothesis": "H1", "alpha": 0.01 },
+    { "id": 2, "x": 110, "y": 0, "hypothesis": "H2", "alpha": 0.015 },
+    { "id": 3, "x": 0, "y": 130, "hypothesis": "H3", "alpha": 0 }
+  ],
+  "edges": [
+    { "id": 1, "from": 1, "to": 2, "weight": 0.75 },
+    { "id": 2, "from": 2, "to": 1, "weight": 0.50 },
+    { "id": 3, "from": 1, "to": 3, "weight": 0.25 },
+    { "id": 4, "from": 2, "to": 3, "weight": 0.50 }
+  ],
+  "gs_hypothesis_plan": [
+    {
+      "id": 1,
+      "hypothesis": "H1",
+      "planned_analyses": 2,
+      "alpha_spending": "OF",
+      "custom_cumulative_alpha": "",
+      "hsd_gamma": -4
+    },
+    {
+      "id": 2,
+      "hypothesis": "H2",
+      "planned_analyses": 2,
+      "alpha_spending": "OF",
+      "custom_cumulative_alpha": "",
+      "hsd_gamma": -4
+    },
+    {
+      "id": 3,
+      "hypothesis": "H3",
+      "planned_analyses": 1,
+      "alpha_spending": "OF",
+      "custom_cumulative_alpha": "",
+      "hsd_gamma": -4
+    }
+  ],
+  "gs_analysis_schedule": [
+    {
+      "schedule_key": "1__1",
+      "analysis_round": 1,
+      "hypothesis": "H1",
+      "hypothesis_id": 1,
+      "hypothesis_stage": 1,
+      "planned_analyses": 2,
+      "information_fraction": 0.5,
+      "is_final": false
+    },
+    {
+      "schedule_key": "2__1",
+      "analysis_round": 1,
+      "hypothesis": "H2",
+      "hypothesis_id": 2,
+      "hypothesis_stage": 1,
+      "planned_analyses": 2,
+      "information_fraction": 0.5,
+      "is_final": false
+    },
+    {
+      "schedule_key": "1__2",
+      "analysis_round": 2,
+      "hypothesis": "H1",
+      "hypothesis_id": 1,
+      "hypothesis_stage": 2,
+      "planned_analyses": 2,
+      "information_fraction": 1,
+      "is_final": true
+    },
+    {
+      "schedule_key": "2__2",
+      "analysis_round": 2,
+      "hypothesis": "H2",
+      "hypothesis_id": 2,
+      "hypothesis_stage": 2,
+      "planned_analyses": 2,
+      "information_fraction": 1,
+      "is_final": true
+    },
+    {
+      "schedule_key": "3__1",
+      "analysis_round": 2,
+      "hypothesis": "H3",
+      "hypothesis_id": 3,
+      "hypothesis_stage": 1,
+      "planned_analyses": 1,
+      "information_fraction": 1,
+      "is_final": true
+    }
+  ],
+  "gs_analysis_history": [],
+  "gs_settings": [
+    {
+      "id": 1,
+      "hypothesis": "H1",
+      "use_override": true,
+      "alpha_spending": "OF",
+      "planned_analyses": 2,
+      "info_timing": "0.5, 1",
+      "spending_values": ""
+    },
+    {
+      "id": 2,
+      "hypothesis": "H2",
+      "use_override": true,
+      "alpha_spending": "OF",
+      "planned_analyses": 2,
+      "info_timing": "0.5, 1",
+      "spending_values": ""
+    },
+    {
+      "id": 3,
+      "hypothesis": "H3",
+      "use_override": true,
+      "alpha_spending": "OF",
+      "planned_analyses": 1,
+      "info_timing": "1",
+      "spending_values": ""
+    }
+  ]
+}
