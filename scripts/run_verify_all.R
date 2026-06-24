@@ -24,12 +24,18 @@ if (length(verify_scripts) == 0) {
 }
 
 rscript_bin <- file.path(R.home("bin"), "Rscript")
+if (.Platform$OS.type == "windows" && !file.exists(rscript_bin) && file.exists(paste0(rscript_bin, ".exe"))) {
+  rscript_bin <- paste0(rscript_bin, ".exe")
+}
 lib_paths <- unique(Filter(nzchar, c(
   if (dir.exists(local_lib)) normalizePath(local_lib, winslash = "/", mustWork = TRUE) else NULL,
   Sys.getenv("R_LIBS"),
   Sys.getenv("R_LIBS_USER")
 )))
 lib_env <- paste(lib_paths, collapse = .Platform$path.sep)
+if (nzchar(lib_env)) {
+  Sys.setenv(R_LIBS = lib_env)
+}
 
 cat("Project root:", project_root, "\n")
 cat("Verification scripts:", length(verify_scripts), "\n\n")
@@ -40,8 +46,7 @@ for (script in verify_scripts) {
   cat("[RUN ]", script_name, "\n")
   status <- system2(
     rscript_bin,
-    args = script,
-    env = if (nzchar(lib_env)) c(sprintf("R_LIBS=%s", lib_env)) else character(0)
+    args = script
   )
   if (!identical(status, 0L)) {
     cat("\n[FAIL]", script_name, "\n")

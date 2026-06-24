@@ -10,6 +10,7 @@ if (dir.exists(local_lib)) {
   .libPaths(c(normalizePath(local_lib, winslash = "/", mustWork = TRUE), .libPaths()))
 }
 
+suppressPackageStartupMessages(library(dplyr))
 suppressPackageStartupMessages(library(TrialSimulator))
 
 graph <- TrialSimulator::GraphicalTesting$new(
