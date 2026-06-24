@@ -130,7 +130,6 @@ observeEvent(input$gs_submit_round, {
     # remaining analyses.
     bump_ts_state()
     refresh_ts_state()
-    rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
     set_ts_log(build_round_submit_log(submission$history_rows))
 
     # After submission, recompute which global round should be shown next.
@@ -238,7 +237,7 @@ observeEvent(input$gs_finalize_design, {
   # A validated schedule is not enough on its own; we also require the boundary
   # computation to run cleanly for the current design.
   boundary_preview <- tryCatch(
-    build_gs_boundary_schedule(notify = FALSE),
+    build_gs_boundary_schedule(plan_tbl = plan_tbl, schedule_tbl = validation$schedule, notify = FALSE),
     error = function(e) e
   )
   if (inherits(boundary_preview, "error")) {

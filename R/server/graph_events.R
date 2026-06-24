@@ -891,7 +891,6 @@ reject_hypothesis_in_graph <- function(selected_hypothesis) {
     )
     bump_ts_state()
     refresh_ts_state()
-    rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
     TRUE
   }, error = function(e) {
     set_ts_log(paste("Reject error:", e$message))
@@ -1106,6 +1105,7 @@ observeEvent(input$upload_graph, {
     edges <- tibble::tibble(id = integer(), from = integer(), to = integer(), weight = numeric())
   }
 
+  rv$gs_suppress_plan_rebuild <- TRUE
   rv$nodes <- sanitize_nodes_tbl(nodes)
   rv$edges <- sanitize_edges_tbl(edges)
 

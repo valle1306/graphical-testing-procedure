@@ -563,6 +563,7 @@ server <- function(input, output, session) {
     gs_wizard_step = 1L,
     gs_round_selection_programmatic = FALSE,
     gs_force_first_actionable_round = FALSE,
+    gs_suppress_plan_rebuild = FALSE,
     alpha_spending = character(0),
     planned_max_info = numeric(0),
     transition = matrix(0, 0, 0)

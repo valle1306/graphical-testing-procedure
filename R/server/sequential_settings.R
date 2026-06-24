@@ -183,6 +183,11 @@ merge_gs_schedule_with_existing <- function(
   sanitize_gs_analysis_schedule_tbl(dplyr::bind_rows(rows))
 }
 
+arrange_gs_analysis_schedule_display <- function(schedule_tbl) {
+  sanitize_gs_analysis_schedule_tbl(schedule_tbl) %>%
+    dplyr::arrange(analysis_round, hypothesis, hypothesis_stage)
+}
+
 cascade_gs_hypothesis_rounds <- function(base_rounds, requested_rounds) {
   base_rounds <- suppressWarnings(as.integer(base_rounds))
   requested_rounds <- suppressWarnings(as.integer(requested_rounds))
@@ -328,6 +333,7 @@ validate_gs_analysis_schedule <- function(
   plan_tbl <- sanitize_gs_hypothesis_plan_tbl(plan_tbl)
   current_alpha <- stats::setNames(as.numeric(current_alpha), names(current_alpha))
   design_alpha_lookup <- gs_design_alpha_lookup(fallback = current_alpha)
+  display_schedule_tbl <- arrange_gs_analysis_schedule_display(schedule_tbl)
   if (!nrow(plan_tbl)) {
     msg <- "Create hypotheses in the Design tab before defining a group sequential schedule."
     if (isTRUE(notify)) {
@@ -340,7 +346,7 @@ validate_gs_analysis_schedule <- function(
     if (isTRUE(notify)) {
       showNotification(msg, type = "error", duration = 8)
     }
-    return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
+    return(list(ok = FALSE, message = msg, schedule = display_schedule_tbl))
   }
   for (i in seq_len(nrow(plan_tbl))) {
     hypothesis_rows <- schedule_tbl %>%
@@ -352,28 +358,28 @@ validate_gs_analysis_schedule <- function(
       if (isTRUE(notify)) {
         showNotification(msg, type = "error", duration = 8)
       }
-      return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
+      return(list(ok = FALSE, message = msg, schedule = display_schedule_tbl))
     }
     if (!is.finite(plan_tbl$planned_max_info[[i]]) || plan_tbl$planned_max_info[[i]] <= 0) {
       msg <- sprintf("%s must have a positive planned maximum information value.", plan_tbl$hypothesis[[i]])
       if (isTRUE(notify)) {
         showNotification(msg, type = "error", duration = 8)
       }
-      return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
+      return(list(ok = FALSE, message = msg, schedule = display_schedule_tbl))
     }
     if (any(!is.finite(hypothesis_rows$analysis_round)) || any(hypothesis_rows$analysis_round < 1L)) {
       msg <- sprintf("%s analysis times must be positive integers.", plan_tbl$hypothesis[[i]])
       if (isTRUE(notify)) {
         showNotification(msg, type = "error", duration = 8)
       }
-      return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
+      return(list(ok = FALSE, message = msg, schedule = display_schedule_tbl))
     }
     if (any(diff(hypothesis_rows$analysis_round) <= 0L)) {
       msg <- sprintf("%s analysis times must increase from one look to the next.", plan_tbl$hypothesis[[i]])
       if (isTRUE(notify)) {
         showNotification(msg, type = "error", duration = 8)
       }
-      return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
+      return(list(ok = FALSE, message = msg, schedule = display_schedule_tbl))
     }
     if (expected_analyses > 1L) {
       non_final_rows <- hypothesis_rows %>% dplyr::filter(!is_final)
@@ -388,7 +394,7 @@ validate_gs_analysis_schedule <- function(
         if (isTRUE(notify)) {
           showNotification(msg, type = "error", duration = 8)
         }
-        return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
+        return(list(ok = FALSE, message = msg, schedule = display_schedule_tbl))
       }
     }
     info_delta <- diff(hypothesis_rows$information_fraction)
@@ -397,21 +403,21 @@ validate_gs_analysis_schedule <- function(
       if (isTRUE(notify)) {
         showNotification(msg, type = "error", duration = 8)
       }
-      return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
+      return(list(ok = FALSE, message = msg, schedule = display_schedule_tbl))
     }
     if (any(!is.finite(hypothesis_rows$information_fraction)) || any(is.na(hypothesis_rows$information_fraction))) {
       msg <- sprintf("%s must end at information fraction 1.0.", plan_tbl$hypothesis[[i]])
       if (isTRUE(notify)) {
         showNotification(msg, type = "error", duration = 8)
       }
-      return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
+      return(list(ok = FALSE, message = msg, schedule = display_schedule_tbl))
     }
     if (abs(tail(hypothesis_rows$information_fraction, 1) - 1) > 1e-8) {
       msg <- sprintf("%s must end at information fraction 1.0.", plan_tbl$hypothesis[[i]])
       if (isTRUE(notify)) {
         showNotification(msg, type = "error", duration = 8)
       }
-      return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
+      return(list(ok = FALSE, message = msg, schedule = display_schedule_tbl))
     }
     if (identical(plan_tbl$alpha_spending[[i]], "Custom")) {
       alpha_now <- as.numeric(design_alpha_lookup[[plan_tbl$hypothesis[[i]]]])
@@ -428,7 +434,7 @@ validate_gs_analysis_schedule <- function(
           if (isTRUE(notify)) {
             showNotification(msg, type = "error", duration = 8)
           }
-          return(list(ok = FALSE, message = msg, schedule = schedule_tbl))
+          return(list(ok = FALSE, message = msg, schedule = display_schedule_tbl))
         }
       }
     }
@@ -436,7 +442,7 @@ validate_gs_analysis_schedule <- function(
   list(
     ok = TRUE,
     message = NULL,
-    schedule = schedule_tbl %>% dplyr::arrange(analysis_round, hypothesis, hypothesis_stage)
+    schedule = display_schedule_tbl
   )
 }
 
@@ -447,20 +453,29 @@ observe({
   # with the current node set; the empty-node guard avoids churn from rebuilding
   # design state when the graph has been cleared.
   node_signature <- paste(rv$nodes$id, rv$nodes$hypothesis, collapse = "|")
-  if (!nzchar(node_signature) && !nrow(rv$nodes)) {
-    rv$gs_hypothesis_plan <- empty_gs_hypothesis_plan()
-    rv$gs_analysis_schedule <- empty_gs_analysis_schedule()
-    set_gs_analysis_schedule_round_signature(rv$gs_analysis_schedule)
-    rv$gs_settings <- legacy_settings_from_group_sequential_design()
+  if (isTRUE(isolate(rv$gs_suppress_plan_rebuild))) {
+    rv$gs_suppress_plan_rebuild <- FALSE
     return()
   }
-  rv$gs_hypothesis_plan <- build_default_gs_hypothesis_plan(rv$nodes, isolate(rv$gs_hypothesis_plan))
-  rv$gs_analysis_schedule <- merge_gs_schedule_with_existing(
-    build_default_gs_analysis_schedule(rv$gs_hypothesis_plan),
-    isolate(rv$gs_analysis_schedule)
-  )
-  set_gs_analysis_schedule_round_signature(rv$gs_analysis_schedule)
-  rv$gs_settings <- legacy_settings_from_group_sequential_design(rv$gs_hypothesis_plan, rv$gs_analysis_schedule)
+  if (!nzchar(node_signature) && !nrow(rv$nodes)) {
+    new_plan <- empty_gs_hypothesis_plan()
+    new_schedule <- empty_gs_analysis_schedule()
+  } else {
+    new_plan <- build_default_gs_hypothesis_plan(rv$nodes, isolate(rv$gs_hypothesis_plan))
+    new_schedule <- merge_gs_schedule_with_existing(
+      build_default_gs_analysis_schedule(new_plan),
+      isolate(rv$gs_analysis_schedule)
+    )
+  }
+  plan_changed <- !same_gs_hypothesis_plan_tbl(new_plan, isolate(rv$gs_hypothesis_plan))
+  schedule_changed <- !same_gs_analysis_schedule_tbl(new_schedule, isolate(rv$gs_analysis_schedule))
+  if (!plan_changed && !schedule_changed) {
+    return()
+  }
+  rv$gs_hypothesis_plan <- new_plan
+  rv$gs_analysis_schedule <- new_schedule
+  set_gs_analysis_schedule_round_signature(new_schedule)
+  rv$gs_settings <- legacy_settings_from_group_sequential_design(new_plan, new_schedule)
 })
 
 observe({

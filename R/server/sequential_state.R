@@ -81,7 +81,6 @@ initialize_batch_gs_object <- function(reset_history = FALSE) {
     rv$gs_applied_design_signature <- gs_current_design_signature(plan_tbl, schedule_tbl)
     bump_ts_state()
     refresh_ts_state()
-    rv$gs_boundary_preview <- build_gs_boundary_schedule(plan_tbl, schedule_tbl, notify = FALSE)
     set_ts_log(
       c(
         sprintf("Initialized group sequential object for %s hypotheses.", nrow(plan_tbl)),
@@ -307,7 +306,6 @@ replay_group_sequential_history <- function(history_tbl) {
   if (!nrow(history_tbl)) {
     rv$gs_analysis_history <- history_tbl
     rv$gs_stage_history <- empty_gs_stage_history()
-    rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
     return(TRUE)
   }
   if (!isTRUE(initialize_batch_gs_object(reset_history = TRUE))) {
@@ -394,14 +392,14 @@ replay_group_sequential_history <- function(history_tbl) {
       rv$ts_object$test(as.data.frame(stage_df, stringsAsFactors = FALSE)),
       message = function(m) invokeRestart("muffleMessage")
     )
-    bump_ts_state()
-  }
+      bump_ts_state()
+    }
   history_tbl <- sanitize_gs_analysis_history_tbl(dplyr::bind_rows(replayed_batches))
   rv$gs_analysis_history <- history_tbl
   rv$gs_stage_history <- gs_history_to_legacy_stage_history(history_tbl)
   rv$gs_applied_design_signature <- gs_current_design_signature()
+  bump_ts_state()
   refresh_ts_state()
-  rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
   TRUE
 }
 
@@ -556,13 +554,11 @@ load_group_sequential_design_from_import <- function(dat) {
       # frozen runtime history rather than leaving partially restored state.
       rv$gs_analysis_history <- empty_gs_analysis_history()
       rv$gs_stage_history <- empty_gs_stage_history()
-      rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
       set_ts_log("Imported group sequential design, but could not replay the saved analysis history.")
       showNotification("Imported design, but could not replay the saved analysis history.", type = "warning", duration = 8)
     }
   } else {
     rv$gs_analysis_history <- empty_gs_analysis_history()
     rv$gs_stage_history <- empty_gs_stage_history()
-    rv$gs_boundary_preview <- build_gs_boundary_schedule(notify = FALSE)
   }
 }
