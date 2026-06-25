@@ -12,11 +12,7 @@ script_dir <- if (length(script_arg) > 0) {
   getwd()
 }
 
-project_root <- normalizePath(
-  file.path(script_dir, ".."),
-  winslash = "/",
-  mustWork = TRUE
-)
+project_root <- normalizePath(file.path(script_dir, ".."), winslash = "/", mustWork = TRUE)
 log_path <- file.path(project_root, "app_run.log")
 
 local_library <- file.path(project_root, ".Rlibs")
