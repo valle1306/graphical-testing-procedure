@@ -274,11 +274,28 @@ shiny::testServer(server, {
   stopifnot(grepl("Observed Event Count", round_entry_html, fixed = TRUE))
   stopifnot(grepl("Actual whole-number event/patient count for this look.", round_entry_html, fixed = TRUE))
   stopifnot(grepl(
-    "Observed Event Count is the actual whole-number count at that look. Planned Information Fraction is design guidance only.",
+    "Boundary p is shown only while the observed count matches the planned count",
     round_entry_html,
     fixed = TRUE
   ))
   stopifnot(grepl("value=\"120\"", round_entry_html, fixed = TRUE))
+
+  # The boundary cell is a live output rather than a static design-time number:
+  # the app must never print a boundary it is not going to apply.
+  stopifnot(grepl("gs_round_boundary_1__1", round_entry_html, fixed = TRUE))
+
+  # On plan (observed == planned), the displayed boundary is the applied one.
+  session$setInputs(gs_round_info_1__1 = 120)
+  flush_session()
+  stopifnot(grepl("[0-9]", output$gs_round_boundary_1__1$html))
+  stopifnot(!grepl("recomputed on submit", output$gs_round_boundary_1__1$html, fixed = TRUE))
+
+  # Off plan, no number is shown at all.
+  session$setInputs(gs_round_info_1__1 = 131)
+  flush_session()
+  stopifnot(grepl("recomputed on submit", output$gs_round_boundary_1__1$html, fixed = TRUE))
+  session$setInputs(gs_round_info_1__1 = 120)
+  flush_session()
 
   stopifnot(isTRUE(initialize_batch_gs_object(reset_history = TRUE)))
   session$setInputs(

@@ -43,7 +43,8 @@ set_gs_round_feedback <- function(text = NULL, type = c("success", "error")) {
 # count in the runtime `info` column. The design-time boundary preview can use
 # information fractions, but the live submission path cannot pass those
 # fractions or a derived decimal through to TrialSimulator.
-gs_require_observed_info_count <- function(observed_info, hypothesis, hypothesis_stage) {
+gs_require_observed_info_count <- function(observed_info, hypothesis, hypothesis_stage,
+                                           planned_max_info = NA_real_, is_final = FALSE) {
   observed_info <- suppressWarnings(as.numeric(observed_info))
   hypothesis_stage <- coerce_scalar_integer(hypothesis_stage, default = NA_integer_, minimum = 1L)
   if (!is.finite(observed_info) || observed_info <= 0 || abs(observed_info - round(observed_info)) > 1e-8) {
@@ -53,6 +54,29 @@ gs_require_observed_info_count <- function(observed_info, hypothesis, hypothesis
       hypothesis_stage
     ))
   }
+
+  # An interim look carrying more information than the trial was designed to
+  # reach implies an information fraction above one, which is not a quantity any
+  # spending function is defined at. The final look is exempt: a trial that
+  # over-runs its planned maximum genuinely ends with more information than
+  # planned, and that look is by definition at fraction one.
+  planned_max_info <- suppressWarnings(as.numeric(planned_max_info)[[1]])
+  if (!isTRUE(is_final) && is.finite(planned_max_info) && planned_max_info > 0 &&
+      observed_info > planned_max_info + 1e-8) {
+    stop(sprintf(
+      paste(
+        "%s look %s reports %s units of information, which exceeds the planned",
+        "maximum of %s. An interim look cannot carry more information than the",
+        "trial is designed to reach. Raise Planned Max Info on the Group",
+        "Sequential Design tab, or mark this look as the final analysis."
+      ),
+      as.character(hypothesis[[1]]),
+      hypothesis_stage,
+      format(observed_info),
+      format(planned_max_info)
+    ))
+  }
+
   as.integer(round(observed_info))
 }
 
@@ -116,11 +140,22 @@ gs_rule_choices <- function(include_custom = TRUE) {
 gs_runtime_spending_code <- function(rule) {
   # These are TrialSimulator runtime codes. The boundary-preview path keeps the
   # human-readable rule names and routes through compute_boundary_schedule().
+  #
+  # HSD, Haybittle-Peto and Custom are computed by this app rather than by
+  # rpact's named rules, so they are handed over as a user-defined cumulative
+  # spending sequence. An unrecognised rule is an error: it used to fall through
+  # to "asUser" as well, which meant a typo or a stale value from a hand-edited
+  # design file produced a plausible-looking design silently spending alpha on a
+  # schedule nobody chose.
   normalized <- normalize_spending_rule(rule)
-  dplyr::case_when(
-    identical(normalized, "OF") ~ "asOF",
-    identical(normalized, "Pocock") ~ "asP",
-    TRUE ~ "asUser"
+  switch(
+    normalized,
+    "OF" = "asOF",
+    "Pocock" = "asP",
+    "HSD" = "asUser",
+    "Haybittle-Peto" = "asUser",
+    "Custom" = "asUser",
+    stop(sprintf("Unsupported alpha-spending rule: %s", as.character(rule)[[1]]))
   )
 }
 

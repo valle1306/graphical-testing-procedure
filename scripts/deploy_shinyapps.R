@@ -60,7 +60,6 @@ if (is.null(registered_accounts) || !nrow(registered_accounts)) {
 
 app_files <- c(
   "app.R",
-  "alpha_spending_function.r",
   "Haybittle-Peto.r",
   file.path(
     "R",

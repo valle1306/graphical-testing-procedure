@@ -332,6 +332,35 @@ solve_custom_boundaries <- function(cumulative_alpha, timing) {
 }
 
 # ---------------------------------------------------------------------------
+# gs_planned_info_counts(timing, planned_max_info)
+# gs_runtime_timing(timing, planned_max_info)
+# ---------------------------------------------------------------------------
+# The two halves of the app do not see the same information fraction unless we
+# make them. At analysis time the boundary is derived by TrialSimulator from a
+# whole-number information count divided by the planned maximum information, so
+# the only fractions that can ever be realised are those on the grid
+# k / planned_max_info. A design-time fraction typed as free text is generally
+# not on that grid, and the boundary previewed at the raw fraction is then not
+# the boundary applied at submission.
+#
+# Quantising the design fraction onto the runtime grid removes the mismatch: if
+# the trial runs to plan, the previewed and applied boundaries are identical.
+# These two functions are the single definition of that grid; both the boundary
+# preview and the analysis-tab pre-fill go through them.
+gs_planned_info_counts <- function(timing, planned_max_info) {
+  planned_max_info <- suppressWarnings(as.numeric(planned_max_info)[[1]])
+  if (!is.finite(planned_max_info) || planned_max_info <= 0) {
+    stop("Planned maximum information must be a positive number.")
+  }
+  pmax(1, round(as.numeric(timing) * planned_max_info))
+}
+
+gs_runtime_timing <- function(timing, planned_max_info) {
+  planned_max_info <- suppressWarnings(as.numeric(planned_max_info)[[1]])
+  gs_planned_info_counts(timing, planned_max_info) / planned_max_info
+}
+
+# ---------------------------------------------------------------------------
 # compute_boundary_schedule(total_alpha, spending_type, timing,
 #                           spending_values, hsd_gamma, haybittle_p1)
 # ---------------------------------------------------------------------------

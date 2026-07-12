@@ -6,7 +6,7 @@ library(DT)
 library(TrialSimulator)
 library(jsonlite)
 
-for (helper_file in c("alpha_spending_function.r", "Haybittle-Peto.r")) {
+for (helper_file in c("Haybittle-Peto.r")) {
   helper_path <- file.path(getwd(), helper_file)
   if (file.exists(helper_path)) {
     sys.source(helper_path, envir = globalenv())

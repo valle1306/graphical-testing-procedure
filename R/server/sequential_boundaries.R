@@ -86,13 +86,21 @@ build_gs_boundary_schedule <- function(
             current_status <- "Not currently testable"
           }
 
+          # Preview on the same information grid the analysis tab will use, so a
+          # trial that runs to plan is judged against exactly the boundary it was
+          # shown. See gs_runtime_timing() in sequential_boundary_helpers.R.
+          runtime_timing <- gs_runtime_timing(
+            hypothesis_rows$information_fraction,
+            plan_tbl$planned_max_info[[i]]
+          )
+
           output_rows <- hypothesis_rows %>%
             dplyr::transmute(
               hypothesis = hypothesis,
               alpha_spending = plan_tbl$alpha_spending[[i]],
               planned_analyses = planned_analyses,
               analysis = hypothesis_stage,
-              timing = information_fraction,
+              timing = runtime_timing,
               current_alpha = alpha_now,
               stage_alpha = NA_real_,
               cumulative_alpha_spent = NA_real_,
@@ -133,7 +141,7 @@ build_gs_boundary_schedule <- function(
             compute_boundary_schedule(
               total_alpha = boundary_total_alpha,
               spending_type = plan_tbl$alpha_spending[[i]],
-              timing = hypothesis_rows$information_fraction,
+              timing = runtime_timing,
               spending_values = spending_values,
               hsd_gamma = hsd_gamma_val,
               haybittle_p1 = haybittle_p1_val

@@ -176,15 +176,13 @@ output$gs_hypothesis_plan_ui <- renderUI({
       return(tags$p("Add at least one hypothesis in the Design tab before building the group sequential design."))
     }
     plan_tbl <- isolate(build_default_gs_hypothesis_plan(rv$nodes, rv$gs_hypothesis_plan))
-    show_max_info <- isTRUE(input$gs_plan_override_max_info) ||
-      any(abs(as.numeric(plan_tbl$planned_max_info) - 100) > 1e-12, na.rm = TRUE)
+    # Planned maximum information is always shown. It used to sit behind an
+    # opt-in checkbox and silently defaulted to 100, which is not a quantity of
+    # any real trial; every information fraction, and therefore every boundary,
+    # is computed relative to it, so the user has to see and own the value.
+    show_max_info <- TRUE
     tags$div(
       class = "gs-table-shell",
-      checkboxInput(
-        inputId = "gs_plan_override_max_info",
-        label = "Override planned maximum information",
-        value = show_max_info
-      ),
       tags$table(
         class = "gs-input-table",
         tags$thead(
@@ -239,12 +237,15 @@ output$gs_hypothesis_plan_ui <- renderUI({
           })
         )
       ),
-      if (!isTRUE(show_max_info)) {
-        tags$div(
-          class = "gs-inline-note",
-          "Planned maximum information stays at the internal default unless you override it."
+      tags$div(
+        class = "gs-inline-note",
+        paste(
+          "Planned Max Info is the total information (events or patients) the trial is",
+          "designed to reach. Every information fraction, and so every boundary, is",
+          "computed relative to it. Looks are placed on the grid of whole information",
+          "counts it defines."
         )
-      }
+      )
     )
   }, note = sprintf("nodes=%s", nrow(rv$nodes)))
 })
@@ -599,12 +600,13 @@ output$gs_round_entry_ui <- renderUI({
           if (!is.finite(planned_max_info) || planned_max_info <= 0) {
             planned_max_info <- 100
           }
-          # The runtime path records a whole-number observed count, while the
-          # planned information fraction remains design-only guidance.
-          default_observed_info <- max(
-            1L,
-            as.integer(round(display_state$actionable_rows$timing[[i]] * planned_max_info))
-          )
+          # The preview is computed on the runtime information grid, so the
+          # planned count round-trips exactly: this is the count at which the
+          # displayed boundary is the boundary that will be applied.
+          default_observed_info <- as.integer(gs_planned_info_counts(
+            display_state$actionable_rows$timing[[i]],
+            planned_max_info
+          ))
           tags$tr(
             tags$td(tags$strong(display_state$actionable_rows$hypothesis[[i]])),
             tags$td(
@@ -634,13 +636,7 @@ output$gs_round_entry_ui <- renderUI({
               )
             ),
             tags$td(last_result_lookup[[key]]),
-            tags$td(
-              if (is.na(display_state$actionable_rows$p_boundary[[i]])) {
-                ""
-              } else {
-                format_plain_number(display_state$actionable_rows$p_boundary[[i]])
-              }
-            ),
+            tags$td(uiOutput(paste0("gs_round_boundary_", key), inline = TRUE)),
             tags$td(
               numericInput(
                 inputId = paste0("gs_round_p_", key),
@@ -665,9 +661,81 @@ output$gs_round_entry_ui <- renderUI({
     },
     tags$div(
       class = "gs-inline-note",
-      "Observed Event Count is the actual whole-number count at that look. Planned Information Fraction is design guidance only."
+      paste(
+        "Observed Event Count is the actual whole-number count at that look.",
+        "Boundary p is shown only while the observed count matches the planned count,",
+        "in which case it is exactly the boundary that will be applied. If you change the",
+        "observed count the trial is off plan, the boundary is recomputed from the observed",
+        "information at submission, and it is reported in Submitted Analyses."
+      )
     )
   )
+})
+
+# Boundary cell for one row of the analysis-entry table.
+#
+# This exists so that the app can never display a boundary it is not going to
+# use. The applied boundary is derived by TrialSimulator from the observed
+# information at submission. While the observed count still equals the planned
+# count, the previewed boundary is that boundary (the preview is computed on the
+# same information grid, see gs_runtime_timing). The moment the user departs
+# from the plan we cannot honour that guarantee ahead of submission, so we show
+# nothing rather than a stale number: the previous behaviour printed the
+# design-time boundary next to the p-value entry box, and it differed from the
+# operative one by up to 1.7% relative on the p scale.
+observe({
+  preview_tbl <- rv$gs_boundary_preview
+  if (is.null(preview_tbl) || !nrow(preview_tbl)) {
+    return(invisible(NULL))
+  }
+
+  lapply(seq_len(nrow(preview_tbl)), function(i) {
+    local({
+      key <- as.character(preview_tbl$schedule_key[[i]])
+
+      output[[paste0("gs_round_boundary_", key)]] <- renderUI({
+        row <- sanitize_gs_boundary_preview_tbl(rv$gs_boundary_preview) %>%
+          dplyr::filter(.data$schedule_key == !!key) %>%
+          dplyr::slice(1)
+
+        if (!nrow(row) || !is.finite(row$p_boundary[[1]])) {
+          return(tags$span(class = "gs-muted", "--"))
+        }
+
+        planned_count <- tryCatch(
+          gs_planned_info_counts(row$timing[[1]], row$max_info[[1]]),
+          error = function(e) NA_real_
+        )
+        entered_count <- read_scalar_numeric_input(paste0("gs_round_info_", key))
+        if (!is.finite(entered_count)) {
+          entered_count <- planned_count
+        }
+
+        on_plan <- is.finite(planned_count) &&
+          isTRUE(abs(entered_count - planned_count) < 1e-8)
+
+        if (on_plan) {
+          tags$span(format_plain_number(row$p_boundary[[1]]))
+        } else {
+          tags$span(
+            class = "gs-muted",
+            title = sprintf(
+              paste(
+                "Off plan: this look was planned at %s units of information but you",
+                "entered %s. The boundary will be recomputed from the observed",
+                "information when you submit."
+              ),
+              format_plain_number(planned_count),
+              format_plain_number(entered_count)
+            ),
+            "recomputed on submit"
+          )
+        }
+      })
+    })
+  })
+
+  invisible(NULL)
 })
 
 # Show the submit button only when there is still at least one actionable round.

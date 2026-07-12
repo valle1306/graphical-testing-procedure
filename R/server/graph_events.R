@@ -675,10 +675,28 @@ observeEvent(input$save_node_edit, {
   }
   a_val <- as.numeric(a_str)
   others_sum <- sum(rv$nodes$alpha[rv$nodes$id != id], na.rm = TRUE)
-  if (others_sum + a_val > 1 + 1e-12) {
-    msg <- sprintf("Total alpha would be %.6f (> 1). Please reduce this node's alpha.", others_sum + a_val)
+  alpha_total <- others_sum + a_val
+  if (alpha_total > 1 + 1e-12) {
+    msg <- sprintf("Total alpha would be %.6f (> 1). Please reduce this node's alpha.", alpha_total)
     showNotification(msg, type = "error")
     return(invisible(NULL))
+  }
+  # The graphical procedure controls the family-wise error rate at the sum of the
+  # initial alphas, whatever that sum happens to be. Summing to 1 is permitted by
+  # the method and is what the hard gate above enforces, but a confirmatory trial
+  # almost never wants it: the conventional one-sided budget is 0.025. Say so,
+  # naming the rate the user is actually buying, rather than accepting it mutely.
+  if (alpha_total > 0.025 + 1e-12) {
+    showNotification(
+      sprintf(
+        paste(
+          "Initial alphas now sum to %s. The procedure will control the family-wise",
+          "error rate at that level, not at the conventional one-sided 0.025."
+        ),
+        format_plain_number(alpha_total)
+      ),
+      type = "warning", duration = 10
+    )
   }
   current_x <- rv$nodes$x[rv$nodes$id == id]
   current_y <- rv$nodes$y[rv$nodes$id == id]
@@ -1108,6 +1126,51 @@ observeEvent(input$upload_graph, {
   rv$gs_suppress_plan_rebuild <- TRUE
   rv$nodes <- sanitize_nodes_tbl(nodes)
   rv$edges <- sanitize_edges_tbl(edges)
+
+  # An imported design has to clear the same gates as one drawn by hand. Import
+  # used to write the graph straight into the app with no checks at all, so a
+  # hand-edited file whose alphas summed above one, or whose transition rows
+  # summed to something other than 0 or 1, loaded silently and only failed later
+  # (or worse, did not fail at all). We import the graph either way so the user
+  # can see and repair it, but we say plainly what is wrong with it.
+  import_problems <- character(0)
+
+  alpha_total <- sum(as.numeric(rv$nodes$alpha), na.rm = TRUE)
+  if (alpha_total > 1 + 1e-12) {
+    import_problems <- c(import_problems, sprintf(
+      "initial alphas sum to %s, which exceeds 1", format_plain_number(alpha_total)
+    ))
+  } else if (alpha_total > 0.025 + 1e-12) {
+    showNotification(
+      sprintf(
+        paste(
+          "Imported design has initial alphas summing to %s. The procedure will",
+          "control the family-wise error rate at that level, not at the",
+          "conventional one-sided 0.025."
+        ),
+        format_plain_number(alpha_total)
+      ),
+      type = "warning", duration = 12
+    )
+  }
+
+  if (nrow(rv$nodes)) {
+    transition_check <- validate_transition_matrix(build_transition_matrix_from_graph())
+    if (!isTRUE(transition_check$valid)) {
+      import_problems <- c(import_problems, transition_check$message)
+    }
+  }
+
+  if (length(import_problems)) {
+    showNotification(
+      paste0(
+        "Imported design is not yet valid: ",
+        paste(import_problems, collapse = "; "),
+        ". Fix it on the Design tab before creating the testing object."
+      ),
+      type = "error", duration = NULL
+    )
+  }
 
   load_group_sequential_design_from_import(dat)
   sync_group_sequential_inputs(rv$gs_hypothesis_plan, rv$gs_analysis_schedule)

@@ -163,18 +163,29 @@ collect_round_submission <- function() {
     if (is.na(p_value) || p_value < 0 || p_value > 1) {
       stop(sprintf("Enter a one-sided p-value between 0 and 1 for %s look %s.", ready_rows$hypothesis[[i]], ready_rows$hypothesis_stage[[i]]))
     }
-    # This is a live TrialSimulator input, not the design-time information
-    # fraction that the boundary preview used to build the planned look table.
-    observed_info <- gs_require_observed_info_count(
-      observed_info = read_scalar_numeric_input(paste0("gs_round_info_", schedule_key)),
-      hypothesis = ready_rows$hypothesis[[i]],
-      hypothesis_stage = ready_rows$hypothesis_stage[[i]]
-    )
     runtime_code <- gs_runtime_spending_code(ready_rows$alpha_spending[[i]])
     planned_max_info <- as.numeric(max_info_lookup[[ready_rows$hypothesis[[i]]]])
     if (!is.finite(planned_max_info) || planned_max_info <= 0) {
-      planned_max_info <- 100
+      stop(sprintf(
+        paste(
+          "%s has no planned maximum information. Set Planned Max Info on the",
+          "Group Sequential Design tab: every information fraction, and so every",
+          "boundary, is computed relative to it."
+        ),
+        ready_rows$hypothesis[[i]]
+      ))
     }
+    # This is the live TrialSimulator input. The boundary preview is computed on
+    # the information grid this count defines (see gs_runtime_timing), so when
+    # the observed count equals the planned count the applied boundary is exactly
+    # the previewed one.
+    observed_info <- gs_require_observed_info_count(
+      observed_info = read_scalar_numeric_input(paste0("gs_round_info_", schedule_key)),
+      hypothesis = ready_rows$hypothesis[[i]],
+      hypothesis_stage = ready_rows$hypothesis_stage[[i]],
+      planned_max_info = planned_max_info,
+      is_final = isTRUE(ready_rows$is_final[[i]])
+    )
     tibble::tibble(
       order = as.integer(ready_rows$analysis_round[[i]]),
       hypotheses = ready_rows$hypothesis[[i]],
