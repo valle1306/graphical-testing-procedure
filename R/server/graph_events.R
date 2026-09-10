@@ -43,9 +43,14 @@ build_graph_edges <- function() {
     }
     return(display_edges)
   }
-  current_edges <- lapply(seq_len(nrow(base_edges)), function(i) {
-    from_hyp <- rv$nodes$hypothesis[match(base_edges$from[i], rv$nodes$id)]
-    to_hyp <- rv$nodes$hypothesis[match(base_edges$to[i], rv$nodes$id)]
+  # Graph reduction can create an edge that did not exist in the input graph.
+  # Query every ordered pair, not just the original edge list.
+  pairs <- expand.grid(from = rv$nodes$id, to = rv$nodes$id)
+  pairs$id <- seq_len(nrow(pairs))
+  pairs <- pairs[pairs$from != pairs$to, , drop = FALSE]
+  current_edges <- lapply(seq_len(nrow(pairs)), function(i) {
+    from_hyp <- rv$nodes$hypothesis[match(pairs$from[i], rv$nodes$id)]
+    to_hyp <- rv$nodes$hypothesis[match(pairs$to[i], rv$nodes$id)]
     if (is.na(from_hyp) || is.na(to_hyp)) {
       return(NULL)
     }
@@ -54,14 +59,18 @@ build_graph_edges <- function() {
     if (is.na(from_hid) || is.na(to_hid)) {
       return(NULL)
     }
-    weight <- tryCatch(rv$ts_object$get_weight(from_hid, to_hid), error = function(e) base_edges$weight[i])
+    if (!rv$ts_object$is_in_graph(from_hid) || !rv$ts_object$is_in_graph(to_hid)) return(NULL)
+    weight <- rv$ts_object$get_weight(from_hid, to_hid)
     tibble::tibble(
-      id = base_edges$id[i],
-      from = base_edges$from[i],
-      to = base_edges$to[i],
+      id = pairs$id[i],
+      from = pairs$from[i],
+      to = pairs$to[i],
       weight = as.numeric(weight)
     )
   })
+  if (!any(vapply(current_edges, function(x) !is.null(x), logical(1)))) {
+    return(with_edge_label(base_edges[FALSE, , drop = FALSE]))
+  }
   current_edges <- dplyr::bind_rows(current_edges) %>%
     sanitize_edges_tbl() %>%
     dplyr::filter(is.finite(weight) & weight > 1e-12)
@@ -264,7 +273,7 @@ refresh_ts_state <- function() {
   invisible(NULL)
 }
 
-# wipes the live test object, result summary, boundary preview, and analysis history —
+# wipes the live test object, result summary, boundary preview, and analysis history \u2014
 # but keeps the graph design intact, so you can re-run analyses on the same setup.
 reset_group_sequential_runtime_state <- function(reset_log = TRUE) {
   rv$ts_object <- NULL
@@ -284,7 +293,7 @@ reset_group_sequential_runtime_state <- function(reset_log = TRUE) {
   invisible(NULL)
 }
 
-# the design itself is no longer valid — wipe everything AND force the user back to step 1 of the wizard.
+# the design itself is no longer valid \u2014 wipe everything AND force the user back to step 1 of the wizard.
 invalidate_group_sequential_design_state <- function(reset_log = TRUE) {
   reset_group_sequential_runtime_state(reset_log = reset_log)
   rv$gs_finalize_feedback <- NULL
@@ -612,7 +621,7 @@ observeEvent(input$ctx_add_node, {
   showModal(modalDialog(
     title = paste("Edit node", nid),
     textInput("edit_node_hypo",  "Hypothesis (unique, case-sensitive)", value = default_h, placeholder = "e.g., H1"),
-    textInput("edit_node_alpha", "Alpha (0–1, no scientific notation)", value = default_a),
+    textInput("edit_node_alpha", "Alpha (0\u20131, no scientific notation)", value = default_a),
     easyClose = FALSE,
     footer = tagList(
       actionButton("cancel_new_node", "Cancel"),
@@ -644,7 +653,7 @@ observeEvent(input$dbl_node, {
   showModal(modalDialog(
     title = paste("Edit node", nid),
     textInput("edit_node_hypo",  "Hypothesis (unique, case-sensitive)", value = nd$hypothesis, placeholder = "e.g., H1"),
-    textInput("edit_node_alpha", "Alpha (0–1, no scientific notation)", value = format(nd$alpha, trim = TRUE, scientific = FALSE)),
+    textInput("edit_node_alpha", "Alpha (0\u20131, no scientific notation)", value = format(nd$alpha, trim = TRUE, scientific = FALSE)),
     easyClose = FALSE,
     footer = tagList(
       modalButton("Cancel"),
@@ -750,13 +759,13 @@ observeEvent(input$click_event, {
   if (exists_ab) {
     rv$pending_source <- NULL
     visNetworkProxy("graph") %>% visSelectNodes(id = NULL)
-    showNotification(sprintf("Edge %s → %s already exists.", src, tgt), type = "error")
+    showNotification(sprintf("Edge %s \u2192 %s already exists.", src, tgt), type = "error")
     return(invisible(NULL))
   }
   rv$edge_new <- list(from = src, to = tgt)
   showModal(modalDialog(
     title = sprintf("New edge: %s \u2192 %s", src, tgt),
-    textInput("new_edge_weight", "Weight (0–1, no scientific notation)", value = "1"),
+    textInput("new_edge_weight", "Weight (0\u20131, no scientific notation)", value = "1"),
     easyClose = FALSE,
     footer = tagList(
       modalButton("Cancel"),
@@ -849,7 +858,7 @@ observeEvent(input$dbl_edge, {
   rv$ctx$edit_edge_id <- eid
   showModal(modalDialog(
     title = sprintf("Edit edge: %s \u2192 %s", ed$from, ed$to),
-    textInput("edit_edge_weight", "Weight (0–1, no scientific notation)",
+    textInput("edit_edge_weight", "Weight (0\u20131, no scientific notation)",
               value = format(ed$weight, trim = TRUE, scientific = FALSE)),
     easyClose = FALSE,
     footer = tagList(
@@ -987,6 +996,14 @@ output$download_graph <- downloadHandler(
 
     export_data <- c(
       list(
+        format_version = 3L,
+        software = list(name = "graphMTP", version = "0.3.0",
+          execution_semantics = graphmtp_execution_semantics,
+          source_revision = "graphMTP-final-20260910",
+          TrialSimulator = as.character(utils::packageVersion("TrialSimulator")),
+          gsDesign = as.character(utils::packageVersion("gsDesign")),
+          rpact = as.character(utils::packageVersion("rpact")),
+          mvtnorm = as.character(utils::packageVersion("mvtnorm"))),
         nodes = strip_vector_names(as.data.frame(rv$nodes, stringsAsFactors = FALSE)),
         edges = strip_vector_names(as.data.frame(rv$edges, stringsAsFactors = FALSE))
       ),
@@ -998,6 +1015,7 @@ output$download_graph <- downloadHandler(
       file,
       pretty = TRUE,
       auto_unbox = TRUE,
+      digits = NA,
       keep_vec_names = FALSE
     )
   }
@@ -1006,110 +1024,33 @@ output$download_graph <- downloadHandler(
 # Import a JSON graph
 observeEvent(input$upload_graph, {
   req(input$upload_graph)
-  dat <- fromJSON(input$upload_graph$datapath, simplifyDataFrame = TRUE)
-
-  coerce_import_df <- function(x) {
-    if (is.null(x)) {
-      return(NULL)
-    }
-    if (is.list(x) && !is.data.frame(x)) {
-      x <- as.data.frame(x, stringsAsFactors = FALSE)
-    }
-    if (is.data.frame(x)) {
-      x[] <- lapply(x, function(col) {
-        if (is.list(col)) {
-          unlist(col, recursive = TRUE, use.names = FALSE)
-        } else {
-          col
-        }
-      })
-    }
-    x
-  }
-
-  nodes <- coerce_import_df(dat$nodes)
-  edges <- coerce_import_df(dat$edges)
-
-  if (is.null(nodes) || !nrow(nodes)) {
-    showNotification("Imported file contains no nodes.", type = "error", duration = 8)
+  imported <- tryCatch({
+    dat <- jsonlite::fromJSON(input$upload_graph$datapath, simplifyDataFrame = TRUE)
+    list(data = dat, graph = normalize_graph_import(dat))
+  }, error = function(e) e)
+  if (inherits(imported, "error")) {
+    showNotification(conditionMessage(imported), type = "error", duration = 8)
     return(invisible(NULL))
   }
+  dat <- imported$data
+  nodes <- imported$graph$nodes
+  edges <- imported$graph$edges
 
-  # --- Normalize nodes: accept both app-export and lightweight vis-network schemas ---
-  # Map 'label' -> 'hypothesis' when hypothesis column is absent
-  if (is.null(nodes$hypothesis) && !is.null(nodes$label)) {
-    nodes$hypothesis <- as.character(nodes$label)
+  # Malformed sequential payloads must not replace a working session or escape
+  # the upload observer. Serialise the R6 object as well as the reactive tables.
+  state_before <- unserialize(serialize(shiny::reactiveValuesToList(rv), NULL))
+  import_error <- tryCatch({
+    rv$gs_suppress_plan_rebuild <- TRUE
+    rv$nodes <- sanitize_nodes_tbl(nodes)
+    rv$edges <- sanitize_edges_tbl(edges)
+    load_group_sequential_design_from_import(dat)
+    NULL
+  }, error = function(e) e)
+  if (inherits(import_error, "error")) {
+    for (name in names(state_before)) rv[[name]] <- state_before[[name]]
+    showNotification(paste("Import failed:", conditionMessage(import_error)), type = "error", duration = 8)
+    return(invisible(NULL))
   }
-  if (is.null(nodes$hypothesis)) {
-    nodes$hypothesis <- paste0("H", seq_len(nrow(nodes)))
-  }
-  # Generate sequential IDs when missing
-  if (is.null(nodes$id)) {
-    nodes$id <- seq_len(nrow(nodes))
-  } else {
-    nodes$id <- as.integer(nodes$id)
-  }
-  # Ensure alpha is numeric
-  if (!is.null(nodes$alpha)) {
-    nodes$alpha <- as.numeric(nodes$alpha)
-  } else {
-    nodes$alpha <- rep(0, nrow(nodes))
-  }
-  # Generate default positions when missing
-  if (is.null(nodes$x) || is.null(nodes$y)) {
-    nodes <- auto_layout_nodes(nodes)
-  }
-  # Keep only the columns the app expects
-  nodes <- nodes[, intersect(c("id", "x", "y", "hypothesis", "alpha"), names(nodes)), drop = FALSE]
-
-  # --- Normalize edges: resolve label-based from/to to numeric IDs ---
-  if (!is.null(edges) && nrow(edges)) {
-
-    label_to_id <- stats::setNames(nodes$id, nodes$hypothesis)
-
-    if (is.character(edges$from)) {
-      edges$from <- as.integer(label_to_id[edges$from])
-    } else {
-      edges$from <- as.integer(edges$from)
-    }
-    if (is.character(edges$to)) {
-      edges$to <- as.integer(label_to_id[edges$to])
-    } else {
-      edges$to <- as.integer(edges$to)
-    }
-    if (!is.null(edges$weight)) {
-      edges$weight <- as.numeric(edges$weight)
-    } else if (!is.null(edges$label)) {
-      edges$weight <- suppressWarnings(as.numeric(edges$label))
-    }
-    if (is.null(edges$weight)) {
-      edges$weight <- rep(0, nrow(edges))
-    }
-    if (is.null(edges$id)) {
-      edges$id <- seq_len(nrow(edges))
-    } else {
-      edges$id <- as.integer(edges$id)
-    }
-
-    valid_edges <- !is.na(edges$from) & !is.na(edges$to)
-    if (any(!valid_edges)) {
-      showNotification(
-        sprintf("Dropped %d edge(s) with unrecognized endpoints.", sum(!valid_edges)),
-        type = "warning", duration = 6
-      )
-    }
-    edges <- edges[valid_edges, , drop = FALSE]
-
-    edges <- edges[, intersect(c("id", "from", "to", "weight"), names(edges)), drop = FALSE]
-  } else {
-    edges <- tibble::tibble(id = integer(), from = integer(), to = integer(), weight = numeric())
-  }
-
-  rv$gs_suppress_plan_rebuild <- TRUE
-  rv$nodes <- sanitize_nodes_tbl(nodes)
-  rv$edges <- sanitize_edges_tbl(edges)
-
-  load_group_sequential_design_from_import(dat)
   sync_group_sequential_inputs(rv$gs_hypothesis_plan, rv$gs_analysis_schedule)
   bump_tables()
   update_manual_reject_choices(rv$nodes$hypothesis)

@@ -299,10 +299,10 @@ h3_live_row <- live_state_after_round2 %>%
 
 stopifnot(abs(as.numeric(h3_preview_row$current_alpha) - 0.025) < 1e-12)
 stopifnot(identical(as.character(h3_preview_row$status), "Ready"))
-stopifnot(identical(as.character(h1_live_row$`Next Analysis Time`), "—"))
+stopifnot(identical(as.character(h1_live_row$`Next Analysis Time`), "\u2014"))
 stopifnot(abs(as.numeric(h2_live_row$`Current Alpha`) - 0) < 1e-12)
 stopifnot(identical(as.character(h2_live_row$Decision), "Reject"))
-stopifnot(identical(as.character(h2_live_row$`Next Analysis Time`), "—"))
+stopifnot(identical(as.character(h2_live_row$`Next Analysis Time`), "\u2014"))
 stopifnot(abs(as.numeric(h3_live_row$`Current Alpha`) - 0.025) < 1e-12)
 stopifnot(identical(as.character(h3_live_row$Decision), "Pending"))
 stopifnot(identical(round2_state_after_recycling$actionable_rounds, 2L))

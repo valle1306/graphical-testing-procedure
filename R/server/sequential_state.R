@@ -54,10 +54,23 @@ initialize_batch_gs_object <- function(reset_history = FALSE) {
   rv$planned_max_info <- as.numeric(plan_tbl$planned_max_info)
 
   tryCatch({
+    if (sum(rv$nodes$alpha) > 0.3173105)
+      stop("The fixed sequential implementation supports family alpha at most 0.3173105.")
+    local_specs <- stats::setNames(lapply(seq_len(nrow(plan_tbl)), function(i) {
+      rows <- schedule_tbl[schedule_tbl$hypothesis == plan_tbl$hypothesis[[i]], , drop = FALSE]
+      rows <- rows[order(rows$hypothesis_stage), , drop = FALSE]
+      graphmtp_local_spec(plan_tbl[i, , drop = FALSE], rows,
+        rv$nodes$alpha[match(plan_tbl$hypothesis[[i]], rv$nodes$hypothesis)])
+    }), plan_tbl$hypothesis)
+    for (h in names(local_specs)) {
+      initial <- rv$nodes$alpha[match(h, rv$nodes$hypothesis)]
+      if (initial > 0) graphmtp_local_boundaries(local_specs[[h]], initial)
+    }
     rv$ts_object <- NULL
     withCallingHandlers(
       {
-        rv$ts_object <- GraphicalTesting$new(
+        rv$ts_object <- new_guarded_graphical_testing(
+          local_specs = local_specs,
           alpha = rv$nodes$alpha,
           transition = rv$transition,
           alpha_spending = rv$alpha_spending,
@@ -135,6 +148,10 @@ collect_round_submission <- function() {
     return(NULL)
   }
 
+  if (length(state$actionable_rounds) && round_value != min(state$actionable_rounds)) {
+    stop("Submit the earliest available analysis time before a later analysis time.")
+  }
+
   if (!state$has_remaining_rows) {
     set_gs_round_feedback(sprintf("Analysis time %s has no remaining scheduled hypotheses to submit.", round_value), type = "error")
     showNotification(sprintf("Analysis time %s has no remaining scheduled hypotheses to submit.", round_value), type = "error")
@@ -163,8 +180,8 @@ collect_round_submission <- function() {
     if (is.na(p_value) || p_value < 0 || p_value > 1) {
       stop(sprintf("Enter a one-sided p-value between 0 and 1 for %s look %s.", ready_rows$hypothesis[[i]], ready_rows$hypothesis_stage[[i]]))
     }
-    # This is a live TrialSimulator input, not the design-time information
-    # fraction that the boundary preview used to build the planned look table.
+    # The observed count must agree with the prespecified effective information
+    # schedule used by both preview and execution.
     observed_info <- gs_require_observed_info_count(
       observed_info = read_scalar_numeric_input(paste0("gs_round_info_", schedule_key)),
       hypothesis = ready_rows$hypothesis[[i]],
@@ -175,17 +192,25 @@ collect_round_submission <- function() {
     if (!is.finite(planned_max_info) || planned_max_info <= 0) {
       planned_max_info <- 100
     }
+    prior <- rv$gs_analysis_history %>% dplyr::filter(hypothesis == ready_rows$hypothesis[[i]])
+    if (nrow(prior) && observed_info <= max(prior$observed_info, na.rm = TRUE)) {
+      stop(sprintf("Observed information must increase for %s.", ready_rows$hypothesis[[i]]))
+    }
+    if (!isTRUE(ready_rows$is_final[[i]]) && observed_info >= planned_max_info) {
+      stop(sprintf("Interim information must be below the planned maximum for %s.", ready_rows$hypothesis[[i]]))
+    }
+    expected_information <- round(ready_rows$timing[[i]] * planned_max_info)
+    if (observed_info != expected_information)
+      stop(sprintf("%s look %s requires the prespecified information %s; information adaptations are unsupported.",
+        ready_rows$hypothesis[[i]], ready_rows$hypothesis_stage[[i]], expected_information))
     tibble::tibble(
       order = as.integer(ready_rows$analysis_round[[i]]),
       hypotheses = ready_rows$hypothesis[[i]],
       p = as.numeric(p_value),
       info = as.numeric(observed_info),
       is_final = isTRUE(ready_rows$is_final[[i]]),
-      # TrialSimulator replays a final look against the submitted terminal
-      # count. The design-time boundary preview still comes from the finalized
-      # plan; only the frozen runtime history switches max_info at the final
-      # look to preserve the package's replay contract.
-      max_info = if (isTRUE(ready_rows$is_final[[i]])) as.numeric(observed_info) else as.numeric(planned_max_info),
+      # The information denominator is fixed for every look, including final.
+      max_info = as.numeric(planned_max_info),
       alpha_spent = if (identical(runtime_code, "asUser")) {
         if (isTRUE(ready_rows$is_final[[i]])) {
           1.0
@@ -216,6 +241,11 @@ collect_round_submission <- function() {
     set_gs_round_feedback(runtime_validation$message, type = "error")
     stop(runtime_validation$message)
   }
+  # R6 test methods can mutate before raising an error. Restore the complete
+  # object if testing or history extraction fails; only a successful return commits.
+  object_before <- unserialize(serialize(rv$ts_object, NULL))
+  committed <- FALSE
+  on.exit(if (!committed) rv$ts_object <- object_before, add = TRUE)
   trajectory_before <- tryCatch(
     tibble::as_tibble(rv$ts_object$get_trajectory()),
     error = function(e) tibble::tibble()
@@ -268,7 +298,8 @@ collect_round_submission <- function() {
       trajectory_before_keys,
       by = c("analysis_round", "hypothesis", "hypothesis_stage")
     ) %>%
-    dplyr::filter(analysis_round == round_value)
+    dplyr::filter(analysis_round == round_value) %>%
+    dplyr::mutate(hypothesis_stage = ready_rows$hypothesis_stage[match(hypothesis, ready_rows$hypothesis)])
   history_rows <- ready_rows %>%
     dplyr::transmute(
       submission = history_submission,
@@ -280,7 +311,8 @@ collect_round_submission <- function() {
       information_fraction = timing,
       is_final = is_final,
       observed_info = stage_df$info,
-      max_info = stage_df$max_info
+      max_info = stage_df$max_info,
+      input_alpha_spent = stage_df$alpha_spent
     ) %>%
     dplyr::left_join(
       batch_results,
@@ -292,10 +324,12 @@ collect_round_submission <- function() {
     stop("Unable to capture the submitted testing results for this analysis time.")
   }
 
-  list(
+  result <- list(
     stage_df = as.data.frame(stage_df, stringsAsFactors = FALSE),
     history_rows = sanitize_gs_analysis_history_tbl(history_rows)
   )
+  committed <- TRUE
+  result
 }
 
 # Rebuild runtime state from frozen submitted history after import or reset.
@@ -308,6 +342,19 @@ replay_group_sequential_history <- function(history_tbl) {
     rv$gs_stage_history <- empty_gs_stage_history()
     return(TRUE)
   }
+  if (any(!history_tbl$hypothesis %in% rv$nodes$hypothesis) ||
+      any(!is.finite(history_tbl$p_value)) || any(history_tbl$p_value < 0 | history_tbl$p_value > 1)) {
+    stop("Saved history contains an unknown hypothesis or invalid p-value.")
+  }
+  object_before <- unserialize(serialize(rv$ts_object, NULL))
+  saved_history <- rv$gs_analysis_history
+  saved_legacy <- rv$gs_stage_history
+  replay_complete <- FALSE
+  on.exit(if (!replay_complete) {
+    rv$ts_object <- object_before
+    rv$gs_analysis_history <- saved_history
+    rv$gs_stage_history <- saved_legacy
+  }, add = TRUE)
   if (!isTRUE(initialize_batch_gs_object(reset_history = TRUE))) {
     return(FALSE)
   }
@@ -377,6 +424,10 @@ replay_group_sequential_history <- function(history_tbl) {
       SIMPLIFY = TRUE,
       USE.NAMES = FALSE
     )
+    # Preserve the requested asUser proportion exactly. alphaSpent is a
+    # numerical backend result and cannot reliably reconstruct that input.
+    have_input <- is.finite(batch_rows$input_alpha_spent)
+    batch_rows$alpha_spent[have_input] <- batch_rows$input_alpha_spent[have_input]
     replayed_batches[[i]] <- batch_rows
     stage_df <- batch_rows %>%
       dplyr::transmute(
@@ -387,11 +438,39 @@ replay_group_sequential_history <- function(history_tbl) {
         is_final = as.logical(is_final),
         max_info = as.numeric(max_info),
         alpha_spent = as.numeric(alpha_spent)
-      )
+      ) %>% dplyr::distinct()
+    if (anyDuplicated(stage_df$hypotheses)) {
+      stop("Saved retest rows disagree about the submitted inputs.")
+    }
+    if (length(unique(stage_df$order)) != 1L) {
+      stop("A saved submission must contain exactly one analysis time.")
+    }
     withCallingHandlers(
       rv$ts_object$test(as.data.frame(stage_df, stringsAsFactors = FALSE)),
       message = function(m) invokeRestart("muffleMessage")
     )
+    # Replaying inputs must reproduce the frozen results, not just succeed.
+    # Pair same-analysis retests within each hypothesis in backend event order.
+    replayed <- tibble::as_tibble(rv$ts_object$get_trajectory()) %>%
+      dplyr::filter(order == stage_df$order[[1]], hypothesis %in% stage_df$hypotheses) %>%
+      dplyr::transmute(hypothesis = as.character(hypothesis),
+        current_alpha = as.numeric(alpha), cumulative_alpha_spent = as.numeric(alphaSpent),
+        boundary_z = as.numeric(criticalValues), boundary_p = as.numeric(stageLevels),
+        p_value = as.numeric(obs_p_value),
+        decision = ifelse(tolower(as.character(decision)) == "reject", "Reject", "Do not reject")) %>%
+      dplyr::arrange(hypothesis)
+    saved <- batch_rows %>% dplyr::select(dplyr::all_of(names(replayed))) %>%
+      dplyr::arrange(hypothesis)
+    numeric_fields <- c("current_alpha", "cumulative_alpha_spent", "boundary_z", "boundary_p", "p_value")
+    same_categories <- identical(unname(saved$hypothesis), unname(replayed$hypothesis)) &&
+      identical(unname(saved$decision), unname(replayed$decision))
+    same_numbers <- nrow(saved) == nrow(replayed) && all(vapply(numeric_fields,
+      function(field) all(is.finite(saved[[field]]) & is.finite(replayed[[field]]) &
+        abs(saved[[field]] - replayed[[field]]) <= 1e-6), logical(1)))
+    if (!same_categories || !same_numbers) {
+      print(all.equal(as.data.frame(saved), as.data.frame(replayed), tolerance = 1e-6, check.attributes = FALSE))
+      stop("Saved results do not match replay (absolute numeric tolerance 1e-6; exact hypotheses and decisions). Retain the original file and review the design, inputs and package versions.")
+    }
     bump_ts_state()
   }
   history_tbl <- sanitize_gs_analysis_history_tbl(dplyr::bind_rows(replayed_batches))
@@ -400,6 +479,7 @@ replay_group_sequential_history <- function(history_tbl) {
   rv$gs_applied_design_signature <- gs_current_design_signature()
   bump_ts_state()
   refresh_ts_state()
+  replay_complete <- TRUE
   TRUE
 }
 
@@ -533,6 +613,15 @@ load_group_sequential_design_from_import <- function(dat) {
     empty_gs_analysis_history()
   }
 
+  incompatible_history <- nrow(history_tbl) > 0L &&
+    !identical(dat$software$execution_semantics, graphmtp_execution_semantics)
+  if (incompatible_history) {
+    history_tbl <- empty_gs_analysis_history()
+    msg <- "Imported design only: completed history uses incompatible or unspecified execution semantics. Retain the original export and rerun analyses under the fixed-information engine."
+    showNotification(msg, type = "warning", duration = NULL)
+    set_ts_log(msg)
+  }
+
   rv$gs_hypothesis_plan <- plan_tbl
   rv$gs_analysis_schedule <- schedule_tbl
   set_gs_analysis_schedule_round_signature(schedule_tbl)
@@ -554,8 +643,23 @@ load_group_sequential_design_from_import <- function(dat) {
       # frozen runtime history rather than leaving partially restored state.
       rv$gs_analysis_history <- empty_gs_analysis_history()
       rv$gs_stage_history <- empty_gs_stage_history()
+      rv$ts_object <- NULL
+      rv$ts_summary <- NULL
+      rv$gs_design_finalized <- FALSE
+      rv$gs_applied_design_signature <- ""
       set_ts_log("Imported group sequential design, but could not replay the saved analysis history.")
       showNotification("Imported design, but could not replay the saved analysis history.", type = "warning", duration = 8)
+    } else {
+      # A verified saved history belongs to the replayed design. Restore its
+      # lock as well as its results, including when every hypothesis was rejected.
+      # Re-finalizing against the now-empty live graph would be inappropriate.
+      rv$gs_design_finalized <- TRUE
+      rv$gs_applied_design_signature <- gs_current_design_signature()
+      rv$gs_wizard_step <- 3L
+      rv$gs_finalize_feedback <- list(
+        text = "Imported design and verified analysis history restored.",
+        type = "success"
+      )
     }
   } else {
     rv$gs_analysis_history <- empty_gs_analysis_history()

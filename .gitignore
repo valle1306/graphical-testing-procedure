@@ -31,3 +31,9 @@ Thumbs.db
 
 # Local planning docs
 docs/
+
+# Generated package builds and check directories
+*.tar.gz
+*.Rcheck/
+__pycache__/
+.build/

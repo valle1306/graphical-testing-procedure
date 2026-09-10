@@ -26,6 +26,7 @@ required_packages <- c(
   "tibble",
   "TrialSimulator",
   "gsDesign",
+  "rpact",
   "mvtnorm"
 )
 
@@ -38,5 +39,8 @@ if (length(missing_packages) == 0) {
 } else {
   cat("Using library:", .libPaths()[1], "\n")
   cat("Installing missing packages:", paste(missing_packages, collapse = ", "), "\n")
-  install.packages(missing_packages, dependencies = TRUE, lib = .libPaths()[1])
+  install.packages(missing_packages, dependencies = NA, lib = .libPaths()[1])
+}
+if (!all(vapply(required_packages, requireNamespace, logical(1), quietly = TRUE))) {
+  stop("Some required packages could not be installed. Check the CRAN connection and retry.")
 }

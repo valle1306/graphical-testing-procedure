@@ -1,4 +1,4 @@
-# ── Boundary computation helpers (moved from common_helpers.R) ──────────────
+# \u2500\u2500 Boundary computation helpers (moved from common_helpers.R) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 # Every function here helps turn user inputs (spending rule, total alpha,
 # timing of peeks) into a table of z-score / p-value cut-offs for each peek.
 # Top-level entry point: `compute_boundary_schedule()` at the bottom.
@@ -150,7 +150,7 @@ parse_information_timing <- function(text_value, planned_analyses) {
 # parse_spending_proportions(text_value, planned_analyses)
 # ---------------------------------------------------------------------------
 # "Is this text a valid list of cumulative proportions between 0 and 1 that increases
-#  over planned_analyses peeks?" — parse_spending_proportions answers yes/no +
+#  over planned_analyses peeks?" \u2014 parse_spending_proportions answers yes/no +
 #  returns the cleaned numbers.
 parse_spending_proportions <- function(text_value, planned_analyses) {
   parse_custom_cumulative_alpha(
@@ -203,7 +203,7 @@ normalize_imported_custom_cumulative_alpha <- function(plan_tbl, nodes_tbl = NUL
   sanitize_gs_hypothesis_plan_tbl(dplyr::bind_rows(rows))
 }
 
-# ── Correlation + boundary math ─────────────────────────────────────────────
+# \u2500\u2500 Correlation + boundary math \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 # ---------------------------------------------------------------------------
 # build_information_correlation(timing)
@@ -244,6 +244,7 @@ compute_cumulative_alpha_from_z <- function(z_values, timing) {
       lower = rep(-Inf, k),
       upper = z_values[seq_len(k)],
       corr = corr[seq_len(k), seq_len(k), drop = FALSE],
+      seed = 271828,
       abseps = 1e-8,
       maxpts = 100000
     ))
@@ -258,7 +259,7 @@ compute_cumulative_alpha_from_z <- function(z_values, timing) {
 # case, so for each peek after the first we have to SEARCH for the z-score
 # cutoff that exactly spends `target_stage_alpha` of extra error at this peek
 # (given we already survived the previous peeks at `previous_z`).
-# Uses stats::uniroot — a binary-search root finder. The while-loops widen
+# Uses stats::uniroot \u2014 a binary-search root finder. The while-loops widen
 # the search window (up to +/- 40) if the sign change is not bracketed yet.
 # Called once per peek (peek 2 onwards) by solve_custom_boundaries().
 solve_custom_stage_boundary <- function(previous_z, target_stage_alpha, corr_prefix) {
@@ -271,6 +272,7 @@ solve_custom_stage_boundary <- function(previous_z, target_stage_alpha, corr_pre
       lower = c(rep(-Inf, stage_index - 1L), z_value),
       upper = c(previous_z, Inf),
       corr = corr_prefix,
+      seed = 271828,
       abseps = 1e-8,
       maxpts = 100000
     )) - target_stage_alpha
@@ -310,7 +312,7 @@ solve_custom_boundaries <- function(cumulative_alpha, timing) {
   cumulative_alpha <- as.numeric(cumulative_alpha)
   stage_alpha <- c(cumulative_alpha[[1]], diff(cumulative_alpha))
   z_values <- numeric(length(cumulative_alpha))
-  z_values[[1]] <- stats::qnorm(1 - cumulative_alpha[[1]])
+  z_values[[1]] <- stats::qnorm(cumulative_alpha[[1]], lower.tail = FALSE)
   if (length(cumulative_alpha) > 1L) {
     corr <- build_information_correlation(timing)
     for (k in 2:length(cumulative_alpha)) {
@@ -327,7 +329,7 @@ solve_custom_boundaries <- function(cumulative_alpha, timing) {
     stage_alpha = stage_alpha,
     cumulative_alpha_spent = cumulative_alpha,
     z_boundary = z_values,
-    p_boundary = 1 - stats::pnorm(z_values)
+    p_boundary = stats::pnorm(z_values, lower.tail = FALSE)
   )
 }
 
@@ -337,9 +339,9 @@ solve_custom_boundaries <- function(cumulative_alpha, timing) {
 # ---------------------------------------------------------------------------
 # The core "boundary engine" of the Group-Sequential Design wizard.
 # compute_boundary_schedule is the main entry point: given a total alpha, a spending
-# rule, and the timing of each planned peek, it dispatches to the right engine — gsDesign
+# rule, and the timing of each planned peek, it dispatches to the right engine \u2014 gsDesign
 # for OF/Pocock/HSD, HP() for Haybittle-Peto, solve_custom_boundaries() for Custom, or a
-# trivial single-peek shortcut — and returns one row per analysis with stage_alpha,
+# trivial single-peek shortcut \u2014 and returns one row per analysis with stage_alpha,
 # cumulative_alpha_spent, z_boundary, and p_boundary
 compute_boundary_schedule <- function(
   total_alpha,
@@ -352,6 +354,22 @@ compute_boundary_schedule <- function(
   total_alpha <- as.numeric(total_alpha[[1]])
   spending_type <- normalize_spending_rule(spending_type)
   timing <- as.numeric(timing)
+  if (!length(timing) || any(!is.finite(timing)) || any(timing <= 0) ||
+      any(diff(timing) <= 0) || abs(tail(timing, 1) - 1) > 1e-8) {
+    stop("Information fractions must increase from a positive value to 1.")
+  }
+  if (!is.finite(total_alpha) || total_alpha < 0 || total_alpha >= 1) {
+    stop("A local alpha for boundary computation must be in [0, 1).")
+  }
+  if (identical(spending_type, "Custom") && (is.null(spending_values) ||
+      length(spending_values) != length(timing) || any(!is.finite(spending_values)) ||
+      any(spending_values <= 0 | spending_values > 1) || any(diff(spending_values) <= 0) ||
+      abs(tail(spending_values, 1) - 1) > 1e-8)) {
+    stop("Custom cumulative proportions must increase to 1.")
+  }
+  if (identical(spending_type, "HSD") && (length(hsd_gamma) != 1L || !is.finite(hsd_gamma))) {
+    stop("HSD gamma must be finite.")
+  }
   if (!is.finite(total_alpha) || total_alpha <= 0) {
     return(tibble::tibble(
       analysis = seq_along(timing),
@@ -363,21 +381,18 @@ compute_boundary_schedule <- function(
     ))
   }
   if (length(timing) == 1L) {
-    z_values <- stats::qnorm(1 - total_alpha)
+    z_values <- stats::qnorm(total_alpha, lower.tail = FALSE)
     return(tibble::tibble(
       analysis = 1L,
       timing = timing,
       stage_alpha = total_alpha,
       cumulative_alpha_spent = total_alpha,
       z_boundary = z_values,
-      p_boundary = 1 - stats::pnorm(z_values)
+      p_boundary = stats::pnorm(z_values, lower.tail = FALSE)
     ))
   }
   if (identical(spending_type, "Haybittle-Peto")) {
     hp_p1 <- suppressWarnings(as.numeric(haybittle_p1[[1]]))
-    if (!is.finite(hp_p1)) {
-      hp_p1 <- 3e-04
-    }
     hp <- HP(p1 = hp_p1, overall.alpha = total_alpha, timing = timing)
     return(tibble::tibble(
       analysis = seq_along(timing),
@@ -392,6 +407,9 @@ compute_boundary_schedule <- function(
     if (is.null(spending_values) || !length(spending_values)) {
       stop("Custom cumulative spending proportions are required for the custom rule.")
     }
+    if (length(spending_values) != length(timing) || any(!is.finite(spending_values)) ||
+        any(spending_values <= 0 | spending_values > 1) || any(diff(spending_values) <= 0) ||
+        abs(tail(spending_values, 1) - 1) > 1e-8) stop("Custom cumulative proportions must increase to 1.")
     return(solve_custom_boundaries(
       cumulative_alpha = total_alpha * as.numeric(spending_values),
       timing = timing
@@ -418,13 +436,14 @@ compute_boundary_schedule <- function(
     test.type = 1
   )
   z_values <- as.numeric(gs_obj$upper$bound)
-  cumulative_alpha <- compute_cumulative_alpha_from_z(z_values, timing)
+  cumulative_alpha <- as.numeric(gs_spending_fun(total_alpha, timing,
+    if (identical(spending_type, "HSD")) gs_sfpar else NULL)$spend)
   tibble::tibble(
     analysis = seq_along(timing),
     timing = timing,
     stage_alpha = c(cumulative_alpha[[1]], diff(cumulative_alpha)),
     cumulative_alpha_spent = cumulative_alpha,
     z_boundary = z_values,
-    p_boundary = 1 - stats::pnorm(z_values)
+    p_boundary = stats::pnorm(z_values, lower.tail = FALSE)
   )
 }

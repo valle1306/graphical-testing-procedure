@@ -216,7 +216,7 @@ mismatch_live <- gs_live_analysis_state_tbl(
   history_tbl = mismatch_history
 )
 stopifnot(identical(as.character(mismatch_live$`Last Submitted Analysis Time / Look`), "Analysis Time 2 / Look 1"))
-stopifnot(identical(as.character(mismatch_live$`Next Analysis Time`), "—"))
+stopifnot(identical(as.character(mismatch_live$`Next Analysis Time`), "\u2014"))
 
 display_plan_tbl <- sanitize_gs_hypothesis_plan_tbl(tibble::tibble(
   id = 1:3,
