@@ -38,7 +38,21 @@ expect_error(graphmtp_local_boundaries(tiny, .025))
 intersection_levels <- function(a, G, J) {
   C <- setdiff(seq_along(a), J)
   if (!length(C)) return(a[J])
-  as.numeric(a[J] + a[C] %*% solve(diag(length(C))-G[C,C,drop=FALSE], G[C,J,drop=FALSE]))
+  # Only complement nodes with a positive-weight path to J can contribute.
+  # Closed terminal classes (and nodes leading only to them) absorb level
+  # without delivering it to J; retaining them would make I - G_CC singular.
+  reachable <- J
+  repeat {
+    predecessors <- C[rowSums(G[C, reachable, drop=FALSE] > 0) > 0]
+    expanded <- union(reachable, predecessors)
+    if (setequal(expanded, reachable)) break
+    reachable <- expanded
+  }
+  transient <- intersect(C, reachable)
+  if (!length(transient)) return(a[J])
+  as.numeric(a[J] + a[transient] %*% solve(
+    diag(length(transient))-G[transient,transient,drop=FALSE],
+    G[transient,J,drop=FALSE]))
 }
 closed_rejections <- function(a, G, P, specs, through) {
   m <- length(a)
@@ -71,6 +85,47 @@ for (fixture in 1:16) {
     stopifnot(all(!actual | closure))
   }
 }
+# Terminal H2-H3 cycle cannot transfer its level to H1. A fourth node
+# additionally splits its allocation between H1 and the closed cycle.
+terminal_cycle <- matrix(c(0,0,0, 0,0,1, 0,1,0), 3, byrow=TRUE)
+split_cycle <- matrix(0, 4, 4)
+split_cycle[2,3] <- split_cycle[3,2] <- 1
+split_cycle[4,c(1,2)] <- .5
+cycle_cases <- list(
+  list(G=terminal_cycle, a=c(.005,.01,.01),
+    P=rbind(c(1,1,.004), c(0,1,1), c(0,1,1)),
+    expected_h1=.005),
+  list(G=split_cycle, a=c(.005,.005,.005,.01),
+    P=rbind(c(1,1,.008), c(0,1,1), c(0,1,1), c(0,1,1)),
+    expected_h1=.01)
+)
+stopifnot(
+  abs(intersection_levels(c(.005,.01,.01), terminal_cycle, 1)-.005) < 1e-12,
+  abs(intersection_levels(c(.005,.01,.01), terminal_cycle, 2)-.02) < 1e-12,
+  abs(intersection_levels(c(.005,.005,.005,.01), split_cycle, 1)-.01) < 1e-12,
+  max(abs(intersection_levels(c(.005,.005,.005,.01), split_cycle, c(1,2))-
+    c(.01,.015))) < 1e-12
+)
+for (case in cycle_cases) {
+  m <- length(case$a)
+  # This deliberately exercises the singular complement of singleton H1.
+  stopifnot(qr(diag(m-1L)-case$G[-1,-1,drop=FALSE])$rank < m-1L)
+  specs <- setNames(rep(list(spec()),m), paste0("H",seq_len(m)))
+  g <- new_guarded_graphical_testing(alpha=case$a, transition=case$G,
+    alpha_spending=rep("asOF",m), planned_max_info=rep(100L,m),
+    hypotheses=names(specs), silent=TRUE, local_specs=specs)
+  for (k in 1:3) {
+    active <- which(vapply(seq_len(m),g$is_in_graph,logical(1)))
+    if (length(active)) g$test(data.frame(order=k,hypotheses=names(specs)[active],
+      p=case$P[active,k],info=c(33,67,100)[k],is_final=k==3,max_info=100))
+    actual <- !vapply(seq_len(m),g$is_in_graph,logical(1))
+    closure <- closed_rejections(case$a,case$G,case$P,specs,k)
+    stopifnot(all(!actual | closure))
+    if (k == 1L) stopifnot(!actual[1], all(actual[-1]),
+      abs(g$get_alpha(1L)-case$expected_h1) < 1e-12)
+  }
+  stopifnot(all(actual), all(closure))
+}
 # A later allocation increase does not retest a past p-value.
 G <- matrix(c(0,0,1,0),2,byrow=TRUE)
 a <- c(.0125,.0125)
@@ -90,4 +145,4 @@ stopifnot(g$is_in_graph(1L),all(closed_rejections(a,G,P,specs,2)),
 before <- g$get_trajectory()
 expect_error(g$test(data.frame(order=3L,hypotheses="H1",p=.01,info=110,is_final=TRUE,max_info=110)))
 stopifnot(identical(before,g$get_trajectory()))
-cat("Five local families: integration and nesting passed; 16 three-node fixtures satisfy explicit closure containment; immutable history, no look-back, and unsupported adaptation checks passed.\n")
+cat("Five local families: integration and nesting passed; 16 three-node and two terminal-cycle fixtures satisfy explicit closure containment; known absorption levels, immutable history, no look-back, and unsupported adaptation checks passed.\n")
