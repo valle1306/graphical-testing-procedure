@@ -1,3 +1,6 @@
+local_library <- file.path(getwd(), ".Rlibs")
+if (dir.exists(local_library)) .libPaths(c(local_library, .libPaths()))
+
 library(shiny)
 library(visNetwork)
 library(shinyjs)
@@ -9,7 +12,7 @@ library(jsonlite)
 for (helper_file in c("alpha_spending_function.r", "Haybittle-Peto.r")) {
   helper_path <- file.path(getwd(), helper_file)
   if (file.exists(helper_path)) {
-    sys.source(helper_path, envir = globalenv())
+    sys.source(helper_path, envir = environment())
   }
 }
 
@@ -21,7 +24,7 @@ for (ui_module in c(
 )) {
   ui_module_path <- file.path(getwd(), ui_module)
   if (file.exists(ui_module_path)) {
-    sys.source(ui_module_path, envir = globalenv())
+    sys.source(ui_module_path, envir = environment())
   }
 }
 
@@ -41,8 +44,8 @@ ui <- navbarPage(
   theme = bslib::bs_theme(
     version = 5,
     primary = "#0F766E", secondary = "#D97706",
-    base_font   = bslib::font_google("Source Sans 3"),
-    heading_font= bslib::font_google("Source Sans 3"),
+    base_font   = bslib::font_collection("Arial", "sans-serif"),
+    heading_font= bslib::font_collection("Arial", "sans-serif"),
     "font-size-base" = "0.93rem",
     "line-height-base" = 1.45
   )
@@ -410,6 +413,12 @@ server <- function(input, output, session) {
   validate_transition_matrix <- function(mat, hypotheses = rownames(mat), tol = 1e-6) {
     if (is.null(mat) || !length(mat)) {
       return(list(valid = TRUE, message = NULL))
+    }
+    if (!is.matrix(mat) || nrow(mat) != ncol(mat) ||
+        any(!is.finite(mat)) || any(mat < 0) || any(mat > 1) ||
+        any(diag(mat) != 0)) {
+      return(list(valid = FALSE, message =
+        "Transition weights must be finite values in [0, 1], with no self-loops."))
     }
     row_sums <- rowSums(mat)
     invalid_rows <- which(!(abs(row_sums) < tol | abs(row_sums - 1) < tol))

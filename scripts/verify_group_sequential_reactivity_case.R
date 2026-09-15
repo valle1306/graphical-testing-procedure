@@ -272,9 +272,9 @@ shiny::testServer(server, {
   round_entry_html <- output$gs_round_entry_ui$html
   stopifnot(grepl("gs_round_info_1__1", round_entry_html, fixed = TRUE))
   stopifnot(grepl("Observed Event Count", round_entry_html, fixed = TRUE))
-  stopifnot(grepl("Actual whole-number event/patient count for this look.", round_entry_html, fixed = TRUE))
+  stopifnot(grepl("Prespecified whole-number information count for this look.", round_entry_html, fixed = TRUE))
   stopifnot(grepl(
-    "Observed Event Count is the actual whole-number count at that look. Planned Information Fraction is design guidance only.",
+    "Observed information must equal the prespecified count. Counts must represent a justified information scale; timing and final-information adaptations are unsupported.",
     round_entry_html,
     fixed = TRUE
   ))
@@ -283,9 +283,9 @@ shiny::testServer(server, {
   stopifnot(isTRUE(initialize_batch_gs_object(reset_history = TRUE)))
   session$setInputs(
     gs_analysis_round = "1",
-    gs_round_info_1__1 = 33,
+    gs_round_info_1__1 = 120,
     gs_round_p_1__1 = 0.5,
-    gs_round_info_2__1 = 33,
+    gs_round_info_2__1 = 100,
     gs_round_p_2__1 = 0.5
   )
   flush_session()
@@ -294,7 +294,7 @@ shiny::testServer(server, {
   h1_submission <- submission$history_rows %>%
     dplyr::filter(hypothesis == "H1") %>%
     dplyr::slice(1)
-  stopifnot(abs(as.numeric(h1_submission$observed_info) - 33) < 1e-12)
+  stopifnot(abs(as.numeric(h1_submission$observed_info) - 120) < 1e-12)
   stopifnot(abs(as.numeric(h1_submission$max_info) - 240) < 1e-12)
   stopifnot(any(grepl(
     "Analysis Time 1 / Look 1: alpha at submission 0.01",
@@ -359,12 +359,16 @@ shiny::testServer(server, {
   configure_single_hypothesis_runtime_case(planned_analyses = 1L, info_fraction = 1, analysis_round = 1L, is_final = TRUE)
   session$setInputs(gs_round_info_1__1 = 120, gs_round_p_1__1 = 0.5)
   flush_session()
+  before_final <- rv$ts_object$get_trajectory()
+  final_error <- tryCatch(collect_round_submission(), error = identity)
+  stopifnot(inherits(final_error, "error"), identical(before_final, rv$ts_object$get_trajectory()))
+  session$setInputs(gs_round_info_1__1 = 100)
   final_submission <- collect_round_submission()
   final_row <- final_submission$history_rows %>% dplyr::slice(1)
-  stopifnot(abs(as.numeric(final_row$observed_info) - 120) < 1e-12)
-  stopifnot(abs(as.numeric(final_row$max_info) - 120) < 1e-12)
+  stopifnot(abs(as.numeric(final_row$observed_info) - 100) < 1e-12)
+  stopifnot(abs(as.numeric(final_row$max_info) - 100) < 1e-12)
   stopifnot(isTRUE(replay_group_sequential_history(final_submission$history_rows)))
-  stopifnot(abs(as.numeric(rv$gs_analysis_history$max_info[[1]]) - 120) < 1e-12)
+  stopifnot(abs(as.numeric(rv$gs_analysis_history$max_info[[1]]) - 100) < 1e-12)
 
   configure_single_hypothesis_runtime_case(
     planned_analyses = 3L,
@@ -393,6 +397,14 @@ shiny::testServer(server, {
     is_final = FALSE,
     max_info = 100
   ))
+  # V2 rejects the old fabricated boundary values above. Use a genuine frozen
+  # submission to check reconstruction of a missing legacy information count.
+  fabricated_replay <- tryCatch(replay_group_sequential_history(legacy_history), error = function(e) e)
+  stopifnot(inherits(fabricated_replay, "error"))
+  session$setInputs(gs_analysis_round = 1L, gs_round_info_1__1 = 33, gs_round_p_1__1 = 0.5)
+  flush_session()
+  legacy_history <- collect_round_submission()$history_rows
+  legacy_history$observed_info <- NA_real_
   legacy_replay <- tryCatch(replay_group_sequential_history(legacy_history), error = function(e) e)
   stopifnot(isTRUE(legacy_replay))
   stopifnot(nrow(rv$gs_analysis_history) == 1L)
@@ -407,7 +419,8 @@ shiny::testServer(server, {
     invalid_legacy_replay$message,
     "Saved observed information for H1 look 1 must be a positive whole-number count."
   ))
-  stopifnot(nrow(rv$gs_analysis_history) == 0L)
+  # A failed replay is transactional: the preceding valid history is retained.
+  stopifnot(nrow(rv$gs_analysis_history) == 1L)
 })
 
 cat("Group sequential reactivity regression passed.\n")
@@ -417,5 +430,5 @@ cat("- Changing H1 K rebuilds only H1 schedule rows and keeps other hypotheses u
 cat("- Editing one analysis time updates schedule state immediately and auto-cascades later looks.\n")
 cat("- Analysis entry defaults observed counts to whole numbers and labels them as actual runtime counts.\n")
 cat("- Runtime submission rejects non-integer observed information counts before TrialSimulator is called.\n")
-cat("- Final-look submissions carry the actual observed count into frozen runtime max info for replay.\n")
+cat("- Final-look information changes fail transactionally; the fixed terminal count replays.\n")
 cat("- Legacy replay reconstructs missing observed_info and rejects saved non-integer observed_info values.\n")

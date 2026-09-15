@@ -629,7 +629,7 @@ output$gs_round_entry_ui <- renderUI({
                 ),
                 tags$div(
                   class = "gs-inline-note",
-                  "Actual whole-number event/patient count for this look."
+                  "Prespecified whole-number information count for this look."
                 )
               )
             ),
@@ -665,7 +665,7 @@ output$gs_round_entry_ui <- renderUI({
     },
     tags$div(
       class = "gs-inline-note",
-      "Observed Event Count is the actual whole-number count at that look. Planned Information Fraction is design guidance only."
+      "Observed information must equal the prespecified count. Counts must represent a justified information scale; timing and final-information adaptations are unsupported."
     )
   )
 })

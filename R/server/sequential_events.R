@@ -251,7 +251,8 @@ observeEvent(input$gs_finalize_design, {
 
   # An empty preview usually means there is nothing actionable to test, for
   # example because every hypothesis is inactive or has zero alpha.
-  if (is.null(boundary_preview) || !nrow(boundary_preview)) {
+  if (is.null(boundary_preview) || !nrow(boundary_preview) ||
+      !any(boundary_preview$status == "Ready" & is.finite(boundary_preview$p_boundary))) {
     rv$gs_finalize_feedback <- list(
       text = "Cannot finalize: boundary schedule is empty. Check that hypotheses have alpha > 0.",
       type = "error"

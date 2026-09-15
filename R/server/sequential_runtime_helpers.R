@@ -3,7 +3,7 @@
 # functions that answer questions like "what alpha does each hypothesis start
 # with?", "which analysis rounds are still open?", "what feedback message
 # should we show after a round submission?", and "is the user's custom alpha
-# schedule monotonic?". Nothing here touches the UI directly — these helpers
+# schedule monotonic?". Nothing here touches the UI directly \u2014 these helpers
 # are called by the event handlers in sequential_events.R and by the state
 # reducers in sequential_state.R.
 #
@@ -93,7 +93,7 @@ gs_spending_rule_label <- function(rule) {
     identical(normalized, "OF") ~ "Lan-DeMets O'Brien-Fleming",
     identical(normalized, "Pocock") ~ "Pocock",
     identical(normalized, "HSD") ~ "Hwang-Shih-DeCani",
-    identical(normalized, "Haybittle-Peto") ~ "Haybittle-Peto",
+    identical(normalized, "Haybittle-Peto") ~ "HP-derived spending profile",
     identical(normalized, "Custom") ~ "Custom cumulative alpha",
     TRUE ~ as.character(rule[[1]])
   )
@@ -104,7 +104,7 @@ gs_rule_choices <- function(include_custom = TRUE) {
     "Lan-DeMets O'Brien-Fleming" = "OF",
     "Pocock" = "Pocock",
     "Hwang-Shih-DeCani" = "HSD",
-    "Haybittle-Peto" = "Haybittle-Peto"
+    "HP-derived spending profile" = "Haybittle-Peto"
   )
   if (isTRUE(include_custom)) {
     choices <- c(choices, "Custom cumulative alpha" = "Custom")
@@ -151,38 +151,20 @@ gs_default_rounds <- function(planned_analyses, total_rounds) {
 
 gs_current_design_signature <- function(
   plan_tbl = rv$gs_hypothesis_plan,
-  schedule_tbl = rv$gs_analysis_schedule
+  schedule_tbl = rv$gs_analysis_schedule,
+  nodes_tbl = if (exists("rv", inherits = TRUE)) rv$nodes else NULL,
+  edges_tbl = if (exists("rv", inherits = TRUE)) rv$edges else NULL
 ) {
   plan_tbl <- sanitize_gs_hypothesis_plan_tbl(plan_tbl)
   schedule_tbl <- sanitize_gs_analysis_schedule_tbl(schedule_tbl)
-  paste(
-    paste(
-      paste(
-        plan_tbl$id,
-        plan_tbl$hypothesis,
-        plan_tbl$planned_analyses,
-        format_plain_number(plan_tbl$planned_max_info),
-        plan_tbl$alpha_spending,
-        trimws(plan_tbl$custom_cumulative_alpha),
-        format_plain_number(plan_tbl$hsd_gamma),
-        format_plain_number(plan_tbl$haybittle_p1),
-        sep = ":"
-      ),
-      collapse = "|"
-    ),
-    paste(
-      paste(
-        schedule_tbl$schedule_key,
-        schedule_tbl$analysis_round,
-        schedule_tbl$hypothesis,
-        schedule_tbl$hypothesis_stage,
-        format_plain_number(schedule_tbl$information_fraction),
-        sep = ":"
-      ),
-      collapse = "|"
-    ),
-    sep = "||"
-  )
+  # Canonical serialisation avoids delimiter collisions and display rounding.
+  # Positions do not affect the procedure, but initial levels and edges do.
+  return(as.character(jsonlite::toJSON(list(
+    plan = plan_tbl,
+    schedule = schedule_tbl,
+    nodes = if (!is.null(nodes_tbl)) as.data.frame(nodes_tbl)[, c("id", "hypothesis", "alpha"), drop = FALSE] else NULL,
+    edges = if (!is.null(edges_tbl)) as.data.frame(edges_tbl)[, c("from", "to", "weight"), drop = FALSE] else NULL
+  ), digits = NA, auto_unbox = TRUE, na = "null")))
 }
 
 gs_submitted_schedule_keys <- function(history_tbl = rv$gs_analysis_history) {
@@ -371,8 +353,12 @@ gs_preview_next_round_tbl <- function(
   if (!nrow(preview_tbl)) {
     return(tibble::tibble(hypothesis = character(), `Next Round` = integer()))
   }
-  preview_tbl %>%
-    dplyr::filter(!schedule_key %in% gs_submitted_schedule_keys(history_tbl)) %>%
+  remaining <- preview_tbl %>%
+    dplyr::filter(!schedule_key %in% gs_submitted_schedule_keys(history_tbl))
+  if (!nrow(remaining)) {
+    return(tibble::tibble(hypothesis = character(), `Next Round` = integer()))
+  }
+  remaining %>%
     dplyr::group_by(hypothesis) %>%
     dplyr::summarise(`Next Round` = min(analysis_round), .groups = "drop")
 }
@@ -385,8 +371,12 @@ gs_schedule_next_round_tbl <- function(
   if (!nrow(schedule_tbl)) {
     return(tibble::tibble(hypothesis = character(), `Next Round` = integer()))
   }
-  schedule_tbl %>%
-    dplyr::filter(!schedule_key %in% gs_submitted_schedule_keys(history_tbl)) %>%
+  remaining <- schedule_tbl %>%
+    dplyr::filter(!schedule_key %in% gs_submitted_schedule_keys(history_tbl))
+  if (!nrow(remaining)) {
+    return(tibble::tibble(hypothesis = character(), `Next Round` = integer()))
+  }
+  remaining %>%
     dplyr::group_by(hypothesis) %>%
     dplyr::summarise(`Next Round` = min(analysis_round), .groups = "drop")
 }
@@ -477,7 +467,8 @@ gs_analysis_round_state <- function(
   selected_round <- coerce_scalar_integer(selected_round, default = NA_integer_, minimum = 1L)
   submitted_keys <- gs_submitted_schedule_keys(history_tbl)
   remaining_tbl <- preview_tbl %>%
-    dplyr::filter(!schedule_key %in% submitted_keys) %>%
+    dplyr::filter(!schedule_key %in% submitted_keys,
+      analysis_round >= if (nrow(history_tbl)) max(history_tbl$analysis_round) else 0L) %>%
     dplyr::arrange(analysis_round, hypothesis, hypothesis_stage)
   actionable_tbl <- remaining_tbl %>%
     dplyr::filter(status == "Ready")

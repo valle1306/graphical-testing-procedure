@@ -438,7 +438,7 @@ gs_last_history_by_hypothesis_tbl <- function(history_tbl = rv$gs_analysis_histo
     )
 }
 
-# Full chronological listing of every analysis the user has submitted —
+# Full chronological listing of every analysis the user has submitted \u2014
 # one row per submission/hypothesis/stage. Feeds the "Submitted analyses"
 # history table. All numeric columns routed through format_plain_number to
 # avoid scientific notation.
@@ -473,7 +473,7 @@ gs_submitted_analyses_display_tbl <- function(history_tbl = rv$gs_analysis_histo
     )
 }
 
-# Live analysis state table — combines the current graph status with the
+# Live analysis state table \u2014 combines the current graph status with the
 # last-submitted history row and the next scheduled round per hypothesis.
 # The Decision column uses a fallback ladder: prefer the user's recorded
 # decision, else "Reject" (already out of graph), else "Not testable"
@@ -510,8 +510,8 @@ gs_live_analysis_state_tbl <- function(
       # Rejected hypotheses are out of the graph, so a future scheduled time is
       # no longer actionable and should display as blanked-out UI state.
       `Next Analysis Time` = dplyr::case_when(
-        !as.logical(in_graph) ~ "—",
-        is.na(`Next Round`) ~ "—",
+        !as.logical(in_graph) ~ "\u2014",
+        is.na(`Next Round`) ~ "\u2014",
         TRUE ~ as.character(`Next Round`)
       )
     )

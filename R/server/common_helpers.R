@@ -1,5 +1,5 @@
 
-# ── Safety stub for the profiling helper ────────────────────────────────────
+# \u2500\u2500 Safety stub for the profiling helper \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 # Elsewhere in the app there is a real `profile_reactivity()` function that
 # wraps a chunk of code, runs it, and records how long it took. That tool is
 # useful when we are hunting for slow spots, but it is not always loaded
@@ -11,7 +11,7 @@
 #   - It accepts the same arguments (`label`, `expr`, optional `note`) so any
 #     caller can use it without changing their code.
 #   - It calls `force(expr)`, which simply runs the expression that was passed
-#     in and returns its result. No timing, no logging — just "do the thing".
+#     in and returns its result. No timing, no logging \u2014 just "do the thing".
 # This pattern is sometimes called a "no-op stub": it satisfies the interface
 # without doing any extra work.
 if (!exists("profile_reactivity", mode = "function")) {
@@ -20,7 +20,7 @@ if (!exists("profile_reactivity", mode = "function")) {
   }
 }
 
-# ── On-demand loading of sibling helper files ───────────────────────────────
+# \u2500\u2500 On-demand loading of sibling helper files \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 # The server side of this Shiny app is split across several helper files that
 # each focus on one topic (boundary math, on-screen display strings, runtime
 # alpha lookups, etc.). The functions in *this* file rely on a few helpers
@@ -31,6 +31,8 @@ if (!exists("profile_reactivity", mode = "function")) {
 # one sibling file: which function to look for, and which file to load if it
 # is missing.
 helper_source_specs <- list(
+  list(symbol = "new_guarded_graphical_testing", path = "numerical_guards.R"),
+  list(symbol = "normalize_graph_import", path = "import_helpers.R"),
   list(symbol = "normalize_spending_rule", path = "sequential_boundary_helpers.R"),
   list(symbol = "gs_scalar_display_text", path = "sequential_display_helpers.R"),
   list(symbol = "gs_design_alpha_lookup", path = "sequential_runtime_helpers.R")
@@ -44,7 +46,7 @@ for (helper_spec in helper_source_specs) {
   }
 }
 
-# ── Empty-table "blueprints" (schema constructors) ──────────────────────────
+# \u2500\u2500 Empty-table "blueprints" (schema constructors) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 # The next several functions all do the SAME kind of thing: each one returns
 # a zero-row tibble (a tidyverse-flavoured data frame) with a fixed set of
 # columns and a known data type for each column.
@@ -129,7 +131,7 @@ empty_gs_hypothesis_plan <- function() {
   )
 }
 
-# ── Shared display helpers ──────────────────────────────────────────────────
+# \u2500\u2500 Shared display helpers \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
 # ---------------------------------------------------------------------------
 # empty_gs_analysis_schedule()
@@ -162,6 +164,7 @@ empty_gs_analysis_history <- function() {
     information_fraction = numeric(),
     current_alpha = numeric(),
     cumulative_alpha_spent = numeric(),
+    input_alpha_spent = numeric(),
     observed_info = numeric(),
     p_value = numeric(),
     boundary_p = numeric(),
@@ -172,15 +175,15 @@ empty_gs_analysis_history <- function() {
   )
 }
 
-# ── "Sanitize" helpers (defensive cleaners) ─────────────────────────────────
+# \u2500\u2500 "Sanitize" helpers (defensive cleaners) \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 # The next four functions are "cleaners". They take a data frame coming from
 # somewhere we don't fully trust (a saved file, the editable UI grid, an
 # imported CSV, etc.) and return a tidy, predictable version that exactly
 # matches the empty-table blueprints above.
 #
 # Each cleaner does roughly the same three-step job:
-#   1. If the input is missing or empty → return the empty blueprint.
-#   2. If any expected columns are missing → add them, filled with sensible
+#   1. If the input is missing or empty \u2192 return the empty blueprint.
+#   2. If any expected columns are missing \u2192 add them, filled with sensible
 #      defaults so downstream code never crashes on a missing column.
 #   3. Force every column to its expected data type (text, integer, ...) so
 #      arithmetic and joins behave consistently.
@@ -280,6 +283,7 @@ sanitize_gs_analysis_history_tbl <- function(df) {
   out$information_fraction <- as.numeric(out$information_fraction)
   out$current_alpha <- as.numeric(out$current_alpha)
   out$cumulative_alpha_spent <- as.numeric(out$cumulative_alpha_spent)
+  out$input_alpha_spent <- as.numeric(out$input_alpha_spent)
   out$observed_info <- as.numeric(out$observed_info)
   out$p_value <- as.numeric(out$p_value)
   out$boundary_p <- as.numeric(out$boundary_p)
@@ -328,7 +332,7 @@ sanitize_gs_boundary_preview_tbl <- function(df) {
 
 
 
-# ── Auto-layout helper ──────────────────────────────────────────────────────
+# \u2500\u2500 Auto-layout helper \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 # Purpose: when the user looks at the visual graph of hypotheses (the
 # circles-and-arrows diagram), every node needs an (x, y) screen position.
 # This function computes those positions automatically so the diagram is

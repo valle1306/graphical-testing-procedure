@@ -1,128 +1,108 @@
-# Graphical Multiple Testing
+# graphMTP 0.3.0
 
-<p align="center">
-  <a href="https://s6z1ql-valerie-le.shinyapps.io/graphical-testing-procedure/">
-    <img src="www/logo.gif" width="200" alt="Graphical Multiple Testing logo">
-  </a>
-</p>
+An R/Shiny application for graphical multiple testing and prespecified one-sided
+group-sequential analysis. Build a graph, specify a fixed information schedule,
+submit valid one-sided p-values, and inspect alpha recycling and frozen results.
 
-<p align="center">
-  <a href="https://s6z1ql-valerie-le.shinyapps.io/graphical-testing-procedure/"><strong>Launch the app</strong></a>
-</p>
+## Install and launch
 
-An interactive Shiny app for building graphical multiple-testing procedures and running one-sided group-sequential analyses with `TrialSimulator` and `gsDesign`.
+The standalone application is maintained in `app.R` and `R/`. The installable
+package is assembled from those same files and provides `graphMTP::run_app()`.
 
-## Live App
-
-Use the hosted app here:
-
-- https://s6z1ql-valerie-le.shinyapps.io/graphical-testing-procedure/
-
-## What This App Does
-
-- Build a graphical testing procedure with hypotheses, alphas, and transition weights.
-- Run the classic graphical rejection procedure from the `Design` tab.
-- Build and lock the group-sequential design from the `Group Sequential Design` tab.
-- Run planned one-sided sequential analyses from the `Analysis` tab.
-- Preview rejection boundaries at each planned analysis and watch alpha redistribution on the graph.
-
-## Download The Repository
-
-Option 1: GitHub download
-
-1. Open the repository page on GitHub.
-2. Click `Code`.
-3. Click `Download ZIP`.
-4. Extract the ZIP to a local folder.
-
-Option 2: Git clone
-
-```powershell
-git clone <your-repository-url>
-cd graphical-testing-procedure
+```r
+# In a terminal, from this repository:
+# Rscript scripts/install_packages.R
+# Rscript scripts/build_package.R .
+.libPaths(c(normalizePath(".Rlibs"), .libPaths()))
+install.packages("graphMTP_0.3.0.tar.gz", repos = NULL, type = "source")
+graphMTP::run_app()
+# Alternatively: shiny::runApp(".")
 ```
 
-## Install
+The installer obtains current CRAN dependencies in the project-local `.Rlibs`;
+it is not a version lock. The companion manuscript bundle supplies `renv.lock`,
+the recorded environment and a separate locked restoration workflow. Reference
+versions are R 4.5.3, TrialSimulator 1.35.8, rpact 4.4.0 and gsDesign 3.11.0.
 
-1. Install R.
-2. Open the project folder in VS Code or RStudio.
-3. Install the required packages:
+## Workflow
 
-```bash
-cd /path/to/graphical-testing-procedure
-Rscript scripts/install_packages.R
-```
+1. On **Design**, right-click to add a hypothesis, double-click to edit its local
+   alpha, and connect nodes with transition weights. Local values are absolute
+   one-sided significance levels. **Reject Selected** illustrates a chosen
+   rejection; it does not calculate a p-value.
+2. On **Group Sequential Design**, assign each hypothesis its looks, spending
+   family, information fractions and analysis times. Review and finalize the
+   complete schedule before testing.
+3. On **Analysis**, submit the earliest available analysis time with a p-value
+   and the prespecified information count for each active scheduled hypothesis.
+   The app recycles alpha after rejection and retests current-batch inputs.
+4. Export JSON to retain the initial design, submitted inputs and event history.
+   Importing a current completed session verifies its results by replay.
 
-This installs packages into a local `.Rlibs/` folder so they do not affect your global R setup.
+Preview and execution use the same complete local boundary family, calculated
+by the graphMTP adapter directly with rpact at the current alpha. Interim and
+final looks use the same construction. gsDesign supplies spending functions
+and independent numerical comparisons; TrialSimulator supplies graphical update
+machinery. Earlier recorded events remain unchanged when new allocations alter
+future or same-batch nominal cutoffs. Past p-values are not retrospectively retested.
 
-## Development Verification
+## Statistical and numerical scope
 
-For repo-wide verification, run:
+The sum of initial local levels must not exceed the prespecified family alpha.
+Sequential family alpha is at most 0.3173105. The strong-control argument assumes
+valid canonical joint-normal local statistics at fixed information times, valid
+graphical weights and the supported nested spending family. Users must justify
+the endpoint tests and information model; patient counts alone do not establish
+an appropriate information scale.
 
-```bash
-Rscript scripts/run_verify_all.R
-```
+Entered information fractions map to rounded whole-number counts before testing;
+the effective fractions equal those counts divided by the planned maximum.
+Observed information must match these counts exactly, including the final count.
+Information-time changes and terminal under/overruns are unsupported.
 
-For manual Shiny debugging, run:
+Positive local alpha must be at least 1e-5; each fixed first-crossing spending
+increment must be at least 1e-8. Unsupported calculations fail without committing
+the analysis. Zero initial allocations are supported for standard families.
+Custom and multi-look HP profiles require a positive initial alpha. HP spending
+proportions are fixed at that allocation and scale with recycled alpha, so its
+nominal interim cutoff is not constant after allocation changes.
 
-```bash
-Rscript scripts/run_shiny_debug.R
-```
+## Session compatibility
 
-## How To Use The App
+The source revision is `graphMTP-final-20260910`; execution semantics are
+`fixed-information-nested-spending-v1`, recorded in JSON format 3. The corrected
+0.3.0 engine replaces the previous hybrid final-boundary reconstruction and
+artificial initial look. Completed histories with absent or incompatible
+execution semantics import as designs only, with an explicit warning. Retain
+original exports when migrating; do not describe an old history as reproduced
+by the new engine. Format-2 and legacy design-only inputs remain supported.
 
-### 1. Home
+JSON is a portable record, not a tamper-proof audit trail. Exported results are
+checked numerically on replay; original files and dependency versions remain
+necessary provenance. No hosted deployment has been updated or certified to
+match this source release.
 
-Use the `Home` tab for the project overview and references.
+## Verification and source layout
 
-### 2. Design
+Run `Rscript scripts/run_verify_all.R` with the intended dependency library.
+The suite combines retained backend checks with production-server regression
+cases, independent integration, explicit-closure containment, replay and
+transactional failure checks. `scripts/manuscript_session.R` drives the actual
+Shiny server for reproducible examples. These checks do not constitute a
+clinical-data validation or a general simulation study.
 
-Use the `Design` tab for the classic graphical multiple-testing procedure.
+- `app.R`, `R/`, `www/`: maintained application and assets.
+- `package/graphMTP/`: launcher, metadata, help and installed-package smoke test.
+- `scripts/`: installation, package assembly and verification.
+- `examples/`: portable example graph designs.
 
-- Right-click the canvas to add a node.
-- Double-click a node to edit its name or alpha.
-- Create edges and set their weights.
-- Click `Create Object` to initialize the graphical testing object.
-- Use `Reject Selected` to reject one testable hypothesis.
-- Read the result in the `Output` box.
+## Authors and maintenance
 
-### 3. Group Sequential Design
+Valerie Le (Rutgers University) and MengYang Yi (Johns Hopkins University) are
+software co-maintainers. Valerie is the formal R-package contact at
+hpl14@scarletmail.rutgers.edu. Han Zhang (Astellas) and Philip He (Celcuity) are
+coauthors; Philip is the manuscript corresponding author.
 
-Use the `Group Sequential Design` tab to define the planned one-sided interim analysis workflow.
-
-- Step 1 sets planned looks and alpha-spending rules for each hypothesis.
-- Step 2 assigns each hypothesis look to an analysis time and information fraction.
-- Step 3 reviews the derived one-sided boundaries, including total analyses and alpha spending, before you lock the design.
-- The boundary-review table is design-time only; the `Submitted Analyses` table freezes the package-truth boundary and alpha used when each analysis time is actually submitted.
-- Click `Finalize Design` when the plan and boundary review are ready.
-
-### 4. Analysis
-
-Use the `Analysis` tab to submit one full analysis time at a time.
-
-- Choose the current analysis time.
-- Enter one-sided p-values for every active hypothesis scheduled at that analysis time.
-- Click `Submit Analysis Time` to apply the batch, recycle alpha on rejection, and refresh the remaining boundaries.
-- Use `Reset Analysis State` to clear submitted analysis data while keeping the current design tables.
-- Open `Open live graph and activity` when you want the live graph or the sequential activity log without leaving the tab.
-
-## Example File
-
-You can test the import feature with:
-
-- [examples/upload_example.json](examples/upload_example.json)
-- [examples/frozen_round_recycling_case.json](examples/frozen_round_recycling_case.json)
-
-## Repository Layout
-
-- [app.R](app.R): main app entrypoint.
-- [www/](www): app media assets.
-- [scripts/](scripts): install and verification scripts.
-- [examples/](examples): sample input files.
-
-## Authors And Contributors
-
-- Phan Nguyen Huong Le
-- MengYang Yi
-- Dr. Han Zhang
-- Dr. Philip He
+The source is MIT-licensed; see [LICENSE](LICENSE). Dependency and supplied
+third-party asset licenses remain separate. Clinical use requires independent
+statistical review; this is not a validated regulatory production system.

@@ -1,49 +1,35 @@
-#Haybittle-Peto spending function and rejection boundary
-HP <- function (p1 = 3e-04, overall.alpha = 0.025, timing = c(0.5, 0.7, 1)) {
-  M = length(timing)
-  corr = matrix(1, nrow = M, ncol = M)
-  for (i in 1:(M - 1)) {
-    for (j in (i + 1):M) {
-      corr[i, j] = corr[j, i] = sqrt(timing[i]/timing[j])
-    }
+# One-sided Haybittle-Peto boundaries under canonical joint normal statistics.
+# The interim nominal cutoff must leave a positive error budget for the final look.
+HP <- function(p1 = 3e-04, overall.alpha = 0.025, timing = c(0.5, 0.7, 1)) {
+  stopifnot(length(overall.alpha) == 1L, is.finite(overall.alpha),
+            overall.alpha > 0, overall.alpha < 1)
+  timing <- as.numeric(timing)
+  if (!length(timing) || any(!is.finite(timing)) || any(timing <= 0) ||
+      any(diff(timing) <= 0) || abs(tail(timing, 1) - 1) > 1e-8) {
+    stop("Information fractions must increase from a positive value to 1.")
   }
-  if (M == 1) {
-    pf = p1 = overall.alpha
-    zf = z1 = qnorm(1 - overall.alpha)
+  M <- length(timing)
+  if (M == 1L) {
+    return(data.frame(p = overall.alpha, z = qnorm(overall.alpha, lower.tail = FALSE),
+      alpha = overall.alpha, cum.alpha = overall.alpha, overall.alpha = overall.alpha))
   }
-  else {
-    z1 = qnorm(1 - p1)
-    a = rep(NA, M)
-    if (M == 2) {
-      a[1] = p1
-      a[2] = overall.alpha - a[1]
-    }
-    if (M > 2) {
-      a[1] = p1
-      for (i in 2:(M - 1)) {
-        a[i] = mvtnorm::pmvnorm(lower = c(rep(-Inf, i - 1), z1), 
-                                upper = c(rep(z1, i - 1), Inf), 
-                                corr = corr[1:i, 1:i], 
-                                abseps = 1e-08, maxpts = 1e+05)[1]
-      }
-      a[M] = overall.alpha - sum(a[1:(M - 1)])
-    }
-    f.x = function(x) {
-      I = mvtnorm::pmvnorm(lower = c(rep(-Inf, M - 1), x), 
-                           upper = c(rep(z1, M - 1), Inf), 
-                           corr = corr, 
-                           abseps = 1e-08, maxpts = 1e+05)[1]
-      return(I - a[M])
-    }
-    zf = uniroot(f = f.x, interval = c(1, 10), tol = 1e-08)$root
-    pf = 1 - pnorm(zf)
+  if (length(p1) != 1L || !is.finite(p1) || p1 <= 0 || p1 >= overall.alpha) {
+    stop("The Haybittle-Peto interim cutoff must be positive and below the local alpha.")
   }
-  p = c(rep(p1, M - 1), pf)
-  z = c(rep(z1, M - 1), zf)
-  alpha = a; cum.alpha = rep(NA, M)
-  for (i in 1:M){cum.alpha[i] = sum(alpha[1:i])}
-  o = data.frame(cbind(p, z, alpha, cum.alpha, overall.alpha))
-  return(o)
+  z1 <- qnorm(p1, lower.tail = FALSE)
+  crossing <- function(bounds, information) {
+    as.numeric(gsDesign::gsProbability(k = length(bounds), theta = 0,
+      n.I = information, a = rep(-20, length(bounds)), b = bounds, r = 32)$upper$prob)
+  }
+  interim <- crossing(rep(z1, M - 1L), timing[seq_len(M - 1L)])
+  remaining <- overall.alpha - sum(interim)
+  if (remaining <= 0) stop("Haybittle-Peto interim looks exhaust the local alpha.")
+  f <- function(z) tail(crossing(c(rep(z1, M - 1L), z), timing), 1) - remaining
+  zf <- uniroot(f, interval = c(-12, 12), tol = 1e-10)$root
+  z <- c(rep(z1, M - 1L), zf)
+  spent <- c(interim, remaining)
+  data.frame(p = pnorm(z, lower.tail = FALSE), z = z, alpha = spent,
+    cum.alpha = cumsum(spent), overall.alpha = overall.alpha)
 }
 
 

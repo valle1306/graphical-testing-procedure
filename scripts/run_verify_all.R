@@ -8,6 +8,7 @@ script_dir <- if (length(script_arg) > 0) {
 }
 
 project_root <- normalizePath(file.path(script_dir, ".."), winslash = "/", mustWork = TRUE)
+setwd(project_root)
 local_lib <- file.path(project_root, ".Rlibs")
 if (dir.exists(local_lib)) {
   .libPaths(c(normalizePath(local_lib, winslash = "/", mustWork = TRUE), .libPaths()))
@@ -46,7 +47,7 @@ for (script in verify_scripts) {
   cat("[RUN ]", script_name, "\n")
   status <- system2(
     rscript_bin,
-    args = script
+    args = shQuote(script)
   )
   if (!identical(status, 0L)) {
     cat("\n[FAIL]", script_name, "\n")

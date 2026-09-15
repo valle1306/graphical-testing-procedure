@@ -1,0 +1,26 @@
+Package: graphMTP
+Type: Package
+Title: Interactive Graphical Multiple Testing Procedures
+Version: 0.3.0
+Config/graphMTP/Revision: graphMTP-final-20260910
+Authors@R: c(
+    person("Valerie", "Le", email = "hpl14@scarletmail.rutgers.edu", role = c("aut", "cre"), comment = "Co-maintainer"),
+    person("MengYang", "Yi", role = "aut", comment = "Co-maintainer"),
+    person("Han", "Zhang", role = "aut"),
+    person("Philip", "He", role = "aut"))
+Description: A Shiny interface for specifying graphical multiple testing
+    procedures and inspecting planned one-sided group-sequential analyses.
+    Uses TrialSimulator for graphical updates, rpact for fixed-schedule
+    sequential boundaries and gsDesign spending functions. Includes
+    design validation, alpha recycling and JSON session
+    persistence. Methods are described by Bretz et al. (2009)
+    <doi:10.1002/sim.3495> and Maurer and Bretz (2013)
+    <doi:10.1080/19466315.2013.807748>.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends: R (>= 4.2)
+Imports: shiny, visNetwork, shinyjs, dplyr, DT, jsonlite, bslib,
+    tibble, TrialSimulator (>= 1.35.8), gsDesign (>= 3.11.0), mvtnorm, R6,
+    rpact (>= 4.4.0)
+Suggests: testthat, knitr, rmarkdown
+URL: https://github.com/valle1306/graphical-testing-procedure

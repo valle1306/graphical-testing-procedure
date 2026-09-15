@@ -92,7 +92,7 @@ build_gs_boundary_schedule <- function(
               alpha_spending = plan_tbl$alpha_spending[[i]],
               planned_analyses = planned_analyses,
               analysis = hypothesis_stage,
-              timing = information_fraction,
+              timing = round(information_fraction * plan_tbl$planned_max_info[[i]]) / plan_tbl$planned_max_info[[i]],
               current_alpha = alpha_now,
               stage_alpha = NA_real_,
               cumulative_alpha_spent = NA_real_,
@@ -130,14 +130,13 @@ build_gs_boundary_schedule <- function(
           hsd_gamma_val <- if ("hsd_gamma" %in% names(plan_tbl)) plan_tbl$hsd_gamma[[i]] else -4
           haybittle_p1_val <- if ("haybittle_p1" %in% names(plan_tbl)) plan_tbl$haybittle_p1[[i]] else 3e-04
           boundary_tbl <- tryCatch(
-            compute_boundary_schedule(
-              total_alpha = boundary_total_alpha,
-              spending_type = plan_tbl$alpha_spending[[i]],
-              timing = hypothesis_rows$information_fraction,
-              spending_values = spending_values,
-              hsd_gamma = hsd_gamma_val,
-              haybittle_p1 = haybittle_p1_val
-            ),
+            {
+              spec <- graphmtp_local_spec(plan_tbl[i, , drop = FALSE], hypothesis_rows, design_alpha_now)
+              fixed <- graphmtp_local_boundaries(spec, boundary_total_alpha)
+              tibble::tibble(stage_alpha = c(fixed$alphaSpent[[1]], diff(fixed$alphaSpent)),
+                cumulative_alpha_spent = fixed$alphaSpent,
+                z_boundary = fixed$criticalValues, p_boundary = fixed$stageLevels)
+            },
             error = function(e) e
           )
 
@@ -146,6 +145,7 @@ build_gs_boundary_schedule <- function(
           }
 
           output_rows$stage_alpha <- boundary_tbl$stage_alpha
+          output_rows$timing <- spec$timing
           output_rows$cumulative_alpha_spent <- boundary_tbl$cumulative_alpha_spent
           output_rows$z_boundary <- boundary_tbl$z_boundary
           output_rows$p_boundary <- boundary_tbl$p_boundary

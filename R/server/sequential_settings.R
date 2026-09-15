@@ -421,6 +421,11 @@ validate_gs_analysis_schedule <- function(
     }
     if (identical(plan_tbl$alpha_spending[[i]], "Custom")) {
       alpha_now <- as.numeric(design_alpha_lookup[[plan_tbl$hypothesis[[i]]]])
+      if (length(alpha_now) != 1L || !is.finite(alpha_now) || alpha_now <= 0) {
+        msg <- sprintf("%s custom cumulative alpha requires a positive initial design alpha. Use a standard spending rule for a hypothesis that starts at zero.", plan_tbl$hypothesis[[i]])
+        if (isTRUE(notify)) showNotification(msg, type = "error", duration = 8)
+        return(list(ok = FALSE, message = msg, schedule = display_schedule_tbl))
+      }
       if (length(alpha_now) == 1L && is.finite(alpha_now) && alpha_now > 0) {
         spend_info <- parse_custom_cumulative_alpha(
           plan_tbl$custom_cumulative_alpha[[i]],
@@ -436,6 +441,24 @@ validate_gs_analysis_schedule <- function(
           }
           return(list(ok = FALSE, message = msg, schedule = display_schedule_tbl))
         }
+      }
+    }
+    if (identical(plan_tbl$alpha_spending[[i]], "HSD") && !is.finite(plan_tbl$hsd_gamma[[i]])) {
+      msg <- sprintf("%s HSD gamma must be finite.", plan_tbl$hypothesis[[i]])
+      if (isTRUE(notify)) showNotification(msg, type = "error", duration = 8)
+      return(list(ok = FALSE, message = msg, schedule = display_schedule_tbl))
+    }
+    if (identical(plan_tbl$alpha_spending[[i]], "Haybittle-Peto") && expected_analyses > 1L) {
+      alpha_now <- as.numeric(design_alpha_lookup[[plan_tbl$hypothesis[[i]]]])
+      hp_error <- tryCatch({
+        HP(p1 = plan_tbl$haybittle_p1[[i]], overall.alpha = alpha_now,
+           timing = hypothesis_rows$information_fraction)
+        NULL
+      }, error = function(e) conditionMessage(e))
+      if (!is.null(hp_error)) {
+        msg <- sprintf("%s Haybittle-Peto design error: %s", plan_tbl$hypothesis[[i]], hp_error)
+        if (isTRUE(notify)) showNotification(msg, type = "error", duration = 8)
+        return(list(ok = FALSE, message = msg, schedule = display_schedule_tbl))
       }
     }
   }

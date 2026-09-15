@@ -267,7 +267,9 @@ build_group_sequential_design_tab <- function() {
               class = "gs-help",
               "Walk through each step to define the group sequential design. You can go back to any previous step before finalizing."
             ),
-            div(class = "gs-overview-note", uiOutput("gs_design_context"))
+            div(class = "gs-overview-note", uiOutput("gs_design_context")),
+            tags$p(class = "gs-table-note",
+              "Fixed-design scope: information times and spending shapes are fixed before testing. Interim and final looks use the same nested local-test family. Information adaptations are unsupported. HP-derived spending proportions are frozen initially; nominal interim cutoffs change after recycling.")
           )
         )
       ),
@@ -323,7 +325,7 @@ build_group_sequential_design_tab <- function() {
                 ),
                 tags$p(
                   class = "gs-inline-note",
-                  "This table is a design-time preview only. When you later submit one Analysis Time, TrialSimulator resolves the live batch, including any same-analysis alpha recycling, and the Submitted Analyses table freezes the package-truth boundary used for each saved result."
+                  "Preview and execution use the same fixed-schedule boundary calculation. A submission may recycle alpha within its analysis time; Submitted Analyses preserves the allocation and boundary actually used for each event."
                 ),
                 uiOutput("gs_boundary_preview_feedback"),
                 div(class = "gs-table-shell", DTOutput("gs_boundary_schedule_table")),
